@@ -6,6 +6,9 @@ src/components.d.ts
 
 
 # local env files
+.env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 
