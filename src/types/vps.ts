@@ -99,3 +99,219 @@ export interface AuditLogEntry {
   message: string | null;
   created_at: string;
 }
+
+export interface DwhTopAnomaly {
+  bot_id: number;
+  level: string;
+  logger: string;
+  occurrences: number;
+  signature: string;
+}
+
+export interface DwhCheckpoint {
+  bot_id: number;
+  vps_name: string;
+  container_name: string;
+  strategy: string | null;
+  exchange: string | null;
+  last_trade_id: number;
+  last_order_id: number;
+  last_status: string;
+  last_error: string | null;
+  last_synced_at: string | null;
+}
+
+export interface DwhSummary {
+  bots_total: number;
+  checkpoints_total: number;
+  checkpoints_success: number;
+  trade_rows: number;
+  order_rows: number;
+  log_event_rows: number;
+  anomaly_rows: number;
+  last_synced_at: string | null;
+  top_anomalies: DwhTopAnomaly[];
+  checkpoints: DwhCheckpoint[];
+}
+
+export interface DwhIngestionRunResult {
+  bots_scanned: number;
+  bots_synced: number;
+  bots_failed: number;
+  inserted_trades: number;
+  updated_trades: number;
+  inserted_orders: number;
+  updated_orders: number;
+  inserted_log_events: number;
+  updated_anomalies: number;
+  errors: string[];
+}
+
+export interface DwhIngestionAsyncStart {
+  accepted: boolean;
+  status: 'running' | 'finished' | 'failed' | 'idle';
+}
+
+export interface DwhIngestionStatus {
+  status: 'running' | 'finished' | 'failed' | 'idle';
+  started_at: string | null;
+  finished_at: string | null;
+  result: DwhIngestionRunResult | null;
+  error: string | null;
+}
+
+export interface DwhIngestionRun {
+  id: number;
+  mode: string;
+  status: 'running' | 'finished' | 'failed';
+  actor: string | null;
+  started_at: string;
+  finished_at: string | null;
+  result: DwhIngestionRunResult | null;
+  error: string | null;
+}
+
+export interface DwhRunAnomaly {
+  level: string;
+  logger: string;
+  signature: string;
+  occurrences: number;
+}
+
+export interface DwhRetentionRunResult {
+  days: number;
+  deleted_trades: number;
+  deleted_orders: number;
+  deleted_log_events: number;
+  deleted_anomalies: number;
+  deleted_runs: number;
+}
+
+export interface DwhRetentionConfig {
+  enabled: boolean;
+  days: number;
+  interval_minutes: number;
+  startup_delay_seconds: number;
+  last_auto_run_at: string | null;
+  next_auto_run_at: string | null;
+}
+
+export interface DwhTrade {
+  id: number;
+  bot_id: number;
+  vps_name: string | null;
+  container_name: string | null;
+  source_trade_id: number;
+  pair: string | null;
+  strategy: string | null;
+  exit_reason: string | null;
+  is_open: boolean;
+  open_date: string | null;
+  close_date: string | null;
+  open_rate: number | null;
+  close_rate: number | null;
+  profit_ratio: number | null;
+  profit_abs: number | null;
+  anomaly_count: number;
+}
+
+export interface DwhTradeQuery {
+  days?: number;
+  bot_id?: number;
+  pair?: string;
+  strategy?: string;
+  exit_reason?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DwhTradeList {
+  total: number;
+  items: DwhTrade[];
+}
+
+export interface DwhTradeTimelineItem {
+  ts: string;
+  kind: 'order' | 'log';
+  confidence: 'high' | 'medium' | 'low';
+  title: string;
+  details: string | null;
+}
+
+export interface DwhTradeTimeline {
+  trade_id: number;
+  bot_id: number;
+  source_trade_id: number;
+  pair: string | null;
+  open_date: string | null;
+  close_date: string | null;
+  items: DwhTradeTimelineItem[];
+}
+
+export interface DwhAnomaly {
+  signature_hash: string;
+  signature: string;
+  logger: string;
+  level: string;
+  occurrences: number;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+export interface DwhAnomalyTrendPoint {
+  bucket_ts: string;
+  occurrences: number;
+}
+
+export interface DwhAnomalySample {
+  event_ts: string;
+  bot_id: number;
+  logger: string;
+  level: string;
+  message: string;
+}
+
+export interface DwhRollupCompactionRunResult {
+  rollup_days: number;
+  compact_log_days: number;
+  message_max_len: number;
+  upserted_rollup_rows: number;
+  deleted_rollup_rows: number;
+  compacted_log_events: number;
+}
+
+export interface DwhRollupCompactionConfig {
+  enabled: boolean;
+  rollup_days: number;
+  compact_log_days: number;
+  message_max_len: number;
+  interval_minutes: number;
+  startup_delay_seconds: number;
+  last_auto_run_at: string | null;
+  next_auto_run_at: string | null;
+}
+
+export interface DwhAlertItem {
+  key: string;
+  severity: 'info' | 'warning' | 'critical';
+  message: string;
+  value: number;
+}
+
+export interface DwhAlertStatus {
+  enabled: boolean;
+  evaluated_at: string;
+  triggered_count: number;
+  alerts: DwhAlertItem[];
+}
+
+export interface DwhAlertConfig {
+  enabled: boolean;
+  interval_minutes: number;
+  startup_delay_seconds: number;
+  bots_failed_threshold: number;
+  anomaly_occurrences_threshold: number;
+  anomaly_window_minutes: number;
+  last_auto_run_at: string | null;
+  next_auto_run_at: string | null;
+}

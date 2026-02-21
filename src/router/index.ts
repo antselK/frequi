@@ -71,6 +71,11 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('@/views/VpsManagerView.vue'),
   },
   {
+    path: '/dwh',
+    name: 'DWH Progress',
+    component: () => import('@/views/DwhProgressView.vue'),
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/LoginView.vue'),

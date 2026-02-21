@@ -135,6 +135,11 @@ const navItems = ref([
     icon: 'i-mdi-server',
   },
   {
+    label: 'DWH',
+    to: '/dwh',
+    icon: 'i-mdi-database',
+  },
+  {
     label: 'Settings',
     to: '/settings',
     mobileOnly: true,

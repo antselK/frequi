@@ -2,6 +2,24 @@ import axios from 'axios';
 
 import type {
   AuditLogEntry,
+  DwhAlertConfig,
+  DwhAlertStatus,
+  DwhAnomaly,
+  DwhAnomalySample,
+  DwhAnomalyTrendPoint,
+  DwhIngestionAsyncStart,
+  DwhIngestionRun,
+  DwhIngestionRunResult,
+  DwhRunAnomaly,
+  DwhTradeList,
+  DwhTradeQuery,
+  DwhTradeTimeline,
+  DwhIngestionStatus,
+  DwhRetentionConfig,
+  DwhRetentionRunResult,
+  DwhRollupCompactionConfig,
+  DwhRollupCompactionRunResult,
+  DwhSummary,
   VpsActionResult,
   VpsContainer,
   VpsContainerAuthHint,
@@ -193,6 +211,106 @@ export const vpsApi = {
   },
   async audit(limit = 100): Promise<AuditLogEntry[]> {
     const { data } = await vpsApiClient.get<AuditLogEntry[]>('/audit', { params: { limit } });
+    return data;
+  },
+  async dwhSummary(): Promise<DwhSummary> {
+    const { data } = await vpsApiClient.get<DwhSummary>('/dwh/summary');
+    return data;
+  },
+  async runDwhIngestion(): Promise<DwhIngestionRunResult> {
+    const { data } = await vpsApiClient.post<DwhIngestionRunResult>(
+      '/dwh/ingestion/run',
+      undefined,
+      { timeout: 180000 },
+    );
+    return data;
+  },
+  async runDwhIngestionAsync(): Promise<DwhIngestionAsyncStart> {
+    const { data } = await vpsApiClient.post<DwhIngestionAsyncStart>('/dwh/ingestion/run-async');
+    return data;
+  },
+  async dwhIngestionStatus(): Promise<DwhIngestionStatus> {
+    const { data } = await vpsApiClient.get<DwhIngestionStatus>('/dwh/ingestion/status');
+    return data;
+  },
+  async dwhIngestionRuns(limit = 20): Promise<DwhIngestionRun[]> {
+    const { data } = await vpsApiClient.get<DwhIngestionRun[]>('/dwh/ingestion/runs', { params: { limit } });
+    return data;
+  },
+  async dwhRunAnomalies(runId: number, limit = 20): Promise<DwhRunAnomaly[]> {
+    const { data } = await vpsApiClient.get<DwhRunAnomaly[]>(`/dwh/ingestion/runs/${runId}/anomalies`, {
+      params: { limit },
+    });
+    return data;
+  },
+  async runDwhRetention(days = 180): Promise<DwhRetentionRunResult> {
+    const { data } = await vpsApiClient.post<DwhRetentionRunResult>('/dwh/retention/run', undefined, {
+      params: { days },
+      timeout: 120000,
+    });
+    return data;
+  },
+  async dwhRetentionConfig(): Promise<DwhRetentionConfig> {
+    const { data } = await vpsApiClient.get<DwhRetentionConfig>('/dwh/retention/config');
+    return data;
+  },
+  async dwhTrades(params: DwhTradeQuery = {}): Promise<DwhTradeList> {
+    const { data } = await vpsApiClient.get<DwhTradeList>('/dwh/trades', { params });
+    return data;
+  },
+  async dwhTradeTimeline(tradeId: number, limit = 200): Promise<DwhTradeTimeline> {
+    const { data } = await vpsApiClient.get<DwhTradeTimeline>(`/dwh/trades/${tradeId}/timeline`, {
+      params: { limit },
+    });
+    return data;
+  },
+  async dwhAnomalies(days = 30, limit = 50, botId?: number): Promise<DwhAnomaly[]> {
+    const { data } = await vpsApiClient.get<DwhAnomaly[]>('/dwh/anomalies', {
+      params: {
+        days,
+        limit,
+        bot_id: botId,
+      },
+    });
+    return data;
+  },
+  async dwhAnomalyTrend(signatureHash: string, days = 7): Promise<DwhAnomalyTrendPoint[]> {
+    const { data } = await vpsApiClient.get<DwhAnomalyTrendPoint[]>(`/dwh/anomalies/${signatureHash}/trend`, {
+      params: { days },
+    });
+    return data;
+  },
+  async dwhAnomalySamples(signatureHash: string, limit = 20): Promise<DwhAnomalySample[]> {
+    const { data } = await vpsApiClient.get<DwhAnomalySample[]>(`/dwh/anomalies/${signatureHash}/samples`, {
+      params: { limit },
+    });
+    return data;
+  },
+  async runDwhRollupCompaction(
+    rollupDays = 30,
+    compactLogDays = 14,
+    messageMaxLen = 240,
+  ): Promise<DwhRollupCompactionRunResult> {
+    const { data } = await vpsApiClient.post<DwhRollupCompactionRunResult>('/dwh/rollup-compaction/run', undefined, {
+      params: {
+        rollup_days: rollupDays,
+        compact_log_days: compactLogDays,
+        message_max_len: messageMaxLen,
+      },
+      timeout: 180000,
+    });
+    return data;
+  },
+  async dwhRollupCompactionConfig(): Promise<DwhRollupCompactionConfig> {
+    const { data } = await vpsApiClient.get<DwhRollupCompactionConfig>('/dwh/rollup-compaction/config');
+    return data;
+  },
+  async dwhAlertStatus(): Promise<DwhAlertStatus> {
+    const { data } = await vpsApiClient.get<DwhAlertStatus>('/dwh/alerts/status');
+    return data;
+  },
+  async dwhAlertConfig(): Promise<DwhAlertConfig> {
+    const { data } = await vpsApiClient.get<DwhAlertConfig>('/dwh/alerts/config');
     return data;
   },
 };
