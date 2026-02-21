@@ -256,6 +256,12 @@ export const useBotStore = defineStore('ftbot-wrapper', {
       if (!availableBots) return;
       Object.assign(availableBots, bot);
     },
+    reorderBots(orderedBotIds: string[]) {
+      orderedBotIds.forEach((botId, index) => {
+        this.updateBot(botId, { sortId: index });
+      });
+      this.availableBots = { ...this.availableBots };
+    },
     removeBot(botId: string) {
       if (Object.keys(this.availableBots).includes(botId)) {
         const bot = this.botStores[botId];

@@ -49,6 +49,16 @@ pnpm install
 pnpm run dev
 ```
 
+### VPS Manager environment variables (fork extension)
+
+For the `/vps` page, set these in your frontend environment:
+
+```
+VITE_CONTROL_PLANE_URL=http://127.0.0.1:8000
+VITE_CONTROL_PLANE_ADMIN_TOKEN=change-me
+VITE_CONTROL_PLANE_ACTOR=admin
+```
+
 ### Compiles and minifies for production
 
 ```

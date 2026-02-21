@@ -75,11 +75,17 @@ declare global {
   const getActivePinia: typeof import('pinia').getActivePinia
   const getAvailableBotList: typeof import('./composables/loginInfo')['getAvailableBotList']
   const getAvailableBots: typeof import('./composables/loginInfo')['getAvailableBots']
+  const getControlPlaneActor: typeof import('./composables/vpsApi').getControlPlaneActor
+  const getControlPlaneActorOptions: typeof import('./composables/vpsApi').getControlPlaneActorOptions
+  const getControlPlaneActorPermissions: typeof import('./composables/vpsApi').getControlPlaneActorPermissions
+  const getControlPlaneAdminToken: typeof import('./composables/vpsApi').getControlPlaneAdminToken
+  const getControlPlaneBaseUrl: typeof import('./composables/vpsApi').getControlPlaneBaseUrl
   const getCurrentInstance: typeof import('vue').getCurrentInstance
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
   const getDiffColumnsFromPlotConfig: typeof import('./utils/charts/areaPlotDataset').getDiffColumnsFromPlotConfig
   const getTheme: typeof import('./utils/themes')['getTheme']
+  const getVpsStatusStreamUrl: typeof import('./composables/vpsApi').getVpsStatusStreamUrl
   const h: typeof import('vue').h
   const hasFeature: typeof import('./utils/features').hasFeature
   const heikinAshiDataset: typeof import('./utils/charts/heikinAshiDataset').heikinAshiDataset
@@ -150,6 +156,7 @@ declare global {
   const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
   const roundTimeframe: typeof import('./utils/roundTimeframe').default
   const setActivePinia: typeof import('pinia').setActivePinia
+  const setControlPlaneActor: typeof import('./composables/vpsApi').setControlPlaneActor
   const setMapStoreSuffix: typeof import('pinia').setMapStoreSuffix
   const setTimezone: typeof import('./utils/formatters/timeformat').setTimezone
   const shallowReactive: typeof import('vue').shallowReactive
@@ -364,6 +371,7 @@ declare global {
   const useVModels: typeof import('@vueuse/core').useVModels
   const useVibrate: typeof import('@vueuse/core').useVibrate
   const useVirtualList: typeof import('@vueuse/core').useVirtualList
+  const useVpsStore: typeof import('./stores/vps').useVpsStore
   const useWakeLock: typeof import('@vueuse/core').useWakeLock
   const useWebNotification: typeof import('@vueuse/core').useWebNotification
   const useWebSocket: typeof import('@vueuse/core').useWebSocket
@@ -373,6 +381,7 @@ declare global {
   const useWindowScroll: typeof import('@vueuse/core').useWindowScroll
   const useWindowSize: typeof import('@vueuse/core').useWindowSize
   const usedColumns: typeof import('./utils/charts/usedColumns')['default']
+  const vpsApi: typeof import('./composables/vpsApi').vpsApi
   const watch: typeof import('vue').watch
   const watchArray: typeof import('@vueuse/core').watchArray
   const watchAtMost: typeof import('@vueuse/core').watchAtMost
@@ -487,10 +496,16 @@ declare module 'vue' {
     readonly generateMarkAreaSeries: UnwrapRef<typeof import('./utils/charts/tradeChartData')['generateMarkAreaSeries']>
     readonly generateTradeSeries: UnwrapRef<typeof import('./utils/charts/tradeChartData')['generateTradeSeries']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
+    readonly getControlPlaneActor: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneActor']>
+    readonly getControlPlaneActorOptions: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneActorOptions']>
+    readonly getControlPlaneActorPermissions: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneActorPermissions']>
+    readonly getControlPlaneAdminToken: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneAdminToken']>
+    readonly getControlPlaneBaseUrl: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneBaseUrl']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getCurrentWatcher: UnwrapRef<typeof import('vue')['getCurrentWatcher']>
     readonly getDiffColumnsFromPlotConfig: UnwrapRef<typeof import('./utils/charts/areaPlotDataset')['getDiffColumnsFromPlotConfig']>
+    readonly getVpsStatusStreamUrl: UnwrapRef<typeof import('./composables/vpsApi')['getVpsStatusStreamUrl']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hasFeature: UnwrapRef<typeof import('./utils/features')['hasFeature']>
     readonly heikinAshiDataset: UnwrapRef<typeof import('./utils/charts/heikinAshiDataset')['heikinAshiDataset']>
@@ -558,6 +573,7 @@ declare module 'vue' {
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly roundTimeframe: UnwrapRef<typeof import('./utils/roundTimeframe')['default']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
+    readonly setControlPlaneActor: UnwrapRef<typeof import('./composables/vpsApi')['setControlPlaneActor']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
     readonly setTimezone: UnwrapRef<typeof import('./utils/formatters/timeformat')['setTimezone']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
@@ -771,6 +787,7 @@ declare module 'vue' {
     readonly useVModels: UnwrapRef<typeof import('@vueuse/core')['useVModels']>
     readonly useVibrate: UnwrapRef<typeof import('@vueuse/core')['useVibrate']>
     readonly useVirtualList: UnwrapRef<typeof import('@vueuse/core')['useVirtualList']>
+    readonly useVpsStore: UnwrapRef<typeof import('./stores/vps')['useVpsStore']>
     readonly useWakeLock: UnwrapRef<typeof import('@vueuse/core')['useWakeLock']>
     readonly useWebNotification: UnwrapRef<typeof import('@vueuse/core')['useWebNotification']>
     readonly useWebSocket: UnwrapRef<typeof import('@vueuse/core')['useWebSocket']>
@@ -779,6 +796,7 @@ declare module 'vue' {
     readonly useWindowFocus: UnwrapRef<typeof import('@vueuse/core')['useWindowFocus']>
     readonly useWindowScroll: UnwrapRef<typeof import('@vueuse/core')['useWindowScroll']>
     readonly useWindowSize: UnwrapRef<typeof import('@vueuse/core')['useWindowSize']>
+    readonly vpsApi: UnwrapRef<typeof import('./composables/vpsApi')['vpsApi']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>
     readonly watchArray: UnwrapRef<typeof import('@vueuse/core')['watchArray']>
     readonly watchAtMost: UnwrapRef<typeof import('@vueuse/core')['watchAtMost']>

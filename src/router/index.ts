@@ -36,9 +36,10 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('@/views/DashboardView.vue'),
   },
   {
-    path: '/custom',
-    name: 'Custom Dashboard',
-    component: () => import('@/views/CustomDashboardView.vue'),
+    path: '/console',
+    alias: ['/custom'],
+    name: 'Console',
+    component: () => import('@/views/ConsoleView.vue'),
   },
   {
     path: '/balance',
@@ -63,6 +64,11 @@ const routes: Array<RouteRecordRaw> = [
     path: '/settings',
     name: 'Freqtrade Settings',
     component: () => import('@/views/SettingsView.vue'),
+  },
+  {
+    path: '/vps',
+    name: 'VPS Manager',
+    component: () => import('@/views/VpsManagerView.vue'),
   },
   {
     path: '/login',

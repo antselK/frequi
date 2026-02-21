@@ -16,6 +16,40 @@ const APIBASE = '/api/v1';
 // Global state for all login infos
 const allLoginInfos = useStorage<AuthStorageMulti>(AUTH_LOGIN_INFO, {});
 
+function normalizeStoredBotOrder() {
+  const entries = Object.entries(allLoginInfos.value);
+  if (entries.length <= 1) {
+    return;
+  }
+
+  const ordered = [...entries].sort((a, b) => {
+    const aSort = a[1]?.sortId ?? Number.MAX_SAFE_INTEGER;
+    const bSort = b[1]?.sortId ?? Number.MAX_SAFE_INTEGER;
+    if (aSort === bSort) {
+      return a[0].localeCompare(b[0]);
+    }
+    return aSort - bSort;
+  });
+
+  let changed = false;
+  const normalized: AuthStorageMulti = {};
+  ordered.forEach(([botId, info], index) => {
+    if ((info.sortId ?? -1) !== index) {
+      changed = true;
+    }
+    normalized[botId] = {
+      ...info,
+      sortId: index,
+    };
+  });
+
+  if (changed) {
+    allLoginInfos.value = normalized;
+  }
+}
+
+normalizeStoredBotOrder();
+
 /**
  * Get available bots with their descriptors
  */
@@ -23,7 +57,14 @@ export const availableBots = computed<BotDescriptors>(() => {
   const allInfo = allLoginInfos.value;
   const response: BotDescriptors = {};
   Object.keys(allInfo)
-    .sort((a, b) => (allInfo[a]?.sortId ?? 0) - (allInfo[b]?.sortId ?? 0))
+    .sort((a, b) => {
+      const aSort = allInfo[a]?.sortId ?? Number.MAX_SAFE_INTEGER;
+      const bSort = allInfo[b]?.sortId ?? Number.MAX_SAFE_INTEGER;
+      if (aSort === bSort) {
+        return a.localeCompare(b);
+      }
+      return aSort - bSort;
+    })
     .forEach((k, idx) => {
       const bot = allInfo[k];
       if (!bot) return;
@@ -38,17 +79,59 @@ export const availableBots = computed<BotDescriptors>(() => {
   return response;
 });
 
+export function ensureBotLoginInfo(
+  botId: string,
+  payload: { botName: string; botUrl: string; sortId: number },
+) {
+  const existing = allLoginInfos.value[botId];
+  allLoginInfos.value = {
+    ...allLoginInfos.value,
+    [botId]: {
+      botName: payload.botName,
+      apiUrl: payload.botUrl,
+      username: existing?.username ?? '',
+      refreshToken: existing?.refreshToken ?? '',
+      accessToken: existing?.accessToken ?? '',
+      autoRefresh: existing?.autoRefresh ?? false,
+      sortId: existing?.sortId ?? payload.sortId,
+    },
+  };
+}
+
 export function useLoginInfo(botId: string) {
   console.log('botId', botId);
 
+  function mergeLoginInfo(newValues: Partial<AuthStorage>) {
+    const existing = allLoginInfos.value[botId];
+    if (!existing) {
+      return;
+    }
+    allLoginInfos.value = {
+      ...allLoginInfos.value,
+      [botId]: {
+        ...existing,
+        ...newValues,
+      },
+    };
+  }
+
   const currentInfo = computed({
     get: () => allLoginInfos.value[botId]!,
-    set: (val) => (allLoginInfos.value[botId] = val),
+    set: (val) => {
+      const existing = allLoginInfos.value[botId];
+      allLoginInfos.value = {
+        ...allLoginInfos.value,
+        [botId]: {
+          ...existing,
+          ...val,
+        },
+      };
+    },
   });
 
   const autoRefresh = computed({
     get: () => currentInfo.value.autoRefresh,
-    set: (val) => (currentInfo.value.autoRefresh = val),
+    set: (val) => mergeLoginInfo({ autoRefresh: val }),
   });
   const accessToken = computed(() => currentInfo.value.accessToken);
 
@@ -93,17 +176,29 @@ export function useLoginInfo(botId: string) {
   }
 
   function updateBot(newValues: Partial<BotDescriptor>): void {
-    Object.assign(currentInfo.value, newValues);
+    const existing = allLoginInfos.value[botId];
+    if (!existing) {
+      return;
+    }
+
+    allLoginInfos.value = {
+      ...allLoginInfos.value,
+      [botId]: {
+        ...existing,
+        ...newValues,
+      },
+    };
   }
 
   function setRefreshTokenExpired(): void {
-    currentInfo.value.refreshToken = '';
-    currentInfo.value.accessToken = '';
+    mergeLoginInfo({ refreshToken: '', accessToken: '' });
   }
 
   function logout(): void {
     console.log('Logging out');
-    delete allLoginInfos.value[botId];
+    const nextInfo = { ...allLoginInfos.value };
+    delete nextInfo[botId];
+    allLoginInfos.value = nextInfo;
   }
 
   async function loginCall(auth: AuthPayload): Promise<AuthStorage> {
@@ -131,7 +226,11 @@ export function useLoginInfo(botId: string) {
 
   async function login(auth: AuthPayload) {
     const loginInfo = await loginCall(auth);
-    currentInfo.value = loginInfo;
+    const existing = allLoginInfos.value[botId];
+    currentInfo.value = {
+      ...loginInfo,
+      sortId: existing?.sortId,
+    };
   }
 
   function refreshToken(): Promise<string> {
@@ -148,7 +247,7 @@ export function useLoginInfo(botId: string) {
         )
         .then((response) => {
           if (response.data.access_token) {
-            currentInfo.value.accessToken = response.data.access_token;
+            mergeLoginInfo({ accessToken: response.data.access_token });
             resolve(response.data.access_token);
           }
         })

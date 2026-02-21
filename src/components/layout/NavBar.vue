@@ -114,8 +114,8 @@ const navItems = ref([
     icon: 'i-mdi-view-dashboard',
   },
   {
-    label: 'Custom',
-    to: '/custom',
+    label: 'Console',
+    to: '/console',
     visible: computed(() => !botStore.canRunBacktest),
     icon: 'i-mdi-view-dashboard-edit',
   },
@@ -128,6 +128,11 @@ const navItems = ref([
     label: 'Logs',
     to: '/logs',
     icon: 'i-mdi-format-list-bulleted',
+  },
+  {
+    label: 'VPS',
+    to: '/vps',
+    icon: 'i-mdi-server',
   },
   {
     label: 'Settings',

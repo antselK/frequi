@@ -4,6 +4,9 @@ interface ImportMetaEnv extends Readonly<Record<string, string>> {
   readonly MODE: string;
   readonly PROD: boolean;
   readonly DEV: boolean;
+  readonly VITE_CONTROL_PLANE_URL: string;
+  readonly VITE_CONTROL_PLANE_ADMIN_TOKEN: string;
+  readonly VITE_CONTROL_PLANE_ACTOR: string;
 }
 
 interface ImportMeta {

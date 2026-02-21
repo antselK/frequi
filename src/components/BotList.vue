@@ -13,23 +13,24 @@ const botStore = useBotStore();
 const editingBots = ref<string[]>([]);
 const loginModal = ref<typeof LoginModal>();
 const sortContainer = ref<HTMLElement | null>(null);
-const botListComp = computed<BotDescriptor[]>(() => {
-  //Convert to array
-  return botStore.availableBotsSorted;
-});
+const displayBots = ref<BotDescriptor[]>([]);
 
-useSortable(sortContainer, botListComp, {
+watch(
+  () => botStore.availableBotsSorted,
+  (nextBots) => {
+    displayBots.value = [...nextBots];
+  },
+  { immediate: true },
+);
+
+useSortable(sortContainer, displayBots, {
   handle: '.handle',
   onUpdate: (e) => {
     if (e.oldIndex === undefined || e.newIndex === undefined) {
       return;
     }
-    const oldBotId = botListComp.value[e.oldIndex]?.botId;
-    const newBotId = botListComp.value[e.newIndex]?.botId;
-    if (oldBotId && newBotId) {
-      botStore.updateBot(oldBotId, { sortId: e.newIndex });
-      botStore.updateBot(newBotId, { sortId: e.oldIndex });
-    }
+    const orderedIds = displayBots.value.map((bot) => bot.botId);
+    botStore.reorderBots(orderedIds);
   },
 });
 
@@ -69,7 +70,7 @@ function stopEditBot(botId: string) {
       class="flex flex-col divide-y border-x border-surface-500 rounded-sm border-y divide-solid divide-surface-500"
     >
       <li
-        v-for="bot in botListComp"
+        v-for="bot in displayBots"
         :key="bot.botId"
         :active="bot.botId === botStore.selectedBot"
         button
