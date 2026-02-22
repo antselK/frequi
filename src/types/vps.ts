@@ -177,6 +177,20 @@ export interface DwhLogCumulativePoint {
   cumulative_count: number;
 }
 
+export interface DwhLogCauseBucket {
+  logger: string;
+  level: string;
+  message: string;
+  occurrences: number;
+}
+
+export interface DwhLogCauseSummary {
+  from_ts: string;
+  to_ts: string;
+  total_events: number;
+  buckets: DwhLogCauseBucket[];
+}
+
 export interface DwhLogCaptureRule {
   id: number;
   logger_name: string | null;

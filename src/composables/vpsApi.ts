@@ -7,6 +7,7 @@ import type {
   DwhAuditMessageList,
   DwhAuditMode,
   DwhAuditSummary,
+  DwhLogCauseSummary,
   DwhLogCumulativePoint,
   DwhAnomaly,
   DwhAnomalySample,
@@ -231,6 +232,18 @@ export const vpsApi = {
     level?: string;
   } = {}): Promise<DwhLogCumulativePoint[]> {
     const { data } = await vpsApiClient.get<DwhLogCumulativePoint[]>('/dwh/reports/logs-cumulative', { params });
+    return data;
+  },
+  async dwhLogCauseSummary(params: {
+    from_ts?: string;
+    to_ts?: string;
+    hours?: number;
+    bot_id?: number;
+    logger?: string;
+    levels?: string;
+    limit?: number;
+  } = {}): Promise<DwhLogCauseSummary> {
+    const { data } = await vpsApiClient.get<DwhLogCauseSummary>('/dwh/reports/log-causes', { params });
     return data;
   },
   async dwhAuditRules(): Promise<DwhLogCaptureRule[]> {

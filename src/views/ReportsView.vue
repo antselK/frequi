@@ -2,7 +2,13 @@
 import { computed, onMounted, ref, watch } from 'vue';
 
 import { vpsApi } from '@/composables/vpsApi';
-import type { DwhAnomaly, DwhIngestionRun, DwhIngestionRunResult, DwhLogCumulativePoint } from '@/types/vps';
+import type {
+  DwhAnomaly,
+  DwhIngestionRun,
+  DwhIngestionRunResult,
+  DwhLogCauseSummary,
+  DwhLogCumulativePoint,
+} from '@/types/vps';
 
 type ReportCategory = 'system' | 'trades';
 type MissedTradeReasonCode =
@@ -114,8 +120,18 @@ const systemErrorTimelinePoints = ref<TimelinePoint[]>([]);
 const dwhIngestTimeline = ref<IngestTimelinePoint[]>([]);
 const logsCumulativeChartPoints = ref<LogsCumulativeChartPoint[]>([]);
 const missedTradeEvents = ref<ParsedLogEvent[]>([]);
+const systemSpikeSummary = ref<DwhLogCauseSummary | null>(null);
+const logsSpikeSummary = ref<DwhLogCauseSummary | null>(null);
 const systemDays = ref(7);
+const systemSpikeFromLocal = ref('');
+const systemSpikeToLocal = ref('');
+const systemSpikeLevels = ref('ERROR,WARNING');
+const systemSpikeLimit = ref(20);
 const logsDays = ref(7);
+const logsSpikeFromLocal = ref('');
+const logsSpikeToLocal = ref('');
+const logsSpikeLevels = ref('INFO,WARNING,ERROR');
+const logsSpikeLimit = ref(20);
 const logsFilterBotId = ref<number | null>(null);
 const logsFilterLogger = ref('');
 const logsFilterLevel = ref('');
@@ -125,14 +141,18 @@ const missedFilterBotId = ref<number | null>(null);
 const missedFilterPair = ref('');
 const selectedReasonFilters = ref<MissedTradeReasonCode[]>([]);
 const loadingSystemTimeline = ref(false);
+const loadingSystemSpikeSummary = ref(false);
 const loadingIngestTimeline = ref(false);
 const loadingLogsCumulative = ref(false);
+const loadingLogsSpikeSummary = ref(false);
 const loadingMissedTrades = ref(false);
 const reportsError = ref('');
 const systemLoaded = ref(false);
 const ingestLoaded = ref(false);
 const logsCumulativeLoaded = ref(false);
 const missedLoaded = ref(false);
+const systemSpikeLoaded = ref(false);
+const logsSpikeLoaded = ref(false);
 const chartTooltip = ref<ChartTooltipState>({
   visible: false,
   x: 0,
@@ -415,6 +435,14 @@ const totalSystemErrorCount = computed(() => {
   return systemErrorTimelinePoints.value.reduce((sum, point) => sum + point.count, 0);
 });
 
+const systemSpikeTopOccurrences = computed(() => {
+  return (systemSpikeSummary.value?.buckets ?? []).reduce((sum, item) => sum + item.occurrences, 0);
+});
+
+const logsSpikeTopOccurrences = computed(() => {
+  return (logsSpikeSummary.value?.buckets ?? []).reduce((sum, item) => sum + item.occurrences, 0);
+});
+
 function normalizeIntInput(value: unknown, fallback: number, min: number, max: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -433,6 +461,133 @@ function formatDate(value: string): string {
     return value;
   }
   return date.toLocaleString();
+}
+
+function toLocalDateTimeInput(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function buildSpikeWindowFromPeak() {
+  const points = systemErrorTimelinePoints.value;
+  if (!points.length) {
+    return;
+  }
+
+  let peak = points[0];
+  for (const point of points) {
+    if (point.count > (peak?.count ?? 0)) {
+      peak = point;
+    }
+  }
+
+  if (!peak) {
+    return;
+  }
+
+  const peakTs = new Date(peak.ts);
+  if (Number.isNaN(peakTs.getTime())) {
+    return;
+  }
+  const from = new Date(peakTs.getTime() - 60 * 60 * 1000);
+  const to = new Date(peakTs.getTime() + 60 * 60 * 1000);
+  systemSpikeFromLocal.value = toLocalDateTimeInput(from.toISOString());
+  systemSpikeToLocal.value = toLocalDateTimeInput(to.toISOString());
+}
+
+function buildLogsSpikeWindowFromPeak() {
+  const points = logsCumulativeChartPoints.value;
+  if (!points.length) {
+    return;
+  }
+
+  let peak = points[0];
+  for (const point of points) {
+    if (point.generated > (peak?.generated ?? 0)) {
+      peak = point;
+    }
+  }
+
+  if (!peak) {
+    return;
+  }
+
+  const peakTs = new Date(peak.ts);
+  if (Number.isNaN(peakTs.getTime())) {
+    return;
+  }
+  const from = new Date(peakTs.getTime() - 60 * 60 * 1000);
+  const to = new Date(peakTs.getTime() + 60 * 60 * 1000);
+  logsSpikeFromLocal.value = toLocalDateTimeInput(from.toISOString());
+  logsSpikeToLocal.value = toLocalDateTimeInput(to.toISOString());
+}
+
+async function loadSystemSpikeSummary() {
+  loadingSystemSpikeSummary.value = true;
+  reportsError.value = '';
+  try {
+    const fromDate = new Date(systemSpikeFromLocal.value);
+    const toDate = new Date(systemSpikeToLocal.value);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+      throw new Error('Please select a valid From and To datetime for spike analysis.');
+    }
+    if (fromDate >= toDate) {
+      throw new Error('Spike analysis window must have From earlier than To.');
+    }
+
+    systemSpikeLimit.value = normalizeIntInput(systemSpikeLimit.value, 20, 1, 200);
+    systemSpikeSummary.value = await vpsApi.dwhLogCauseSummary({
+      from_ts: fromDate.toISOString(),
+      to_ts: toDate.toISOString(),
+      levels: systemSpikeLevels.value.trim() || undefined,
+      limit: systemSpikeLimit.value,
+    });
+    systemSpikeLoaded.value = true;
+  } catch (error) {
+    reportsError.value = String(error);
+    systemSpikeSummary.value = null;
+  } finally {
+    loadingSystemSpikeSummary.value = false;
+  }
+}
+
+async function loadLogsSpikeSummary() {
+  loadingLogsSpikeSummary.value = true;
+  reportsError.value = '';
+  try {
+    const fromDate = new Date(logsSpikeFromLocal.value);
+    const toDate = new Date(logsSpikeToLocal.value);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+      throw new Error('Please select a valid From and To datetime for logs spike analysis.');
+    }
+    if (fromDate >= toDate) {
+      throw new Error('Logs spike window must have From earlier than To.');
+    }
+
+    logsSpikeLimit.value = normalizeIntInput(logsSpikeLimit.value, 20, 1, 200);
+    logsSpikeSummary.value = await vpsApi.dwhLogCauseSummary({
+      from_ts: fromDate.toISOString(),
+      to_ts: toDate.toISOString(),
+      bot_id: logsFilterBotId.value ?? undefined,
+      logger: logsFilterLogger.value.trim() || undefined,
+      levels: logsSpikeLevels.value.trim() || undefined,
+      limit: logsSpikeLimit.value,
+    });
+    logsSpikeLoaded.value = true;
+  } catch (error) {
+    reportsError.value = String(error);
+    logsSpikeSummary.value = null;
+  } finally {
+    loadingLogsSpikeSummary.value = false;
+  }
 }
 
 function showChartTooltip(event: MouseEvent, lines: string[]) {
@@ -566,6 +721,15 @@ async function loadSystemErrorsTimeline() {
     systemErrorTimelinePoints.value = Array.from(bucketMap.entries())
       .map(([at, count]) => ({ ts: at, at: formatDate(at), count }))
       .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+
+    if (!systemSpikeFromLocal.value || !systemSpikeToLocal.value) {
+      buildSpikeWindowFromPeak();
+    }
+
+    if (!systemSpikeLoaded.value && systemSpikeFromLocal.value && systemSpikeToLocal.value) {
+      await loadSystemSpikeSummary();
+    }
+
     systemLoaded.value = true;
   } catch (error) {
     reportsError.value = String(error);
@@ -644,6 +808,14 @@ async function loadLogsCumulativeChart() {
         cumulative: row.cumulative_count,
       }))
       .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+
+    if (!logsSpikeFromLocal.value || !logsSpikeToLocal.value) {
+      buildLogsSpikeWindowFromPeak();
+    }
+
+    if (!logsSpikeLoaded.value && logsSpikeFromLocal.value && logsSpikeToLocal.value) {
+      await loadLogsSpikeSummary();
+    }
 
     logsCumulativeLoaded.value = true;
   } catch (error) {
@@ -907,6 +1079,81 @@ onMounted(async () => {
                 </svg>
               </div>
 
+              <div class="rounded border border-surface-700 bg-surface-900/40 p-3 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <h6 class="font-semibold">Spike Cause Summary</h6>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <InputText v-model="systemSpikeFromLocal" type="datetime-local" size="small" class="w-56" />
+                    <InputText v-model="systemSpikeToLocal" type="datetime-local" size="small" class="w-56" />
+                    <InputText v-model="systemSpikeLevels" size="small" class="w-40" placeholder="Levels" />
+                    <InputNumber v-model="systemSpikeLimit" :min="1" :max="200" size="small" input-class="w-16" />
+                    <Button
+                      label="Use Peak"
+                      size="small"
+                      severity="secondary"
+                      outlined
+                      @click="buildSpikeWindowFromPeak"
+                    />
+                    <Button
+                      label="Analyze"
+                      size="small"
+                      severity="secondary"
+                      outlined
+                      :loading="loadingSystemSpikeSummary"
+                      @click="loadSystemSpikeSummary"
+                    />
+                  </div>
+                </div>
+
+                <p class="text-xs text-surface-400">
+                  Top repeated log messages for selected window (default levels: ERROR,WARNING).
+                  <template v-if="systemSpikeSummary">
+                    Window total events: {{ systemSpikeSummary.total_events }}.
+                  </template>
+                </p>
+
+                <div v-if="!systemSpikeSummary?.buckets?.length" class="text-sm text-surface-400">
+                  {{ loadingSystemSpikeSummary ? 'Analyzing spike window...' : 'No grouped causes found for this timeframe.' }}
+                </div>
+
+                <div v-else class="overflow-x-auto">
+                  <table class="w-full text-sm border-collapse">
+                    <thead>
+                      <tr class="border-b border-surface-600 text-left">
+                        <th class="py-2 pe-2">Occurrences</th>
+                        <th class="py-2 pe-2">Share</th>
+                        <th class="py-2 pe-2">Logger</th>
+                        <th class="py-2 pe-2">Level</th>
+                        <th class="py-2">Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="(item, idx) in systemSpikeSummary.buckets"
+                        :key="`spike-cause-${idx}`"
+                        class="border-b border-surface-700/70 align-top"
+                      >
+                        <td class="py-2 pe-2 whitespace-nowrap">{{ item.occurrences }}</td>
+                        <td class="py-2 pe-2 whitespace-nowrap">
+                          {{ systemSpikeSummary.total_events ? ((item.occurrences / systemSpikeSummary.total_events) * 100).toFixed(1) : '0.0' }}%
+                        </td>
+                        <td class="py-2 pe-2 whitespace-nowrap">{{ item.logger }}</td>
+                        <td class="py-2 pe-2 whitespace-nowrap">{{ item.level }}</td>
+                        <td class="py-2 break-words">{{ item.message }}</td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr class="border-t border-surface-600">
+                        <td class="py-2 pe-2 font-semibold">{{ systemSpikeTopOccurrences }}</td>
+                        <td class="py-2 pe-2 text-surface-400" colspan="4">
+                          Covered by top causes: {{ systemSpikeSummary.total_events ? ((systemSpikeTopOccurrences / systemSpikeSummary.total_events) * 100).toFixed(1) : '0.0' }}%
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
               <div class="overflow-x-auto">
                 <table class="w-full text-sm border-collapse">
                   <thead>
@@ -1065,6 +1312,81 @@ onMounted(async () => {
                     </title>
                   </circle>
                 </svg>
+              </div>
+
+              <div class="rounded border border-surface-700 bg-surface-900/40 p-3 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <h6 class="font-semibold">Logs Spike Cause Summary</h6>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <InputText v-model="logsSpikeFromLocal" type="datetime-local" size="small" class="w-56" />
+                    <InputText v-model="logsSpikeToLocal" type="datetime-local" size="small" class="w-56" />
+                    <InputText v-model="logsSpikeLevels" size="small" class="w-44" placeholder="Levels" />
+                    <InputNumber v-model="logsSpikeLimit" :min="1" :max="200" size="small" input-class="w-16" />
+                    <Button
+                      label="Use Peak"
+                      size="small"
+                      severity="secondary"
+                      outlined
+                      @click="buildLogsSpikeWindowFromPeak"
+                    />
+                    <Button
+                      label="Analyze"
+                      size="small"
+                      severity="secondary"
+                      outlined
+                      :loading="loadingLogsSpikeSummary"
+                      @click="loadLogsSpikeSummary"
+                    />
+                  </div>
+                </div>
+
+                <p class="text-xs text-surface-400">
+                  Top repeated log messages for selected logs window. Uses current Bot ID and Logger filters from this report.
+                  <template v-if="logsSpikeSummary">
+                    Window total events: {{ logsSpikeSummary.total_events }}.
+                  </template>
+                </p>
+
+                <div v-if="!logsSpikeSummary?.buckets?.length" class="text-sm text-surface-400">
+                  {{ loadingLogsSpikeSummary ? 'Analyzing logs spike window...' : 'No grouped causes found for this timeframe.' }}
+                </div>
+
+                <div v-else class="overflow-x-auto">
+                  <table class="w-full text-sm border-collapse">
+                    <thead>
+                      <tr class="border-b border-surface-600 text-left">
+                        <th class="py-2 pe-2">Occurrences</th>
+                        <th class="py-2 pe-2">Share</th>
+                        <th class="py-2 pe-2">Logger</th>
+                        <th class="py-2 pe-2">Level</th>
+                        <th class="py-2">Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="(item, idx) in logsSpikeSummary.buckets"
+                        :key="`logs-spike-cause-${idx}`"
+                        class="border-b border-surface-700/70 align-top"
+                      >
+                        <td class="py-2 pe-2 whitespace-nowrap">{{ item.occurrences }}</td>
+                        <td class="py-2 pe-2 whitespace-nowrap">
+                          {{ logsSpikeSummary.total_events ? ((item.occurrences / logsSpikeSummary.total_events) * 100).toFixed(1) : '0.0' }}%
+                        </td>
+                        <td class="py-2 pe-2 whitespace-nowrap">{{ item.logger }}</td>
+                        <td class="py-2 pe-2 whitespace-nowrap">{{ item.level }}</td>
+                        <td class="py-2 break-words">{{ item.message }}</td>
+                      </tr>
+                    </tbody>
+                    <tfoot>
+                      <tr class="border-t border-surface-600">
+                        <td class="py-2 pe-2 font-semibold">{{ logsSpikeTopOccurrences }}</td>
+                        <td class="py-2 pe-2 text-surface-400" colspan="4">
+                          Covered by top causes: {{ logsSpikeSummary.total_events ? ((logsSpikeTopOccurrences / logsSpikeSummary.total_events) * 100).toFixed(1) : '0.0' }}%
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
 
               <div class="overflow-x-auto">
