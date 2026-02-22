@@ -140,6 +140,11 @@ const navItems = ref([
     icon: 'i-mdi-database',
   },
   {
+    label: 'Reports',
+    to: '/reports',
+    icon: 'i-mdi-file-chart',
+  },
+  {
     label: 'Settings',
     to: '/settings',
     mobileOnly: true,

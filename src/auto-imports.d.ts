@@ -54,6 +54,7 @@ declare global {
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
   const echartsGridDefault: typeof import('./utils/charts/chartZoom').echartsGridDefault
   const effectScope: typeof import('vue').effectScope
+  const ensureBotLoginInfo: typeof import('./composables/loginInfo').ensureBotLoginInfo
   const evaluateFeatures: typeof import('./utils/features').evaluateFeatures
   const exportForTesting: typeof import('./utils/formatters/timeformat').exportForTesting
   const extendRef: typeof import('@vueuse/core').extendRef
@@ -477,6 +478,7 @@ declare module 'vue' {
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly echartsGridDefault: UnwrapRef<typeof import('./utils/charts/chartZoom')['echartsGridDefault']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
+    readonly ensureBotLoginInfo: UnwrapRef<typeof import('./composables/loginInfo')['ensureBotLoginInfo']>
     readonly evaluateFeatures: UnwrapRef<typeof import('./utils/features')['evaluateFeatures']>
     readonly exportForTesting: UnwrapRef<typeof import('./utils/formatters/timeformat')['exportForTesting']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
@@ -499,7 +501,6 @@ declare module 'vue' {
     readonly getControlPlaneActor: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneActor']>
     readonly getControlPlaneActorOptions: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneActorOptions']>
     readonly getControlPlaneActorPermissions: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneActorPermissions']>
-    readonly getControlPlaneAdminToken: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneAdminToken']>
     readonly getControlPlaneBaseUrl: UnwrapRef<typeof import('./composables/vpsApi')['getControlPlaneBaseUrl']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>

@@ -76,6 +76,11 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('@/views/DwhProgressView.vue'),
   },
   {
+    path: '/reports',
+    name: 'Reports',
+    component: () => import('@/views/ReportsView.vue'),
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/LoginView.vue'),
