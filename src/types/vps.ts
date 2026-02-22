@@ -4,6 +4,7 @@ export interface VpsServer {
   ip: string;
   ssh_user: string;
   ssh_port: number;
+  dwh_log_fetch_timeout_seconds?: number | null;
   display_order: number | null;
   status: string;
   docker_available: boolean | null;
@@ -18,6 +19,7 @@ export interface VpsCreatePayload {
   ip: string;
   ssh_user: string;
   ssh_port: number;
+  dwh_log_fetch_timeout_seconds?: number | null;
   private_key: string;
 }
 
@@ -26,6 +28,7 @@ export interface VpsUpdatePayload {
   ip?: string;
   ssh_user?: string;
   ssh_port?: number;
+  dwh_log_fetch_timeout_seconds?: number | null;
   private_key?: string;
 }
 
@@ -135,6 +138,34 @@ export interface DwhSummary {
   checkpoints: DwhCheckpoint[];
 }
 
+export interface DwhAuditMode {
+  enabled: boolean;
+}
+
+export interface DwhAuditSummaryBucket {
+  logger: string;
+  level: string;
+  total: number;
+  selected: boolean;
+  excluded: boolean;
+}
+
+export interface DwhAuditSummary {
+  since_hours: number;
+  total_events: number;
+  buckets: DwhAuditSummaryBucket[];
+}
+
+export interface DwhLogCaptureRule {
+  id: number;
+  logger_name: string | null;
+  level: string | null;
+  rule_type: 'include' | 'exclude';
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DwhIngestionRunResult {
   bots_scanned: number;
   bots_synced: number;
@@ -144,8 +175,19 @@ export interface DwhIngestionRunResult {
   inserted_orders: number;
   updated_orders: number;
   inserted_log_events: number;
+  log_rows_scanned: number;
+  high_volume_warning: boolean;
   updated_anomalies: number;
   errors: string[];
+}
+
+export interface DwhIngestionUnstickResult {
+  updated_runs: number;
+  message: string;
+}
+
+export interface DwhIngestionConfig {
+  log_fetch_timeout_seconds: number;
 }
 
 export interface DwhIngestionAsyncStart {
@@ -159,6 +201,10 @@ export interface DwhIngestionStatus {
   finished_at: string | null;
   result: DwhIngestionRunResult | null;
   error: string | null;
+  current_vps_name?: string | null;
+  current_container_name?: string | null;
+  current_bot_index?: number | null;
+  current_bots_total?: number | null;
 }
 
 export interface DwhIngestionRun {

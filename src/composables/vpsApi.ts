@@ -4,12 +4,16 @@ import type {
   AuditLogEntry,
   DwhAlertConfig,
   DwhAlertStatus,
+  DwhAuditMode,
+  DwhAuditSummary,
   DwhAnomaly,
   DwhAnomalySample,
   DwhAnomalyTrendPoint,
   DwhIngestionAsyncStart,
   DwhIngestionRun,
   DwhIngestionRunResult,
+  DwhIngestionConfig,
+  DwhIngestionUnstickResult,
   DwhRunAnomaly,
   DwhTradeList,
   DwhTradeQuery,
@@ -19,6 +23,7 @@ import type {
   DwhRetentionRunResult,
   DwhRollupCompactionConfig,
   DwhRollupCompactionRunResult,
+  DwhLogCaptureRule,
   DwhSummary,
   VpsActionResult,
   VpsContainer,
@@ -191,6 +196,36 @@ export const vpsApi = {
     const { data } = await vpsApiClient.get<DwhSummary>('/dwh/summary');
     return data;
   },
+  async dwhAuditMode(): Promise<DwhAuditMode> {
+    const { data } = await vpsApiClient.get<DwhAuditMode>('/dwh/audit-mode');
+    return data;
+  },
+  async dwhAuditSummary(hours = 24, limit = 200, botId?: number): Promise<DwhAuditSummary> {
+    const { data } = await vpsApiClient.get<DwhAuditSummary>('/dwh/audit/summary', {
+      params: {
+        hours,
+        limit,
+        bot_id: botId,
+      },
+    });
+    return data;
+  },
+  async dwhAuditRules(): Promise<DwhLogCaptureRule[]> {
+    const { data } = await vpsApiClient.get<DwhLogCaptureRule[]>('/dwh/audit/rules');
+    return data;
+  },
+  async upsertDwhAuditRule(payload: {
+    logger_name?: string;
+    level?: string;
+    rule_type?: 'include' | 'exclude';
+    enabled?: boolean;
+  }): Promise<DwhLogCaptureRule> {
+    const { data } = await vpsApiClient.post<DwhLogCaptureRule>('/dwh/audit/rules', payload);
+    return data;
+  },
+  async deleteDwhAuditRule(ruleId: number): Promise<void> {
+    await vpsApiClient.delete(`/dwh/audit/rules/${ruleId}`);
+  },
   async runDwhIngestion(): Promise<DwhIngestionRunResult> {
     const { data } = await vpsApiClient.post<DwhIngestionRunResult>(
       '/dwh/ingestion/run',
@@ -201,6 +236,20 @@ export const vpsApi = {
   },
   async runDwhIngestionAsync(): Promise<DwhIngestionAsyncStart> {
     const { data } = await vpsApiClient.post<DwhIngestionAsyncStart>('/dwh/ingestion/run-async');
+    return data;
+  },
+  async unstickDwhIngestion(staleMinutes = 15, force = false): Promise<DwhIngestionUnstickResult> {
+    const { data } = await vpsApiClient.post<DwhIngestionUnstickResult>('/dwh/ingestion/unstick', undefined, {
+      params: { stale_minutes: staleMinutes, force },
+    });
+    return data;
+  },
+  async dwhIngestionConfig(): Promise<DwhIngestionConfig> {
+    const { data } = await vpsApiClient.get<DwhIngestionConfig>('/dwh/ingestion/config');
+    return data;
+  },
+  async updateDwhIngestionConfig(payload: { log_fetch_timeout_seconds: number }): Promise<DwhIngestionConfig> {
+    const { data } = await vpsApiClient.post<DwhIngestionConfig>('/dwh/ingestion/config', payload);
     return data;
   },
   async dwhIngestionStatus(): Promise<DwhIngestionStatus> {

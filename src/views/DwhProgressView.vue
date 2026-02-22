@@ -5,11 +5,14 @@ import { vpsApi } from '@/composables/vpsApi';
 import type {
   DwhAlertConfig,
   DwhAlertStatus,
+  DwhAuditMode,
+  DwhAuditSummary,
   DwhAnomaly,
   DwhAnomalySample,
   DwhAnomalyTrendPoint,
   DwhIngestionRun,
   DwhIngestionRunResult,
+  DwhIngestionConfig,
   DwhRunAnomaly,
   DwhTrade,
   DwhTradeTimeline,
@@ -18,6 +21,7 @@ import type {
   DwhRetentionRunResult,
   DwhRollupCompactionConfig,
   DwhRollupCompactionRunResult,
+  DwhLogCaptureRule,
   DwhSummary,
 } from '@/types/vps';
 
@@ -28,6 +32,9 @@ const errorText = ref('');
 const runResult = ref<DwhIngestionRunResult | null>(null);
 const runAsyncMode = ref(true);
 const asyncStatus = ref<DwhIngestionStatus | null>(null);
+const ingestionConfig = ref<DwhIngestionConfig | null>(null);
+const ingestionTimeoutSeconds = ref(20);
+const ingestionConfigSaving = ref(false);
 const runHistory = ref<DwhIngestionRun[]>([]);
 const expandedRunId = ref<number | null>(null);
 const showFailedOnly = ref(false);
@@ -66,6 +73,15 @@ const alertConfig = ref<DwhAlertConfig | null>(null);
 const alertStatus = ref<DwhAlertStatus | null>(null);
 const alertLoading = ref(false);
 const showSettingsModal = ref(false);
+const auditMode = ref<DwhAuditMode | null>(null);
+const auditSummary = ref<DwhAuditSummary | null>(null);
+const auditRules = ref<DwhLogCaptureRule[]>([]);
+const auditLoading = ref(false);
+const auditHours = ref(24);
+const auditBotId = ref<number | null>(null);
+const auditRuleSaving = ref(false);
+const unstickRunning = ref(false);
+const unstickMessage = ref('');
 
 let refreshTimer: number | null = null;
 let statusPollTimer: number | null = null;
@@ -156,6 +172,11 @@ async function syncAsyncStatus() {
   }
 }
 
+async function loadIngestionConfig() {
+  ingestionConfig.value = await vpsApi.dwhIngestionConfig();
+  ingestionTimeoutSeconds.value = ingestionConfig.value.log_fetch_timeout_seconds;
+}
+
 async function loadRunHistory() {
   const history = await vpsApi.dwhIngestionRuns(20);
   runHistory.value = history;
@@ -215,12 +236,67 @@ async function loadTrades() {
 
 async function refreshAllData() {
   await loadSummary();
+  await loadIngestionConfig();
   await loadRunHistory();
   await loadTrades();
   await loadAnomalies();
   await loadAlerts();
   await loadRetentionConfig();
   await loadRollupCompactionConfig();
+  await loadAuditData();
+}
+
+async function loadAuditData() {
+  auditLoading.value = true;
+  try {
+    const normalizedHours = Number.isFinite(Number(auditHours.value)) ? Math.max(1, Math.floor(Number(auditHours.value))) : 24;
+    const normalizedBotId = Number.isFinite(Number(auditBotId.value)) ? Math.max(0, Math.floor(Number(auditBotId.value))) : 0;
+    auditHours.value = normalizedHours;
+    auditBotId.value = normalizedBotId > 0 ? normalizedBotId : null;
+
+    const [mode, summaryData, rules] = await Promise.all([
+      vpsApi.dwhAuditMode(),
+      vpsApi.dwhAuditSummary(normalizedHours, 200, normalizedBotId > 0 ? normalizedBotId : undefined),
+      vpsApi.dwhAuditRules(),
+    ]);
+    auditMode.value = mode;
+    auditSummary.value = summaryData;
+    auditRules.value = rules.filter((rule) => rule.enabled);
+  } catch (error) {
+    errorText.value = String(error);
+  } finally {
+    auditLoading.value = false;
+  }
+}
+
+async function upsertAuditBucketRule(logger: string, level: string, ruleType: 'include' | 'exclude') {
+  auditRuleSaving.value = true;
+  errorText.value = '';
+  try {
+    await vpsApi.upsertDwhAuditRule({ logger_name: logger, level, rule_type: ruleType, enabled: true });
+    await loadAuditData();
+    await loadAnomalies();
+    await loadTrades();
+  } catch (error) {
+    errorText.value = String(error);
+  } finally {
+    auditRuleSaving.value = false;
+  }
+}
+
+async function deleteAuditRule(ruleId: number) {
+  auditRuleSaving.value = true;
+  errorText.value = '';
+  try {
+    await vpsApi.deleteDwhAuditRule(ruleId);
+    await loadAuditData();
+    await loadAnomalies();
+    await loadTrades();
+  } catch (error) {
+    errorText.value = String(error);
+  } finally {
+    auditRuleSaving.value = false;
+  }
 }
 
 async function loadAlerts() {
@@ -432,6 +508,7 @@ async function loadSummary() {
 async function runIngestion() {
   running.value = true;
   errorText.value = '';
+  unstickMessage.value = '';
   try {
     if (runAsyncMode.value) {
       const started = await vpsApi.runDwhIngestionAsync();
@@ -458,6 +535,61 @@ async function runIngestion() {
     if (!runAsyncMode.value) {
       running.value = false;
     }
+  }
+}
+
+async function saveIngestionConfig() {
+  ingestionConfigSaving.value = true;
+  errorText.value = '';
+  try {
+    const normalized = Number.isFinite(Number(ingestionTimeoutSeconds.value))
+      ? Math.max(5, Math.min(300, Math.floor(Number(ingestionTimeoutSeconds.value))))
+      : 20;
+    ingestionTimeoutSeconds.value = normalized;
+    ingestionConfig.value = await vpsApi.updateDwhIngestionConfig({ log_fetch_timeout_seconds: normalized });
+    unstickMessage.value = `Saved global log fetch timeout: ${normalized}s`;
+  } catch (error) {
+    errorText.value = String(error);
+  } finally {
+    ingestionConfigSaving.value = false;
+  }
+}
+
+async function unstickIngestion() {
+  unstickRunning.value = true;
+  errorText.value = '';
+  try {
+    const result = await vpsApi.unstickDwhIngestion();
+    unstickMessage.value = result.message;
+    await syncAsyncStatus();
+    await loadRunHistory();
+    if (asyncStatus.value?.status !== 'running') {
+      stopStatusPolling();
+      running.value = false;
+    }
+  } catch (error) {
+    errorText.value = String(error);
+  } finally {
+    unstickRunning.value = false;
+  }
+}
+
+async function forceUnstickIngestion() {
+  unstickRunning.value = true;
+  errorText.value = '';
+  try {
+    const result = await vpsApi.unstickDwhIngestion(15, true);
+    unstickMessage.value = result.message;
+    await syncAsyncStatus();
+    await loadRunHistory();
+    if (asyncStatus.value?.status !== 'running') {
+      stopStatusPolling();
+      running.value = false;
+    }
+  } catch (error) {
+    errorText.value = String(error);
+  } finally {
+    unstickRunning.value = false;
   }
 }
 
@@ -508,12 +640,14 @@ async function runRollupCompaction() {
 
 onMounted(async () => {
   await loadSummary();
+  await loadIngestionConfig();
   await loadRunHistory();
   await loadTrades();
   await loadAnomalies();
   await loadAlerts();
   await loadRetentionConfig();
   await loadRollupCompactionConfig();
+  await loadAuditData();
   try {
     await syncAsyncStatus();
     if (asyncStatus.value?.status === 'running') {
@@ -557,6 +691,125 @@ onBeforeUnmount(() => {
         <p class="text-xs text-surface-400">{{ card.label }}</p>
         <p class="text-xl font-semibold">{{ card.value }}</p>
       </article>
+    </section>
+
+    <section class="rounded border border-surface-700 bg-surface-900 p-4 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="font-semibold">Audit View</h2>
+        <div class="flex items-center gap-2 text-sm">
+          <span class="text-surface-300">Audit mode:</span>
+          <span class="px-2 py-0.5 rounded border border-surface-600" :class="auditMode?.enabled ? 'text-green-300' : 'text-yellow-300'">
+            {{ auditMode?.enabled ? 'ON (all logs)' : 'OFF (warn/error only)' }}
+          </span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <input
+          v-model.number="auditHours"
+          type="number"
+          min="1"
+          max="168"
+          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+          placeholder="Hours"
+        />
+        <input
+          v-model.number="auditBotId"
+          type="number"
+          min="1"
+          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+          placeholder="Bot ID (optional)"
+        />
+        <div class="col-span-2 md:col-span-3 flex items-center gap-2">
+          <button
+            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+            :disabled="auditLoading"
+            @click="loadAuditData"
+          >
+            {{ auditLoading ? 'Loading...' : 'Refresh Audit Summary' }}
+          </button>
+          <p class="text-xs text-surface-400" v-if="auditSummary">Total events in range: {{ auditSummary.total_events }}</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="rounded border border-surface-700 p-3 overflow-x-auto">
+          <h3 class="font-semibold mb-2">Log Event Summary (Logger + Level)</h3>
+          <p v-if="auditLoading" class="text-sm text-surface-400">Loading audit summary...</p>
+          <p v-else-if="!(auditSummary?.buckets?.length)" class="text-sm text-surface-400">No log events in selected range.</p>
+          <table v-else class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-surface-400 border-b border-surface-700">
+                <th class="py-2 pe-2">Logger</th>
+                <th class="py-2 pe-2">Level</th>
+                <th class="py-2 pe-2">Count</th>
+                <th class="py-2 pe-2">Include</th>
+                <th class="py-2 pe-2">Exclude</th>
+                <th class="py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="bucket in auditSummary?.buckets ?? []" :key="`${bucket.logger}-${bucket.level}`" class="border-b border-surface-800">
+                <td class="py-2 pe-2">{{ bucket.logger }}</td>
+                <td class="py-2 pe-2">{{ bucket.level }}</td>
+                <td class="py-2 pe-2">{{ bucket.total }}</td>
+                <td class="py-2 pe-2">{{ bucket.selected ? 'yes' : 'no' }}</td>
+                <td class="py-2 pe-2">{{ bucket.excluded ? 'yes' : 'no' }}</td>
+                <td class="py-2">
+                  <div class="flex items-center gap-2">
+                    <button
+                      class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800 disabled:opacity-50"
+                      :disabled="auditRuleSaving || bucket.selected"
+                      @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'include')"
+                    >
+                      {{ bucket.selected ? 'Included' : 'Include' }}
+                    </button>
+                    <button
+                      class="px-2 py-1 rounded border border-yellow-700 text-yellow-300 text-xs hover:bg-yellow-950/30 disabled:opacity-50"
+                      :disabled="auditRuleSaving || bucket.excluded"
+                      @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'exclude')"
+                    >
+                      {{ bucket.excluded ? 'Excluded' : 'Exclude' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="rounded border border-surface-700 p-3 overflow-x-auto">
+          <h3 class="font-semibold mb-2">Selected Capture Rules</h3>
+          <p class="text-xs text-surface-400 mb-2">These rules drive anomaly/trade log analytics filtering.</p>
+          <p v-if="!auditRules.length" class="text-sm text-surface-400">No rules selected yet (all logs are included).</p>
+          <table v-else class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-surface-400 border-b border-surface-700">
+                <th class="py-2 pe-2">Type</th>
+                <th class="py-2 pe-2">Logger</th>
+                <th class="py-2 pe-2">Level</th>
+                <th class="py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="rule in auditRules" :key="rule.id" class="border-b border-surface-800">
+                <td class="py-2 pe-2">{{ rule.rule_type }}</td>
+                <td class="py-2 pe-2">{{ rule.logger_name || '*' }}</td>
+                <td class="py-2 pe-2">{{ rule.level || '*' }}</td>
+                <td class="py-2">
+                  <button
+                    class="px-2 py-1 rounded border border-red-700 text-red-300 text-xs hover:bg-red-950/40 disabled:opacity-50"
+                    :disabled="auditRuleSaving"
+                    @click="deleteAuditRule(rule.id)"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <section v-if="retentionResult" class="rounded border border-surface-700 bg-surface-900 p-4">
@@ -963,6 +1216,18 @@ onBeforeUnmount(() => {
           </p>
           <p class="text-sm text-surface-300">Started: {{ formatDate(asyncStatus?.started_at ?? null) }}</p>
           <p class="text-sm text-surface-300">Finished: {{ formatDate(asyncStatus?.finished_at ?? null) }}</p>
+          <p
+            v-if="asyncStatus?.status === 'running' && (asyncStatus?.current_container_name || asyncStatus?.current_vps_name)"
+            class="text-sm text-surface-300"
+          >
+            Current bot:
+            <span class="font-medium text-surface-100">
+              {{ asyncStatus?.current_vps_name || '—' }} / {{ asyncStatus?.current_container_name || '—' }}
+            </span>
+            <span v-if="asyncStatus?.current_bot_index && asyncStatus?.current_bots_total" class="text-surface-400">
+              ({{ asyncStatus.current_bot_index }}/{{ asyncStatus.current_bots_total }})
+            </span>
+          </p>
           <div class="flex flex-wrap items-center gap-3 pt-1">
             <label class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap">
               <input v-model="runAsyncMode" type="checkbox" class="accent-primary" :disabled="running" />
@@ -982,7 +1247,40 @@ onBeforeUnmount(() => {
             >
               {{ running ? 'Running...' : 'Run Ingestion Now' }}
             </button>
+            <button
+              class="px-3 py-2 rounded border border-yellow-700 text-yellow-300 text-sm hover:bg-yellow-950/30 disabled:opacity-50"
+              :disabled="unstickRunning"
+              @click="unstickIngestion"
+            >
+              {{ unstickRunning ? 'Unsticking...' : 'Unstick Stale Ingestion' }}
+            </button>
+            <button
+              class="px-3 py-2 rounded border border-red-700 text-red-300 text-sm hover:bg-red-950/30 disabled:opacity-50"
+              :disabled="unstickRunning"
+              @click="forceUnstickIngestion"
+            >
+              {{ unstickRunning ? 'Unsticking...' : 'Force Unstick' }}
+            </button>
           </div>
+          <div class="flex flex-wrap items-center gap-2 pt-1">
+            <label class="text-sm text-surface-300">Global log fetch timeout (sec)</label>
+            <input
+              v-model.number="ingestionTimeoutSeconds"
+              type="number"
+              min="5"
+              max="300"
+              class="w-24 px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+            />
+            <button
+              class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+              :disabled="ingestionConfigSaving || running"
+              @click="saveIngestionConfig"
+            >
+              {{ ingestionConfigSaving ? 'Saving...' : 'Save Timeout' }}
+            </button>
+          </div>
+          <p class="text-xs text-surface-400">Applies globally to all VPS log fetch operations for ingestion.</p>
+          <p v-if="unstickMessage" class="text-xs text-surface-400">{{ unstickMessage }}</p>
         </section>
 
         <section class="rounded border border-surface-700 p-3 space-y-2">
