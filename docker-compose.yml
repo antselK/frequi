@@ -6,5 +6,10 @@ services:
       dockerfile: "./Dockerfile"
     image: frequi
     restart: unless-stopped
+    environment:
+      CONTROL_PLANE_BASE_URL: ${CONTROL_PLANE_BASE_URL:-http://host.docker.internal:8000}
+      CONTROL_PLANE_ADMIN_TOKEN: ${CONTROL_PLANE_ADMIN_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:80"

@@ -51,13 +51,15 @@ pnpm run dev
 
 ### VPS Manager environment variables (fork extension)
 
-For the `/vps` page, set these in your frontend environment:
+For the `/vps` page in docker mode, set these in `.env` (server-side, not bundled into JS):
 
 ```
-VITE_CONTROL_PLANE_URL=http://127.0.0.1:8000
-VITE_CONTROL_PLANE_ADMIN_TOKEN=change-me
+CONTROL_PLANE_BASE_URL=http://host.docker.internal:8000
+CONTROL_PLANE_ADMIN_TOKEN=change-me
 VITE_CONTROL_PLANE_ACTOR=admin
 ```
+
+FreqUI now calls `/api/v1/*` on the same origin, and nginx injects `X-Admin-Token` while proxying to the control-plane.
 
 ### Compiles and minifies for production
 

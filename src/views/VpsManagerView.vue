@@ -49,6 +49,9 @@ function permissionSeverity(permission: string) {
 
 const selectedVps = computed(() => vpsStore.servers.find((item) => item.id === selectedVpsId.value));
 const orderedServers = computed<VpsServer[]>(() => vpsStore.servers);
+const vpsNameById = computed<Map<string, string>>(
+  () => new Map(vpsStore.servers.map((server) => [String(server.id), server.name])),
+);
 const selectedContainers = computed<VpsContainer[]>(() => {
   if (!selectedVpsId.value) {
     return [];
@@ -92,10 +95,24 @@ const auditActionOptions = computed<string[]>(() => {
   }
   return Array.from(options);
 });
+
+function resolveAuditTarget(entry: AuditLogEntry): string {
+  const target = String(entry.target_id || '').trim();
+  if (!target) {
+    return '—';
+  }
+
+  if (entry.target_type === 'vps') {
+    return vpsNameById.value.get(target) || target;
+  }
+
+  return target;
+}
+
 const auditTargetIdOptions = computed<string[]>(() => {
   const options = new Set<string>(['all']);
   for (const entry of auditEntries.value) {
-    const value = String(entry.target_id || '').trim();
+    const value = resolveAuditTarget(entry);
     if (value) {
       options.add(value);
     }
@@ -155,7 +172,7 @@ const filteredAuditEntries = computed<AuditLogEntry[]>(() => {
     const actorMatches = selectedAuditActor.value === 'all' || entry.actor === selectedAuditActor.value;
     const resultMatches = selectedAuditResult.value === 'all' || entry.result === selectedAuditResult.value;
     const actionMatches = selectedAuditAction.value === 'all' || entry.action === selectedAuditAction.value;
-    const targetIdMatches = selectedAuditTargetId.value === 'all' || entry.target_id === selectedAuditTargetId.value;
+    const targetIdMatches = selectedAuditTargetId.value === 'all' || resolveAuditTarget(entry) === selectedAuditTargetId.value;
     const timeMatches = auditTimeMatches(entry.created_at, selectedAuditTime.value);
     return actorMatches && resultMatches && actionMatches && targetIdMatches && timeMatches;
   });
@@ -598,9 +615,14 @@ onBeforeUnmount(() => {
             </template>
           </Column>
           <Column field="actor" header="Actor" />
+          <Column field="source_ip" header="Source IP" />
           <Column field="action" header="Action" />
           <Column field="target_type" header="Target" />
-          <Column field="target_id" header="Target ID" />
+          <Column header="Target ID">
+            <template #body="slotProps">
+              {{ resolveAuditTarget(slotProps.data) }}
+            </template>
+          </Column>
           <Column header="Result">
             <template #body="slotProps">
               <Tag

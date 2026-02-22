@@ -95,6 +95,7 @@ export interface AuditLogEntry {
   action: string;
   target_type: string;
   target_id: string | null;
+  source_ip: string | null;
   result: string;
   message: string | null;
   created_at: string;

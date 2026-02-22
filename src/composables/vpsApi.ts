@@ -32,35 +32,15 @@ import type {
   VpsServer,
 } from '@/types/vps';
 
-function isLoopbackHost(hostname: string): boolean {
-  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '::1';
-}
-
 function resolveControlPlaneBaseUrl(): string {
-  const configured = String(import.meta.env.VITE_CONTROL_PLANE_URL || '').trim();
-  if (configured) {
-    try {
-      const parsed = new URL(configured);
-      if (typeof window !== 'undefined' && isLoopbackHost(parsed.hostname) && !isLoopbackHost(window.location.hostname)) {
-        const protocol = parsed.protocol || window.location.protocol;
-        const port = parsed.port || '8000';
-        return `${protocol}//${window.location.hostname}:${port}`;
-      }
-      return parsed.origin;
-    } catch {
-      return configured;
-    }
-  }
-
   if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:8000`;
+    return window.location.origin;
   }
 
-  return 'http://127.0.0.1:8000';
+  return 'http://127.0.0.1:3000';
 }
 
 const controlPlaneBaseUrl = resolveControlPlaneBaseUrl();
-const controlPlaneAdminToken = import.meta.env.VITE_CONTROL_PLANE_ADMIN_TOKEN || 'change-me';
 const ACTOR_STORAGE_KEY = 'vps_control_plane_actor';
 const actorOptions = ['admin', 'operator', 'readonly'] as const;
 type ControlPlaneActor = (typeof actorOptions)[number];
@@ -99,10 +79,6 @@ export function getControlPlaneBaseUrl() {
   return controlPlaneBaseUrl;
 }
 
-export function getControlPlaneAdminToken() {
-  return controlPlaneAdminToken;
-}
-
 export function getControlPlaneActor() {
   return controlPlaneActor;
 }
@@ -123,9 +99,8 @@ export function setControlPlaneActor(actor: string) {
 }
 
 export function getVpsStatusStreamUrl() {
-  const token = encodeURIComponent(controlPlaneAdminToken);
   const actor = encodeURIComponent(getControlPlaneActor());
-  return `${controlPlaneBaseUrl}/api/v1/stream/status?admin_token=${token}&actor=${actor}`;
+  return `${controlPlaneBaseUrl}/api/v1/stream/status?actor=${actor}`;
 }
 
 const vpsApiClient = axios.create({
@@ -134,7 +109,6 @@ const vpsApiClient = axios.create({
 });
 
 vpsApiClient.interceptors.request.use((config) => {
-  config.headers.set('X-Admin-Token', controlPlaneAdminToken);
   config.headers.set('X-Actor', getControlPlaneActor());
   return config;
 });
