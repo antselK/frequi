@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 
 import { vpsApi } from '@/composables/vpsApi';
-import type { DwhAnomaly, DwhIngestionRun, DwhIngestionRunResult } from '@/types/vps';
+import type { DwhAnomaly, DwhIngestionRun, DwhIngestionRunResult, DwhLogCumulativePoint } from '@/types/vps';
 
 type ReportCategory = 'system' | 'trades';
 type MissedTradeReasonCode =
@@ -20,6 +20,7 @@ interface ReportOption {
 }
 
 interface TimelinePoint {
+  ts: string;
   at: string;
   count: number;
 }
@@ -27,10 +28,27 @@ interface TimelinePoint {
 interface IngestTimelinePoint {
   at: string;
   insertedLogs: number;
-  updatedAnomalies: number;
+  addedErrors: number;
+  addedStrategyLogs: number;
   botsFailed: number;
   status: DwhIngestionRun['status'];
 }
+
+interface LogsCumulativeChartPoint {
+  at: string;
+  ts: string;
+  generated: number;
+  cumulative: number;
+}
+
+interface ChartTooltipState {
+  visible: boolean;
+  x: number;
+  y: number;
+  lines: string[];
+}
+
+type LogsChartMode = 'cumulative' | 'hourly';
 
 interface ParsedLogEvent {
   eventTs: string;
@@ -73,9 +91,9 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
       todo: 'System error trend aggregated from DWH anomaly signatures.',
     },
     {
-      value: 'dwh-ingest-health',
-      label: 'DWH ingest timeline',
-      todo: 'DWH ingestion run timeline from backend run history.',
+      value: 'logs-cumulative',
+      label: 'Cumulative logs chart',
+      todo: 'Cumulative count of DWH log entries generated over time.',
     },
   ],
   trades: [
@@ -94,19 +112,33 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
 
 const systemErrorTimelinePoints = ref<TimelinePoint[]>([]);
 const dwhIngestTimeline = ref<IngestTimelinePoint[]>([]);
+const logsCumulativeChartPoints = ref<LogsCumulativeChartPoint[]>([]);
 const missedTradeEvents = ref<ParsedLogEvent[]>([]);
 const systemDays = ref(7);
+const logsDays = ref(7);
+const logsFilterBotId = ref<number | null>(null);
+const logsFilterLogger = ref('');
+const logsFilterLevel = ref('');
+const logsChartMode = ref<LogsChartMode>('cumulative');
 const missedDays = ref(7);
 const missedFilterBotId = ref<number | null>(null);
 const missedFilterPair = ref('');
 const selectedReasonFilters = ref<MissedTradeReasonCode[]>([]);
 const loadingSystemTimeline = ref(false);
 const loadingIngestTimeline = ref(false);
+const loadingLogsCumulative = ref(false);
 const loadingMissedTrades = ref(false);
 const reportsError = ref('');
 const systemLoaded = ref(false);
 const ingestLoaded = ref(false);
+const logsCumulativeLoaded = ref(false);
 const missedLoaded = ref(false);
+const chartTooltip = ref<ChartTooltipState>({
+  visible: false,
+  x: 0,
+  y: 0,
+  lines: [],
+});
 
 const selectedCategory = ref<ReportCategory>('system');
 const selectedSubCategory = ref('system-errors');
@@ -117,8 +149,231 @@ const selectedSubCategoryDefinition = computed(() => {
   return availableSubCategories.value.find((item) => item.value === selectedSubCategory.value);
 });
 
+const logsChartModeOptions: { label: string; value: LogsChartMode }[] = [
+  { label: 'Cumulative', value: 'cumulative' },
+  { label: 'Per-hour', value: 'hourly' },
+];
+
+const logsChartLayout = {
+  width: 920,
+  height: 260,
+  leftPad: 40,
+  rightPad: 20,
+  topPad: 14,
+  bottomPad: 30,
+};
+
 const maxSystemErrorCount = computed(() => {
   return Math.max(...systemErrorTimelinePoints.value.map((point) => point.count), 1);
+});
+
+const systemChartPolyline = computed(() => {
+  const points = systemErrorTimelinePoints.value;
+  if (!points.length) {
+    return '';
+  }
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(points.length - 1, 1);
+  const maxY = Math.max(maxSystemErrorCount.value, 1);
+
+  return points
+    .map((point, idx) => {
+      const x = leftPad + (idx / denominator) * plotWidth;
+      const y = topPad + (1 - point.count / maxY) * plotHeight;
+      return `${x},${y}`;
+    })
+    .join(' ');
+});
+
+const systemChartAreaPolyline = computed(() => {
+  const line = systemChartPolyline.value;
+  if (!line) {
+    return '';
+  }
+  const first = line.split(' ')[0];
+  const last = line.split(' ').slice(-1)[0];
+  if (!first || !last) {
+    return '';
+  }
+  return `${first} ${line} ${last.split(',')[0]},230 ${first.split(',')[0]},230`;
+});
+
+const systemChartCoordinates = computed(() => {
+  const points = systemErrorTimelinePoints.value;
+  if (!points.length) {
+    return [] as { x: number; y: number; at: string; count: number }[];
+  }
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(points.length - 1, 1);
+  const maxY = Math.max(maxSystemErrorCount.value, 1);
+
+  return points.map((point, idx) => {
+    const x = leftPad + (idx / denominator) * plotWidth;
+    const y = topPad + (1 - point.count / maxY) * plotHeight;
+    return { x, y, at: point.at, count: point.count };
+  });
+});
+
+const systemChartYTicks = computed(() => {
+  const ticks = 5;
+  const maxY = Math.max(maxSystemErrorCount.value, 1);
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  return Array.from({ length: ticks + 1 }, (_, i) => {
+    const ratio = i / ticks;
+    const value = Math.round((1 - ratio) * maxY);
+    const y = topPad + ratio * plotHeight;
+    return { y, value };
+  });
+});
+
+const systemChartXTicks = computed(() => {
+  const coords = systemChartCoordinates.value;
+  if (!coords.length) {
+    return [] as { x: number; label: string }[];
+  }
+  const indexes = new Set<number>([0, Math.floor((coords.length - 1) / 2), coords.length - 1]);
+  return Array.from(indexes)
+    .sort((a, b) => a - b)
+    .map((index) => {
+      const point = coords[index];
+      const date = new Date(systemErrorTimelinePoints.value[index]?.ts ?? '');
+      const label = Number.isNaN(date.getTime())
+        ? point?.at ?? ''
+        : date.toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return { x: point?.x ?? 0, label };
+    });
+});
+
+const systemChartDateRangeLabel = computed(() => {
+  const points = systemErrorTimelinePoints.value;
+  if (!points.length) {
+    return 'Date / Time: n/a';
+  }
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (!first || !last) {
+    return 'Date / Time: n/a';
+  }
+  return `Date / Time: ${first.at} → ${last.at}`;
+});
+
+const maxLogsCumulativeCount = computed(() => {
+  if (logsChartMode.value === 'hourly') {
+    return Math.max(...logsCumulativeChartPoints.value.map((point) => point.generated), 1);
+  }
+  return Math.max(...logsCumulativeChartPoints.value.map((point) => point.cumulative), 1);
+});
+
+const logsChartSeriesLabel = computed(() => {
+  return logsChartMode.value === 'hourly' ? 'Generated logs (Count per hour)' : 'Cumulative logs (Count)';
+});
+
+const logsChartDateRangeLabel = computed(() => {
+  const points = logsCumulativeChartPoints.value;
+  if (!points.length) {
+    return 'Date / Time: n/a';
+  }
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (!first || !last) {
+    return 'Date / Time: n/a';
+  }
+  return `Date / Time: ${first.at} → ${last.at}`;
+});
+
+const logsChartPolyline = computed(() => {
+  const points = logsCumulativeChartPoints.value;
+  if (!points.length) {
+    return '';
+  }
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(points.length - 1, 1);
+  const maxY = Math.max(maxLogsCumulativeCount.value, 1);
+
+  return points
+    .map((point, idx) => {
+      const x = leftPad + (idx / denominator) * plotWidth;
+      const chartValue = logsChartMode.value === 'hourly' ? point.generated : point.cumulative;
+      const y = topPad + (1 - chartValue / maxY) * plotHeight;
+      return `${x},${y}`;
+    })
+    .join(' ');
+});
+
+const logsChartCoordinates = computed(() => {
+  const points = logsCumulativeChartPoints.value;
+  if (!points.length) {
+    return [] as { x: number; y: number; at: string; generated: number; cumulative: number }[];
+  }
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(points.length - 1, 1);
+  const maxY = Math.max(maxLogsCumulativeCount.value, 1);
+
+  return points.map((point, idx) => {
+    const x = leftPad + (idx / denominator) * plotWidth;
+    const chartValue = logsChartMode.value === 'hourly' ? point.generated : point.cumulative;
+    const y = topPad + (1 - chartValue / maxY) * plotHeight;
+    return {
+      x,
+      y,
+      at: point.at,
+      generated: point.generated,
+      cumulative: point.cumulative,
+    };
+  });
+});
+
+const logsChartYTicks = computed(() => {
+  const ticks = 5;
+  const maxY = Math.max(maxLogsCumulativeCount.value, 1);
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  return Array.from({ length: ticks + 1 }, (_, i) => {
+    const ratio = i / ticks;
+    const value = Math.round((1 - ratio) * maxY);
+    const y = topPad + ratio * plotHeight;
+    return { y, value };
+  });
+});
+
+const logsChartXTicks = computed(() => {
+  const coords = logsChartCoordinates.value;
+  if (!coords.length) {
+    return [] as { x: number; label: string }[];
+  }
+  const indexes = new Set<number>([0, Math.floor((coords.length - 1) / 2), coords.length - 1]);
+  return Array.from(indexes)
+    .sort((a, b) => a - b)
+    .map((index) => {
+      const point = coords[index];
+      const date = new Date(logsCumulativeChartPoints.value[index]?.ts ?? '');
+      const label = Number.isNaN(date.getTime())
+        ? point?.at ?? ''
+        : date.toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      return { x: point?.x ?? 0, label };
+    });
+});
+
+const logsChartAreaPolyline = computed(() => {
+  const line = logsChartPolyline.value;
+  if (!line) {
+    return '';
+  }
+  const first = line.split(' ')[0];
+  const last = line.split(' ').slice(-1)[0];
+  if (!first || !last) {
+    return '';
+  }
+  return `${first} ${line} ${last.split(',')[0]},230 ${first.split(',')[0]},230`;
 });
 
 const filteredMissedTradeEventsByBotPair = computed(() => {
@@ -178,6 +433,19 @@ function formatDate(value: string): string {
     return value;
   }
   return date.toLocaleString();
+}
+
+function showChartTooltip(event: MouseEvent, lines: string[]) {
+  chartTooltip.value = {
+    visible: true,
+    x: event.clientX + 12,
+    y: event.clientY - 12,
+    lines,
+  };
+}
+
+function hideChartTooltip() {
+  chartTooltip.value.visible = false;
 }
 
 function classifyMissedTradeReason(message: string): {
@@ -296,8 +564,8 @@ async function loadSystemErrorsTimeline() {
     }
 
     systemErrorTimelinePoints.value = Array.from(bucketMap.entries())
-      .map(([at, count]) => ({ at: formatDate(at), count }))
-      .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+      .map(([at, count]) => ({ ts: at, at: formatDate(at), count }))
+      .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
     systemLoaded.value = true;
   } catch (error) {
     reportsError.value = String(error);
@@ -317,6 +585,8 @@ function mapRunResult(run: DwhIngestionRun): DwhIngestionRunResult {
     inserted_orders: 0,
     updated_orders: 0,
     inserted_log_events: 0,
+    inserted_error_logs: 0,
+    inserted_strategy_logs: 0,
     log_rows_scanned: 0,
     high_volume_warning: false,
     updated_anomalies: 0,
@@ -334,7 +604,8 @@ async function loadDwhIngestTimeline() {
       return {
         at: formatDate(run.started_at),
         insertedLogs: result.inserted_log_events,
-        updatedAnomalies: result.updated_anomalies,
+        addedErrors: result.inserted_error_logs,
+        addedStrategyLogs: result.inserted_strategy_logs,
         botsFailed: result.bots_failed,
         status: run.status,
       };
@@ -345,6 +616,41 @@ async function loadDwhIngestTimeline() {
     dwhIngestTimeline.value = [];
   } finally {
     loadingIngestTimeline.value = false;
+  }
+}
+
+async function loadLogsCumulativeChart() {
+  loadingLogsCumulative.value = true;
+  reportsError.value = '';
+  try {
+    logsDays.value = normalizeIntInput(logsDays.value, 7, 1, 90);
+    const normalizedBotId = Number.isFinite(Number(logsFilterBotId.value))
+      ? Math.max(0, Math.floor(Number(logsFilterBotId.value)))
+      : 0;
+    logsFilterBotId.value = normalizedBotId > 0 ? normalizedBotId : null;
+
+    const rows: DwhLogCumulativePoint[] = await vpsApi.dwhLogsCumulative({
+      hours: logsDays.value * 24,
+      bot_id: normalizedBotId > 0 ? normalizedBotId : undefined,
+      logger: logsFilterLogger.value.trim() || undefined,
+      level: logsFilterLevel.value.trim().toUpperCase() || undefined,
+    });
+
+    logsCumulativeChartPoints.value = rows
+      .map((row) => ({
+        at: formatDate(row.bucket_ts),
+        ts: row.bucket_ts,
+        generated: row.log_count,
+        cumulative: row.cumulative_count,
+      }))
+      .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+
+    logsCumulativeLoaded.value = true;
+  } catch (error) {
+    reportsError.value = String(error);
+    logsCumulativeChartPoints.value = [];
+  } finally {
+    loadingLogsCumulative.value = false;
   }
 }
 
@@ -423,8 +729,8 @@ async function ensureDataForSubcategory(subCategory: string) {
     await loadSystemErrorsTimeline();
     return;
   }
-  if (subCategory === 'dwh-ingest-health' && !ingestLoaded.value) {
-    await loadDwhIngestTimeline();
+  if (subCategory === 'logs-cumulative' && !logsCumulativeLoaded.value) {
+    await loadLogsCumulativeChart();
     return;
   }
   if (subCategory === 'missed-trades' && !missedLoaded.value) {
@@ -517,69 +823,272 @@ onMounted(async () => {
             <div v-if="!systemErrorTimelinePoints.length" class="text-sm text-surface-400">
               {{ loadingSystemTimeline ? 'Loading timeline...' : 'No error timeline data available.' }}
             </div>
-            <div v-else class="space-y-2">
-              <div
-                v-for="point in systemErrorTimelinePoints"
-                :key="point.at"
-                class="grid grid-cols-[10rem_1fr_3rem] items-center gap-3 text-sm"
-              >
-                <span class="text-surface-500">{{ point.at }}</span>
-                <div class="h-3 rounded bg-surface-700 overflow-hidden">
-                  <div
-                    class="h-full bg-red-500"
-                    :style="{ width: `${(point.count / maxSystemErrorCount) * 100}%` }"
-                  />
+            <div v-else class="space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-surface-400">
+                <div class="flex items-center gap-2">
+                  <span class="inline-block w-7 h-0.5 bg-red-500" />
+                  <span>System errors (Count)</span>
                 </div>
-                <span class="text-right">{{ point.count }}</span>
+                <span>{{ systemChartDateRangeLabel }}</span>
+              </div>
+
+              <div class="rounded border border-surface-700 bg-surface-900/40 p-2">
+                <svg viewBox="0 0 920 260" class="w-full h-72">
+                  <defs>
+                    <linearGradient id="systemErrorsAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.35" />
+                      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.03" />
+                    </linearGradient>
+                  </defs>
+                  <g>
+                    <line
+                      v-for="(tick, idx) in systemChartYTicks"
+                      :key="`sys-y-grid-${idx}`"
+                      x1="40"
+                      :y1="tick.y"
+                      x2="900"
+                      :y2="tick.y"
+                      stroke="#334155"
+                      stroke-width="0.5"
+                      stroke-dasharray="3 3"
+                    />
+                    <text
+                      v-for="(tick, idx) in systemChartYTicks"
+                      :key="`sys-y-label-${idx}`"
+                      x="36"
+                      :y="tick.y + 3"
+                      text-anchor="end"
+                      fill="#94a3b8"
+                      font-size="10"
+                    >
+                      {{ tick.value }}
+                    </text>
+                  </g>
+                  <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
+                  <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
+                  <text x="8" y="24" fill="#94a3b8" font-size="11">Count</text>
+                  <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Date / Time</text>
+                  <text
+                    v-for="(tick, idx) in systemChartXTicks"
+                    :key="`sys-x-label-${idx}`"
+                    :x="tick.x"
+                    y="244"
+                    text-anchor="middle"
+                    fill="#94a3b8"
+                    font-size="10"
+                  >
+                    {{ tick.label }}
+                  </text>
+                  <polygon :points="systemChartAreaPolyline" fill="url(#systemErrorsAreaGradient)" />
+                  <polyline
+                    :points="systemChartPolyline"
+                    fill="none"
+                    stroke="#ef4444"
+                    stroke-width="2"
+                    stroke-linejoin="round"
+                    stroke-linecap="round"
+                  />
+                  <circle
+                    v-for="(point, idx) in systemChartCoordinates"
+                    :key="`system-point-${idx}`"
+                    :cx="point.x"
+                    :cy="point.y"
+                    r="5"
+                    fill="#fecaca"
+                    class="cursor-pointer"
+                    @mousemove="showChartTooltip($event, [point.at, `System errors: ${point.count}`])"
+                    @mouseleave="hideChartTooltip"
+                  >
+                    <title>
+                      {{ point.at }}
+                      {{ `System errors: ${point.count}` }}
+                    </title>
+                  </circle>
+                </svg>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                  <thead>
+                    <tr class="border-b border-surface-600 text-left">
+                      <th class="py-2 pe-2">Time</th>
+                      <th class="py-2">Errors</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="(point, idx) in systemErrorTimelinePoints.slice(-24)"
+                      :key="`sys-row-${point.ts}-${idx}`"
+                      class="border-b border-surface-700/70 align-top"
+                    >
+                      <td class="py-2 pe-2 whitespace-nowrap">{{ point.at }}</td>
+                      <td class="py-2 whitespace-nowrap">{{ point.count }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
 
           <div
-            v-if="selectedSubCategory === 'dwh-ingest-health'"
+            v-if="selectedSubCategory === 'logs-cumulative'"
             class="border border-surface-400 rounded-sm p-4 space-y-3"
           >
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <h5 class="font-semibold">DWH Ingest Timeline (run history)</h5>
-              <Button
-                label="Refresh"
+              <h5 class="font-semibold">Cumulative Logs Generated</h5>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputNumber v-model="logsDays" :min="1" :max="90" size="small" input-class="w-16" />
+                <InputNumber
+                  v-model="logsFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
+                <InputText v-model="logsFilterLogger" size="small" class="w-40" placeholder="Logger (e.g. Printer)" />
+                <InputText v-model="logsFilterLevel" size="small" class="w-28" placeholder="Level" />
+                <Button
+                  label="Refresh"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  :loading="loadingLogsCumulative"
+                  @click="loadLogsCumulativeChart"
+                />
+              </div>
+            </div>
+
+            <p class="text-sm text-surface-400">
+              <template v-if="logsChartMode === 'hourly'">
+                Peak per-hour logs in range: {{ maxLogsCumulativeCount }}
+              </template>
+              <template v-else>
+                Total generated logs in range: {{ logsCumulativeChartPoints.length ? logsCumulativeChartPoints[logsCumulativeChartPoints.length - 1].cumulative : 0 }}
+              </template>
+            </p>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm text-surface-400">Chart mode</span>
+              <Select
+                v-model="logsChartMode"
+                :options="logsChartModeOptions"
+                option-label="label"
+                option-value="value"
                 size="small"
-                severity="secondary"
-                outlined
-                :loading="loadingIngestTimeline"
-                @click="loadDwhIngestTimeline"
+                class="w-40"
               />
             </div>
 
-            <div v-if="!dwhIngestTimeline.length" class="text-sm text-surface-400">
-              {{ loadingIngestTimeline ? 'Loading ingest history...' : 'No ingest runs found.' }}
+            <div v-if="!logsCumulativeChartPoints.length" class="text-sm text-surface-400">
+              {{ loadingLogsCumulative ? 'Loading cumulative logs...' : 'No log data available for selected filters.' }}
             </div>
 
-            <div v-else class="overflow-x-auto">
-              <table class="w-full text-sm border-collapse">
-                <thead>
-                  <tr class="border-b border-surface-600 text-left">
-                    <th class="py-2 pe-2">Started</th>
-                    <th class="py-2 pe-2">Status</th>
-                    <th class="py-2 pe-2">Inserted logs</th>
-                    <th class="py-2 pe-2">Updated anomalies</th>
-                    <th class="py-2">Bots failed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="(run, idx) in dwhIngestTimeline"
-                    :key="`${run.at}-${idx}`"
-                    class="border-b border-surface-700/70 align-top"
+            <div v-else class="space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-surface-400">
+                <div class="flex items-center gap-2">
+                  <span class="inline-block w-7 h-0.5 bg-[#60a5fa]" />
+                  <span>{{ logsChartSeriesLabel }}</span>
+                </div>
+                <span>{{ logsChartDateRangeLabel }}</span>
+              </div>
+
+              <div class="rounded border border-surface-700 bg-surface-900/40 p-2">
+                <svg viewBox="0 0 920 260" class="w-full h-72">
+                  <defs>
+                    <linearGradient id="logsAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.35" />
+                      <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.03" />
+                    </linearGradient>
+                  </defs>
+                  <g>
+                    <line
+                      v-for="(tick, idx) in logsChartYTicks"
+                      :key="`y-grid-${idx}`"
+                      x1="40"
+                      :y1="tick.y"
+                      x2="900"
+                      :y2="tick.y"
+                      stroke="#334155"
+                      stroke-width="0.5"
+                      stroke-dasharray="3 3"
+                    />
+                    <text
+                      v-for="(tick, idx) in logsChartYTicks"
+                      :key="`y-label-${idx}`"
+                      x="36"
+                      :y="tick.y + 3"
+                      text-anchor="end"
+                      fill="#94a3b8"
+                      font-size="10"
+                    >
+                      {{ tick.value }}
+                    </text>
+                  </g>
+                  <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
+                  <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
+                  <text x="8" y="24" fill="#94a3b8" font-size="11">Count</text>
+                  <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Date / Time</text>
+                  <text
+                    v-for="(tick, idx) in logsChartXTicks"
+                    :key="`x-label-${idx}`"
+                    :x="tick.x"
+                    y="244"
+                    text-anchor="middle"
+                    fill="#94a3b8"
+                    font-size="10"
                   >
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ run.at }}</td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ run.status }}</td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ run.insertedLogs }}</td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ run.updatedAnomalies }}</td>
-                    <td class="py-2 whitespace-nowrap">{{ run.botsFailed }}</td>
-                  </tr>
-                </tbody>
-              </table>
+                    {{ tick.label }}
+                  </text>
+                  <polygon :points="logsChartAreaPolyline" fill="url(#logsAreaGradient)" />
+                  <polyline
+                    :points="logsChartPolyline"
+                    fill="none"
+                    stroke="#60a5fa"
+                    stroke-width="2"
+                    stroke-linejoin="round"
+                    stroke-linecap="round"
+                  />
+                  <circle
+                    v-for="(point, idx) in logsChartCoordinates"
+                    :key="`chart-point-${idx}`"
+                    :cx="point.x"
+                    :cy="point.y"
+                    r="5"
+                    fill="#cbd5e1"
+                    class="cursor-pointer"
+                    @mousemove="showChartTooltip($event, [point.at, logsChartMode === 'hourly' ? `Generated logs: ${point.generated}` : `Cumulative logs: ${point.cumulative}`])"
+                    @mouseleave="hideChartTooltip"
+                  >
+                    <title>
+                      {{ point.at }}
+                      {{ logsChartMode === 'hourly' ? `Generated logs: ${point.generated}` : `Cumulative logs: ${point.cumulative}` }}
+                    </title>
+                  </circle>
+                </svg>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                  <thead>
+                    <tr class="border-b border-surface-600 text-left">
+                      <th class="py-2 pe-2">Time</th>
+                      <th class="py-2 pe-2">Generated logs</th>
+                      <th class="py-2">Cumulative logs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="(point, idx) in logsCumulativeChartPoints.slice(-24)"
+                      :key="`${point.ts}-${idx}`"
+                      class="border-b border-surface-700/70 align-top"
+                    >
+                      <td class="py-2 pe-2 whitespace-nowrap">{{ point.at }}</td>
+                      <td class="py-2 pe-2 whitespace-nowrap">{{ point.generated }}</td>
+                      <td class="py-2 whitespace-nowrap">{{ point.cumulative }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -673,6 +1182,16 @@ onMounted(async () => {
             class="border border-surface-400 rounded-sm p-4 text-sm text-surface-400"
           >
             Trade drill-down remains TODO for this page. Existing detailed trade filters/timeline are available in DWH Progress for now.
+          </div>
+
+          <div
+            v-if="chartTooltip.visible"
+            class="fixed z-50 pointer-events-none rounded border border-surface-600 bg-surface-900 px-2 py-1 text-xs text-surface-100 shadow-lg"
+            :style="{ left: `${chartTooltip.x}px`, top: `${chartTooltip.y}px` }"
+          >
+            <div v-for="(line, idx) in chartTooltip.lines" :key="`tip-${idx}`">
+              {{ line }}
+            </div>
           </div>
         </div>
       </template>

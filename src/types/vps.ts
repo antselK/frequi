@@ -156,6 +156,27 @@ export interface DwhAuditSummary {
   buckets: DwhAuditSummaryBucket[];
 }
 
+export interface DwhAuditMessage {
+  event_ts: string;
+  bot_id: number;
+  vps_name: string | null;
+  container_name: string | null;
+  logger: string;
+  level: string;
+  message: string;
+}
+
+export interface DwhAuditMessageList {
+  total: number;
+  items: DwhAuditMessage[];
+}
+
+export interface DwhLogCumulativePoint {
+  bucket_ts: string;
+  log_count: number;
+  cumulative_count: number;
+}
+
 export interface DwhLogCaptureRule {
   id: number;
   logger_name: string | null;
@@ -175,6 +196,8 @@ export interface DwhIngestionRunResult {
   inserted_orders: number;
   updated_orders: number;
   inserted_log_events: number;
+  inserted_error_logs: number;
+  inserted_strategy_logs: number;
   log_rows_scanned: number;
   high_volume_warning: boolean;
   updated_anomalies: number;

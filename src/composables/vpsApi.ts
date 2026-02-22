@@ -4,8 +4,10 @@ import type {
   AuditLogEntry,
   DwhAlertConfig,
   DwhAlertStatus,
+  DwhAuditMessageList,
   DwhAuditMode,
   DwhAuditSummary,
+  DwhLogCumulativePoint,
   DwhAnomaly,
   DwhAnomalySample,
   DwhAnomalyTrendPoint,
@@ -208,6 +210,27 @@ export const vpsApi = {
         bot_id: botId,
       },
     });
+    return data;
+  },
+  async dwhAuditMessages(params: {
+    hours?: number;
+    bot_id?: number;
+    logger?: string;
+    level?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<DwhAuditMessageList> {
+    const { data } = await vpsApiClient.get<DwhAuditMessageList>('/dwh/audit/messages', { params });
+    return data;
+  },
+  async dwhLogsCumulative(params: {
+    hours?: number;
+    bot_id?: number;
+    logger?: string;
+    level?: string;
+  } = {}): Promise<DwhLogCumulativePoint[]> {
+    const { data } = await vpsApiClient.get<DwhLogCumulativePoint[]>('/dwh/reports/logs-cumulative', { params });
     return data;
   },
   async dwhAuditRules(): Promise<DwhLogCaptureRule[]> {

@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { vpsApi } from '@/composables/vpsApi';
 import type {
   DwhAlertConfig,
+  DwhAuditMessage,
   DwhAlertStatus,
   DwhAuditMode,
   DwhAuditSummary,
@@ -85,6 +86,13 @@ const auditLoading = ref(false);
 const auditHours = ref(24);
 const auditBotId = ref<number | null>(null);
 const auditRuleSaving = ref(false);
+const auditMessages = ref<DwhAuditMessage[]>([]);
+const auditMessagesTotal = ref(0);
+const auditMessagesLoading = ref(false);
+const auditMessageLogger = ref('Printer');
+const auditMessageLevel = ref('');
+const auditMessageQuery = ref('skip');
+const auditMessageLimit = ref(60);
 const unstickRunning = ref(false);
 const unstickMessage = ref('');
 
@@ -268,10 +276,41 @@ async function loadAuditData() {
     auditMode.value = mode;
     auditSummary.value = summaryData;
     auditRules.value = rules.filter((rule) => rule.enabled);
+    await loadAuditMessages();
   } catch (error) {
     errorText.value = String(error);
   } finally {
     auditLoading.value = false;
+  }
+}
+
+async function loadAuditMessages() {
+  auditMessagesLoading.value = true;
+  try {
+    const normalizedHours = Number.isFinite(Number(auditHours.value)) ? Math.max(1, Math.floor(Number(auditHours.value))) : 24;
+    const normalizedBotId = Number.isFinite(Number(auditBotId.value)) ? Math.max(0, Math.floor(Number(auditBotId.value))) : 0;
+    const normalizedLimit = Number.isFinite(Number(auditMessageLimit.value))
+      ? Math.max(1, Math.min(500, Math.floor(Number(auditMessageLimit.value))))
+      : 60;
+
+    auditMessageLimit.value = normalizedLimit;
+    const payload = await vpsApi.dwhAuditMessages({
+      hours: normalizedHours,
+      bot_id: normalizedBotId > 0 ? normalizedBotId : undefined,
+      logger: auditMessageLogger.value.trim() || undefined,
+      level: auditMessageLevel.value.trim().toUpperCase() || undefined,
+      q: auditMessageQuery.value.trim() || undefined,
+      limit: normalizedLimit,
+      offset: 0,
+    });
+    auditMessages.value = payload.items;
+    auditMessagesTotal.value = payload.total;
+  } catch (error) {
+    errorText.value = String(error);
+    auditMessages.value = [];
+    auditMessagesTotal.value = 0;
+  } finally {
+    auditMessagesLoading.value = false;
   }
 }
 
@@ -920,7 +959,7 @@ onBeforeUnmount(() => {
               :disabled="auditLoading"
               @click="loadAuditData"
             >
-              {{ auditLoading ? 'Loading...' : 'Refresh Audit Summary' }}
+              {{ auditLoading ? 'Loading...' : 'Refresh Audit Data' }}
             </button>
             <p v-if="auditSummary" class="text-xs text-surface-400">Total events in range: {{ auditSummary.total_events }}</p>
           </div>
@@ -1004,6 +1043,68 @@ onBeforeUnmount(() => {
             </table>
           </div>
         </div>
+
+        <section class="rounded border border-surface-700 p-3 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="font-semibold">Strategy Message Explorer</h3>
+            <p class="text-xs text-surface-400">Matched {{ auditMessages.length }} of {{ auditMessagesTotal }} events</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-6 gap-2">
+            <input
+              v-model="auditMessageLogger"
+              type="text"
+              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+              placeholder="Logger contains (e.g. Printer)"
+            />
+            <input
+              v-model="auditMessageLevel"
+              type="text"
+              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+              placeholder="Level (optional, e.g. INFO)"
+            />
+            <input
+              v-model="auditMessageQuery"
+              type="text"
+              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm md:col-span-2"
+              placeholder="Message contains (e.g. skip / blocked)"
+            />
+            <input
+              v-model.number="auditMessageLimit"
+              type="number"
+              min="1"
+              max="500"
+              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+              placeholder="Limit"
+            />
+            <button
+              class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+              :disabled="auditMessagesLoading"
+              @click="loadAuditMessages"
+            >
+              {{ auditMessagesLoading ? 'Loading...' : 'Search Messages' }}
+            </button>
+          </div>
+
+          <p class="text-xs text-surface-400">
+            Use this to verify/report strategy events like trade skips, entry blocks, and other decision messages.
+          </p>
+
+          <p v-if="auditMessagesLoading" class="text-sm text-surface-400">Loading strategy messages...</p>
+          <p v-else-if="!auditMessages.length" class="text-sm text-surface-400">No matching messages in selected range.</p>
+          <div v-else class="max-h-[38vh] overflow-y-auto space-y-2">
+            <div
+              v-for="(item, index) in auditMessages"
+              :key="`audit-msg-${index}-${item.event_ts}`"
+              class="rounded border border-surface-700 p-2 text-xs"
+            >
+              <p class="text-surface-300">
+                {{ formatDate(item.event_ts) }} · #{{ item.bot_id }} · {{ item.vps_name || '—' }}/{{ item.container_name || '—' }} · {{ item.level }} · {{ item.logger }}
+              </p>
+              <p class="text-surface-100 whitespace-pre-wrap break-words">{{ item.message }}</p>
+            </div>
+          </div>
+        </section>
       </section>
     </div>
 
@@ -1076,7 +1177,7 @@ onBeforeUnmount(() => {
                           <p>Failed: {{ run.result?.bots_failed ?? 0 }}</p>
                           <p>Trades +{{ run.result?.inserted_trades ?? 0 }} / ~{{ run.result?.updated_trades ?? 0 }}</p>
                           <p>Orders +{{ run.result?.inserted_orders ?? 0 }} / ~{{ run.result?.updated_orders ?? 0 }}</p>
-                          <p>Logs +{{ run.result?.inserted_log_events ?? 0 }}, anomalies ~{{ run.result?.updated_anomalies ?? 0 }}</p>
+                          <p>Logs +{{ run.result?.inserted_log_events ?? 0 }}, anomaly signatures touched {{ run.result?.updated_anomalies ?? 0 }}</p>
                         </div>
                         <div class="rounded border border-surface-700 p-3">
                           <h3 class="font-semibold mb-1">Errors</h3>
