@@ -607,23 +607,25 @@ onBeforeUnmount(() => {
           show-gridlines
           scrollable
           scroll-height="24rem"
+          table-style="table-layout: fixed; width: 100%"
+          class="text-sm"
           :loading="vpsStore.loadingAudit"
         >
-          <Column header="Time">
+          <Column header="Time" header-style="width: 11rem" body-class="align-top whitespace-normal break-words">
             <template #body="slotProps">
               {{ timestampmsWithTimezone(new Date(slotProps.data.created_at)) }}
             </template>
           </Column>
-          <Column field="actor" header="Actor" />
-          <Column field="source_ip" header="Source IP" />
-          <Column field="action" header="Action" />
-          <Column field="target_type" header="Target" />
-          <Column header="Target ID">
+          <Column field="actor" header="Actor" header-style="width: 6rem" body-class="align-top whitespace-nowrap" />
+          <Column field="source_ip" header="Source IP" header-style="width: 7rem" body-class="align-top whitespace-nowrap" />
+          <Column field="action" header="Action" header-style="width: 12rem" body-class="align-top whitespace-normal break-words" />
+          <Column field="target_type" header="Target" header-style="width: 5rem" body-class="align-top whitespace-nowrap" />
+          <Column header="Target ID" header-style="width: 8rem" body-class="align-top whitespace-normal break-words">
             <template #body="slotProps">
               {{ resolveAuditTarget(slotProps.data) }}
             </template>
           </Column>
-          <Column header="Result">
+          <Column header="Result" header-style="width: 6rem" body-class="align-top text-center">
             <template #body="slotProps">
               <Tag
                 :value="slotProps.data.result"
@@ -631,7 +633,11 @@ onBeforeUnmount(() => {
               />
             </template>
           </Column>
-          <Column field="message" header="Message" />
+          <Column field="message" header="Message" body-class="align-top whitespace-normal break-words">
+            <template #body="slotProps">
+              <span class="block whitespace-normal break-words">{{ slotProps.data.message || '—' }}</span>
+            </template>
+          </Column>
         </DataTable>
       </template>
     </Card>

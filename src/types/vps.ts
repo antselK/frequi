@@ -250,6 +250,8 @@ export interface DwhTrade {
   container_name: string | null;
   source_trade_id: number;
   pair: string | null;
+  is_short: boolean | null;
+  enter_tag: string | null;
   strategy: string | null;
   exit_reason: string | null;
   is_open: boolean;
@@ -267,6 +269,7 @@ export interface DwhTradeQuery {
   bot_id?: number;
   pair?: string;
   strategy?: string;
+  entry_reason?: string;
   exit_reason?: string;
   limit?: number;
   offset?: number;

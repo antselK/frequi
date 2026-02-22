@@ -57,8 +57,9 @@ const tradeDays = ref(30);
 const tradeBotId = ref<number | null>(null);
 const tradePair = ref('');
 const tradeStrategy = ref('');
+const tradeEntryReason = ref('');
 const tradeExitReason = ref('');
-const tradeLimit = ref(25);
+const tradeLimit = ref(15);
 const expandedTradeId = ref<number | null>(null);
 const tradeTimelines = ref<Record<number, DwhTradeTimeline>>({});
 const loadingTradeTimeline = ref<Record<number, boolean>>({});
@@ -73,6 +74,10 @@ const alertConfig = ref<DwhAlertConfig | null>(null);
 const alertStatus = ref<DwhAlertStatus | null>(null);
 const alertLoading = ref(false);
 const showSettingsModal = ref(false);
+const showAuditModal = ref(false);
+const showRunsModal = ref(false);
+const showAnomaliesModal = ref(false);
+const showCheckpointsModal = ref(false);
 const auditMode = ref<DwhAuditMode | null>(null);
 const auditSummary = ref<DwhAuditSummary | null>(null);
 const auditRules = ref<DwhLogCaptureRule[]>([]);
@@ -221,6 +226,7 @@ async function loadTrades() {
       bot_id: normalizedBotId > 0 ? normalizedBotId : undefined,
       pair: tradePair.value.trim() || undefined,
       strategy: tradeStrategy.value.trim() || undefined,
+      entry_reason: tradeEntryReason.value.trim() || undefined,
       exit_reason: tradeExitReason.value.trim() || undefined,
       limit: normalizedLimit,
       offset: 0,
@@ -673,7 +679,31 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="p-4 md:p-6 space-y-4 min-h-screen bg-black text-surface-100">
-    <section class="flex justify-end">
+    <section class="flex flex-wrap justify-end gap-2">
+      <button
+        class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
+        @click="showRunsModal = true"
+      >
+        Recent Ingestion Runs
+      </button>
+      <button
+        class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
+        @click="showCheckpointsModal = true"
+      >
+        Bot Checkpoints
+      </button>
+      <button
+        class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
+        @click="showAuditModal = true"
+      >
+        Audit View
+      </button>
+      <button
+        class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
+        @click="showAnomaliesModal = true"
+      >
+        Anomaly Trends + Samples
+      </button>
       <button
         class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
         @click="showSettingsModal = true"
@@ -691,125 +721,6 @@ onBeforeUnmount(() => {
         <p class="text-xs text-surface-400">{{ card.label }}</p>
         <p class="text-xl font-semibold">{{ card.value }}</p>
       </article>
-    </section>
-
-    <section class="rounded border border-surface-700 bg-surface-900 p-4 space-y-3">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <h2 class="font-semibold">Audit View</h2>
-        <div class="flex items-center gap-2 text-sm">
-          <span class="text-surface-300">Audit mode:</span>
-          <span class="px-2 py-0.5 rounded border border-surface-600" :class="auditMode?.enabled ? 'text-green-300' : 'text-yellow-300'">
-            {{ auditMode?.enabled ? 'ON (all logs)' : 'OFF (warn/error only)' }}
-          </span>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
-        <input
-          v-model.number="auditHours"
-          type="number"
-          min="1"
-          max="168"
-          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
-          placeholder="Hours"
-        />
-        <input
-          v-model.number="auditBotId"
-          type="number"
-          min="1"
-          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
-          placeholder="Bot ID (optional)"
-        />
-        <div class="col-span-2 md:col-span-3 flex items-center gap-2">
-          <button
-            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
-            :disabled="auditLoading"
-            @click="loadAuditData"
-          >
-            {{ auditLoading ? 'Loading...' : 'Refresh Audit Summary' }}
-          </button>
-          <p class="text-xs text-surface-400" v-if="auditSummary">Total events in range: {{ auditSummary.total_events }}</p>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div class="rounded border border-surface-700 p-3 overflow-x-auto">
-          <h3 class="font-semibold mb-2">Log Event Summary (Logger + Level)</h3>
-          <p v-if="auditLoading" class="text-sm text-surface-400">Loading audit summary...</p>
-          <p v-else-if="!(auditSummary?.buckets?.length)" class="text-sm text-surface-400">No log events in selected range.</p>
-          <table v-else class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-surface-400 border-b border-surface-700">
-                <th class="py-2 pe-2">Logger</th>
-                <th class="py-2 pe-2">Level</th>
-                <th class="py-2 pe-2">Count</th>
-                <th class="py-2 pe-2">Include</th>
-                <th class="py-2 pe-2">Exclude</th>
-                <th class="py-2">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="bucket in auditSummary?.buckets ?? []" :key="`${bucket.logger}-${bucket.level}`" class="border-b border-surface-800">
-                <td class="py-2 pe-2">{{ bucket.logger }}</td>
-                <td class="py-2 pe-2">{{ bucket.level }}</td>
-                <td class="py-2 pe-2">{{ bucket.total }}</td>
-                <td class="py-2 pe-2">{{ bucket.selected ? 'yes' : 'no' }}</td>
-                <td class="py-2 pe-2">{{ bucket.excluded ? 'yes' : 'no' }}</td>
-                <td class="py-2">
-                  <div class="flex items-center gap-2">
-                    <button
-                      class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800 disabled:opacity-50"
-                      :disabled="auditRuleSaving || bucket.selected"
-                      @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'include')"
-                    >
-                      {{ bucket.selected ? 'Included' : 'Include' }}
-                    </button>
-                    <button
-                      class="px-2 py-1 rounded border border-yellow-700 text-yellow-300 text-xs hover:bg-yellow-950/30 disabled:opacity-50"
-                      :disabled="auditRuleSaving || bucket.excluded"
-                      @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'exclude')"
-                    >
-                      {{ bucket.excluded ? 'Excluded' : 'Exclude' }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="rounded border border-surface-700 p-3 overflow-x-auto">
-          <h3 class="font-semibold mb-2">Selected Capture Rules</h3>
-          <p class="text-xs text-surface-400 mb-2">These rules drive anomaly/trade log analytics filtering.</p>
-          <p v-if="!auditRules.length" class="text-sm text-surface-400">No rules selected yet (all logs are included).</p>
-          <table v-else class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-surface-400 border-b border-surface-700">
-                <th class="py-2 pe-2">Type</th>
-                <th class="py-2 pe-2">Logger</th>
-                <th class="py-2 pe-2">Level</th>
-                <th class="py-2">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="rule in auditRules" :key="rule.id" class="border-b border-surface-800">
-                <td class="py-2 pe-2">{{ rule.rule_type }}</td>
-                <td class="py-2 pe-2">{{ rule.logger_name || '*' }}</td>
-                <td class="py-2 pe-2">{{ rule.level || '*' }}</td>
-                <td class="py-2">
-                  <button
-                    class="px-2 py-1 rounded border border-red-700 text-red-300 text-xs hover:bg-red-950/40 disabled:opacity-50"
-                    :disabled="auditRuleSaving"
-                    @click="deleteAuditRule(rule.id)"
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
     </section>
 
     <section v-if="retentionResult" class="rounded border border-surface-700 bg-surface-900 p-4">
@@ -832,7 +743,7 @@ onBeforeUnmount(() => {
         <p class="text-xs text-surface-400">Showing {{ trades.length }} of {{ tradesTotal }} trades</p>
       </div>
 
-      <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+      <div class="grid grid-cols-2 md:grid-cols-7 gap-2">
         <input
           v-model.number="tradeDays"
           type="number"
@@ -859,6 +770,12 @@ onBeforeUnmount(() => {
           type="text"
           class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
           placeholder="Strategy"
+        />
+        <input
+          v-model="tradeEntryReason"
+          type="text"
+          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+          placeholder="Entry Reason"
         />
         <input
           v-model="tradeExitReason"
@@ -888,39 +805,44 @@ onBeforeUnmount(() => {
       <div v-if="tradesLoading" class="text-sm text-surface-400">Loading trades...</div>
       <div v-else-if="!trades.length" class="text-sm text-surface-400">No trades matched current filters.</div>
       <div v-else class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="w-full text-sm table-auto">
           <thead>
             <tr class="text-left text-surface-400 border-b border-surface-700">
-              <th class="py-2 pe-2">Bot</th>
-              <th class="py-2 pe-2">Trade</th>
-              <th class="py-2 pe-2">Pair</th>
-              <th class="py-2 pe-2">Strategy</th>
-              <th class="py-2 pe-2">Exit</th>
-              <th class="py-2 pe-2">Opened</th>
-              <th class="py-2 pe-2">Closed</th>
-              <th class="py-2 pe-2">Profit %</th>
-              <th class="py-2 pe-2">Profit Abs</th>
-              <th class="py-2">Anomalies</th>
-              <th class="py-2">Timeline</th>
+              <th class="ps-0 pe-2 py-2 w-28">Bot</th>
+              <th class="px-2 py-2">Trade</th>
+              <th class="px-2 py-2">Pair</th>
+              <th class="px-2 py-2">Side</th>
+              <th class="px-2 py-2">Strategy</th>
+              <th class="px-2 py-2">Entry / Exit</th>
+              <th class="px-2 py-2">Opened</th>
+              <th class="px-2 py-2">Closed</th>
+              <th class="px-2 py-2">Profit %</th>
+              <th class="px-2 py-2">Profit Abs</th>
+              <th class="px-2 py-2 text-center">Anomalies</th>
+              <th class="px-2 py-2 text-center">Timeline</th>
             </tr>
           </thead>
           <tbody>
             <template v-for="trade in trades" :key="trade.id">
               <tr class="border-b border-surface-800">
-                <td class="py-2 pe-2">
+                <td class="ps-0 pe-2 py-2 align-top whitespace-nowrap">
                   <div class="font-medium">{{ trade.vps_name || '—' }}</div>
                   <div class="text-xs text-surface-400">{{ trade.container_name || '—' }} · ID {{ trade.bot_id }}</div>
                 </td>
-                <td class="py-2 pe-2">#{{ trade.source_trade_id }}</td>
-                <td class="py-2 pe-2">{{ trade.pair || '—' }}</td>
-                <td class="py-2 pe-2">{{ trade.strategy || '—' }}</td>
-                <td class="py-2 pe-2">{{ trade.exit_reason || (trade.is_open ? 'OPEN' : '—') }}</td>
-                <td class="py-2 pe-2">{{ formatDate(trade.open_date) }}</td>
-                <td class="py-2 pe-2">{{ formatDate(trade.close_date) }}</td>
-                <td class="py-2 pe-2">{{ formatRatio(trade.profit_ratio) }}</td>
-                <td class="py-2 pe-2">{{ formatNumber(trade.profit_abs) }}</td>
-                <td class="py-2">{{ trade.anomaly_count }}</td>
-                <td class="py-2">
+                <td class="px-2 py-2 align-top">#{{ trade.source_trade_id }}</td>
+                <td class="px-2 py-2 align-top">{{ trade.pair || '—' }}</td>
+                <td class="px-2 py-2 align-top">{{ trade.is_short === null ? '—' : (trade.is_short ? 'Short' : 'Long') }}</td>
+                <td class="px-2 py-2 align-top">{{ trade.strategy || '—' }}</td>
+                <td class="px-2 py-2 text-xs leading-5 align-top">
+                  <div><span class="text-surface-400">Entry:</span> {{ trade.enter_tag || '—' }}</div>
+                  <div><span class="text-surface-400">Exit:</span> {{ trade.exit_reason || (trade.is_open ? 'OPEN' : '—') }}</div>
+                </td>
+                <td class="px-2 py-2 align-top">{{ formatDate(trade.open_date) }}</td>
+                <td class="px-2 py-2 align-top">{{ formatDate(trade.close_date) }}</td>
+                <td class="px-2 py-2 align-top">{{ formatRatio(trade.profit_ratio) }}</td>
+                <td class="px-2 py-2 align-top">{{ formatNumber(trade.profit_abs) }}</td>
+                <td class="px-2 py-2 text-center align-top">{{ trade.anomaly_count }}</td>
+                <td class="px-2 py-2 text-center align-top">
                   <button
                     class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
                     @click="toggleTradeTimeline(trade.id)"
@@ -930,7 +852,7 @@ onBeforeUnmount(() => {
                 </td>
               </tr>
               <tr v-if="expandedTradeId === trade.id" class="border-b border-surface-800 bg-surface-950/40">
-                <td colspan="11" class="py-3 px-2">
+                <td colspan="12" class="py-3 px-2">
                   <p v-if="loadingTradeTimeline[trade.id]" class="text-sm text-surface-400">Loading timeline...</p>
                   <div v-else-if="!(tradeTimelines[trade.id]?.items?.length)" class="text-sm text-surface-400">No timeline events found.</div>
                   <div v-else class="space-y-2 max-h-72 overflow-y-auto">
@@ -956,217 +878,391 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <section class="rounded border border-surface-700 bg-surface-900 p-4">
-      <div class="flex items-center justify-between gap-3 mb-2">
-        <h2 class="font-semibold">Recent Ingestion Runs</h2>
-        <label class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap">
-          <input v-model="showFailedOnly" type="checkbox" class="accent-primary" />
-          Show failed only
-        </label>
-      </div>
-      <div v-if="!visibleRunHistory.length" class="text-sm text-surface-400">No runs to display.</div>
-      <div v-else class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-left text-surface-400 border-b border-surface-700">
-              <th class="py-2 pe-2">ID</th>
-              <th class="py-2 pe-2">Mode</th>
-              <th class="py-2 pe-2">Status</th>
-              <th class="py-2 pe-2">Started</th>
-              <th class="py-2 pe-2">Finished</th>
-              <th class="py-2 pe-2">Synced/Failed</th>
-              <th class="py-2 pe-2">Actor</th>
-              <th class="py-2">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template v-for="run in visibleRunHistory" :key="run.id">
-              <tr class="border-b border-surface-800">
-                <td class="py-2 pe-2">#{{ run.id }}</td>
-                <td class="py-2 pe-2">{{ run.mode }}</td>
-                <td class="py-2 pe-2">
-                  <span class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold" :class="runStatusClass(run.status)">
-                    {{ run.status }}
-                  </span>
-                </td>
-                <td class="py-2 pe-2">{{ formatDate(run.started_at) }}</td>
-                <td class="py-2 pe-2">{{ formatDate(run.finished_at) }}</td>
-                <td class="py-2 pe-2">{{ run.result ? `${run.result.bots_synced}/${run.result.bots_failed}` : '—' }}</td>
-                <td class="py-2 pe-2">{{ run.actor || '—' }}</td>
-                <td class="py-2">
-                  <button
-                    class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
-                    @click="toggleRunDetails(run.id)"
-                  >
-                    {{ expandedRunId === run.id ? 'Hide' : 'Show' }}
-                  </button>
-                </td>
-              </tr>
-              <tr v-if="expandedRunId === run.id" class="border-b border-surface-800 bg-surface-950/40">
-                <td colspan="8" class="py-3 px-2">
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                    <div class="rounded border border-surface-700 p-3">
-                      <h3 class="font-semibold mb-1">Run Metrics</h3>
-                      <p>Scanned: {{ run.result?.bots_scanned ?? 0 }}</p>
-                      <p>Synced: {{ run.result?.bots_synced ?? 0 }}</p>
-                      <p>Failed: {{ run.result?.bots_failed ?? 0 }}</p>
-                      <p>Trades +{{ run.result?.inserted_trades ?? 0 }} / ~{{ run.result?.updated_trades ?? 0 }}</p>
-                      <p>Orders +{{ run.result?.inserted_orders ?? 0 }} / ~{{ run.result?.updated_orders ?? 0 }}</p>
-                      <p>Logs +{{ run.result?.inserted_log_events ?? 0 }}, anomalies ~{{ run.result?.updated_anomalies ?? 0 }}</p>
-                    </div>
-                    <div class="rounded border border-surface-700 p-3">
-                      <h3 class="font-semibold mb-1">Errors</h3>
-                      <p v-if="run.error" class="text-red-300 mb-1">{{ run.error }}</p>
-                      <p v-if="!run.result?.errors?.length && !run.error" class="text-surface-400">No errors recorded.</p>
-                      <ul v-else class="list-disc ms-5 space-y-1 text-red-300">
-                        <li v-for="(entry, index) in run.result?.errors ?? []" :key="`${run.id}-${index}`">{{ entry }}</li>
-                      </ul>
-                    </div>
-                    <div class="rounded border border-surface-700 p-3">
-                      <h3 class="font-semibold mb-1">Top Anomalies In Run</h3>
-                      <p v-if="loadingRunAnomalies[run.id]" class="text-surface-400">Loading...</p>
-                      <p v-else-if="!(runAnomalies[run.id]?.length)" class="text-surface-400">No anomaly spikes found.</p>
-                      <ul v-else class="space-y-1 text-surface-200">
-                        <li v-for="(row, index) in runAnomalies[run.id]" :key="`${run.id}-a-${index}`" class="text-xs">
-                          <span class="font-semibold">{{ row.occurrences }}x</span>
-                          <span class="text-surface-400"> {{ row.level }} / {{ row.logger }} </span>
-                          <span> {{ row.signature }} </span>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section v-if="runResult" class="rounded border border-surface-700 bg-surface-900 p-4">
-      <h2 class="font-semibold mb-2">Last Run Errors</h2>
-      <p v-if="!runErrors.length" class="text-sm text-surface-400">No errors reported in the last run.</p>
-      <ul v-else class="list-disc ms-5 space-y-1 text-sm text-red-300">
-        <li v-for="(entry, index) in runErrors" :key="`${index}-${entry}`">{{ entry }}</li>
-      </ul>
-    </section>
-
-    <section class="rounded border border-surface-700 bg-surface-900 p-4 space-y-3">
-      <div class="flex flex-wrap items-center justify-between gap-2">
-        <h2 class="font-semibold">Anomaly Trends + Samples</h2>
-        <div class="flex items-center gap-2">
-          <input
-            v-model.number="anomaliesDays"
-            type="number"
-            min="1"
-            max="3650"
-            class="w-20 px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
-          />
-          <button
-            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
-            :disabled="anomaliesLoading"
-            @click="loadAnomalies"
-          >
-            {{ anomaliesLoading ? 'Loading...' : 'Refresh' }}
+    <div
+      v-if="showAuditModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      @click.self="showAuditModal = false"
+    >
+      <section class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Audit View</h2>
+          <button class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800" @click="showAuditModal = false">
+            Close
           </button>
         </div>
-      </div>
 
-      <div v-if="anomaliesLoading" class="text-sm text-surface-400">Loading anomalies...</div>
-      <div v-else-if="!anomalies.length" class="text-sm text-surface-400">No anomaly data yet.</div>
-      <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div class="rounded border border-surface-700 p-3 overflow-x-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-left text-surface-400 border-b border-surface-700">
-                <th class="py-2 pe-2">Level</th>
-                <th class="py-2 pe-2">Logger</th>
-                <th class="py-2 pe-2">Count</th>
-                <th class="py-2 pe-2">Signature</th>
-                <th class="py-2">View</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in anomalies" :key="item.signature_hash" class="border-b border-surface-800">
-                <td class="py-2 pe-2">{{ item.level }}</td>
-                <td class="py-2 pe-2">{{ item.logger }}</td>
-                <td class="py-2 pe-2">{{ item.occurrences }}</td>
-                <td class="py-2 pe-2">{{ item.signature }}</td>
-                <td class="py-2">
-                  <button
-                    class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
-                    @click="loadAnomalyDetail(item.signature_hash)"
-                  >
-                    {{ selectedAnomalyHash === item.signature_hash ? 'Selected' : 'Show' }}
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="flex items-center gap-2 text-sm">
+          <span class="text-surface-300">Audit mode:</span>
+          <span class="px-2 py-0.5 rounded border border-surface-600" :class="auditMode?.enabled ? 'text-green-300' : 'text-yellow-300'">
+            {{ auditMode?.enabled ? 'ON (all logs)' : 'OFF (warn/error only)' }}
+          </span>
         </div>
 
-        <div class="rounded border border-surface-700 p-3 space-y-3">
-          <h3 class="font-semibold">Selected Anomaly Detail</h3>
-          <p v-if="anomalyDetailLoading" class="text-sm text-surface-400">Loading detail...</p>
-          <template v-else>
-            <div>
-              <p class="text-xs text-surface-400 mb-1">Hourly trend (last 7d)</p>
-              <div v-if="!anomalyTrend.length" class="text-sm text-surface-400">No trend points.</div>
-              <div v-else class="max-h-40 overflow-y-auto space-y-1">
-                <div v-for="(point, index) in anomalyTrend" :key="`trend-${index}`" class="text-xs text-surface-200">
-                  {{ formatDate(point.bucket_ts) }} — {{ point.occurrences }}
-                </div>
-              </div>
-            </div>
-            <div>
-              <p class="text-xs text-surface-400 mb-1">Recent samples</p>
-              <div v-if="!anomalySamples.length" class="text-sm text-surface-400">No samples.</div>
-              <div v-else class="max-h-56 overflow-y-auto space-y-2">
-                <div v-for="(sample, index) in anomalySamples" :key="`sample-${index}`" class="rounded border border-surface-700 p-2 text-xs">
-                  <p class="text-surface-300">{{ formatDate(sample.event_ts) }} · #{{ sample.bot_id }} · {{ sample.level }} · {{ sample.logger }}</p>
-                  <p class="text-surface-100 whitespace-pre-wrap break-words">{{ sample.message }}</p>
-                </div>
-              </div>
-            </div>
-          </template>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <input
+            v-model.number="auditHours"
+            type="number"
+            min="1"
+            max="168"
+            class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+            placeholder="Hours"
+          />
+          <input
+            v-model.number="auditBotId"
+            type="number"
+            min="1"
+            class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+            placeholder="Bot ID (optional)"
+          />
+          <div class="col-span-2 md:col-span-3 flex items-center gap-2">
+            <button
+              class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+              :disabled="auditLoading"
+              @click="loadAuditData"
+            >
+              {{ auditLoading ? 'Loading...' : 'Refresh Audit Summary' }}
+            </button>
+            <p v-if="auditSummary" class="text-xs text-surface-400">Total events in range: {{ auditSummary.total_events }}</p>
+          </div>
         </div>
-      </div>
-    </section>
 
-    <section class="rounded border border-surface-700 bg-surface-900 p-4">
-      <h2 class="font-semibold mb-2">Bot Checkpoints</h2>
-      <div v-if="!summary?.checkpoints?.length" class="text-sm text-surface-400">No checkpoints yet.</div>
-      <div v-else class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-left text-surface-400 border-b border-surface-700">
-              <th class="py-2 pe-2">VPS</th>
-              <th class="py-2 pe-2">Container</th>
-              <th class="py-2 pe-2">Strategy</th>
-              <th class="py-2 pe-2">Status</th>
-              <th class="py-2 pe-2">Last Trade</th>
-              <th class="py-2 pe-2">Last Order</th>
-              <th class="py-2">Last Synced</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="checkpoint in summary.checkpoints" :key="`${checkpoint.bot_id}-${checkpoint.container_name}`" class="border-b border-surface-800">
-              <td class="py-2 pe-2">{{ checkpoint.vps_name }}</td>
-              <td class="py-2 pe-2">{{ checkpoint.container_name }}</td>
-              <td class="py-2 pe-2">{{ checkpoint.strategy || '—' }}</td>
-              <td class="py-2 pe-2">
-                <span class="px-2 py-1 rounded text-xs font-medium" :class="checkpointStatusClass(checkpoint.last_status)">
-                  {{ checkpoint.last_status }}
-                </span>
-              </td>
-              <td class="py-2 pe-2">{{ checkpoint.last_trade_id }}</td>
-              <td class="py-2 pe-2">{{ checkpoint.last_order_id }}</td>
-              <td class="py-2">{{ formatDate(checkpoint.last_synced_at) }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div class="rounded border border-surface-700 p-3 overflow-x-auto lg:col-span-2">
+            <h3 class="font-semibold mb-2">Log Event Summary (Logger + Level)</h3>
+            <p v-if="auditLoading" class="text-sm text-surface-400">Loading audit summary...</p>
+            <p v-else-if="!(auditSummary?.buckets?.length)" class="text-sm text-surface-400">No log events in selected range.</p>
+            <table v-else class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-surface-400 border-b border-surface-700">
+                  <th class="py-2 pe-2">Logger</th>
+                  <th class="py-2 pe-2">Level</th>
+                  <th class="py-2 pe-2">Count</th>
+                  <th class="py-2 pe-2">Include</th>
+                  <th class="py-2 pe-2">Exclude</th>
+                  <th class="py-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="bucket in auditSummary?.buckets ?? []" :key="`${bucket.logger}-${bucket.level}`" class="border-b border-surface-800">
+                  <td class="py-2 pe-2">{{ bucket.logger }}</td>
+                  <td class="py-2 pe-2">{{ bucket.level }}</td>
+                  <td class="py-2 pe-2">{{ bucket.total }}</td>
+                  <td class="py-2 pe-2">{{ bucket.selected ? 'yes' : 'no' }}</td>
+                  <td class="py-2 pe-2">{{ bucket.excluded ? 'yes' : 'no' }}</td>
+                  <td class="py-2">
+                    <div class="flex items-center gap-2">
+                      <button
+                        class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800 disabled:opacity-50"
+                        :disabled="auditRuleSaving || bucket.selected"
+                        @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'include')"
+                      >
+                        {{ bucket.selected ? 'Included' : 'Include' }}
+                      </button>
+                      <button
+                        class="px-2 py-1 rounded border border-yellow-700 text-yellow-300 text-xs hover:bg-yellow-950/30 disabled:opacity-50"
+                        :disabled="auditRuleSaving || bucket.excluded"
+                        @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'exclude')"
+                      >
+                        {{ bucket.excluded ? 'Excluded' : 'Exclude' }}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="rounded border border-surface-700 p-3 overflow-x-auto lg:col-span-1">
+            <h3 class="font-semibold mb-2">Selected Capture Rules</h3>
+            <p class="text-xs text-surface-400 mb-2">These rules drive anomaly/trade log analytics filtering.</p>
+            <p v-if="!auditRules.length" class="text-sm text-surface-400">No rules selected yet (all logs are included).</p>
+            <table v-else class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-surface-400 border-b border-surface-700">
+                  <th class="py-2 pe-2">Type</th>
+                  <th class="py-2 pe-2">Logger</th>
+                  <th class="py-2 pe-2">Level</th>
+                  <th class="py-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="rule in auditRules" :key="rule.id" class="border-b border-surface-800">
+                  <td class="py-2 pe-2">{{ rule.rule_type }}</td>
+                  <td class="py-2 pe-2">{{ rule.logger_name || '*' }}</td>
+                  <td class="py-2 pe-2">{{ rule.level || '*' }}</td>
+                  <td class="py-2">
+                    <button
+                      class="px-2 py-1 rounded border border-red-700 text-red-300 text-xs hover:bg-red-950/40 disabled:opacity-50"
+                      :disabled="auditRuleSaving"
+                      @click="deleteAuditRule(rule.id)"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div
+      v-if="showRunsModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      @click.self="showRunsModal = false"
+    >
+      <section class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Recent Ingestion Runs</h2>
+          <button class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800" @click="showRunsModal = false">
+            Close
+          </button>
+        </div>
+
+        <section class="rounded border border-surface-700 p-4">
+          <div class="flex items-center justify-between gap-3 mb-2">
+            <h3 class="font-semibold">Recent Ingestion Runs</h3>
+            <label class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap">
+              <input v-model="showFailedOnly" type="checkbox" class="accent-primary" />
+              Show failed only
+            </label>
+          </div>
+          <div v-if="!visibleRunHistory.length" class="text-sm text-surface-400">No runs to display.</div>
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-surface-400 border-b border-surface-700">
+                  <th class="py-2 pe-2">ID</th>
+                  <th class="py-2 pe-2">Mode</th>
+                  <th class="py-2 pe-2">Status</th>
+                  <th class="py-2 pe-2">Started</th>
+                  <th class="py-2 pe-2">Finished</th>
+                  <th class="py-2 pe-2">Synced/Failed</th>
+                  <th class="py-2 pe-2">Actor</th>
+                  <th class="py-2">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="run in visibleRunHistory" :key="run.id">
+                  <tr class="border-b border-surface-800">
+                    <td class="py-2 pe-2">#{{ run.id }}</td>
+                    <td class="py-2 pe-2">{{ run.mode }}</td>
+                    <td class="py-2 pe-2">
+                      <span class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold" :class="runStatusClass(run.status)">
+                        {{ run.status }}
+                      </span>
+                    </td>
+                    <td class="py-2 pe-2">{{ formatDate(run.started_at) }}</td>
+                    <td class="py-2 pe-2">{{ formatDate(run.finished_at) }}</td>
+                    <td class="py-2 pe-2">{{ run.result ? `${run.result.bots_synced}/${run.result.bots_failed}` : '—' }}</td>
+                    <td class="py-2 pe-2">{{ run.actor || '—' }}</td>
+                    <td class="py-2">
+                      <button
+                        class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
+                        @click="toggleRunDetails(run.id)"
+                      >
+                        {{ expandedRunId === run.id ? 'Hide' : 'Show' }}
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="expandedRunId === run.id" class="border-b border-surface-800 bg-surface-950/40">
+                    <td colspan="8" class="py-3 px-2">
+                      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                        <div class="rounded border border-surface-700 p-3">
+                          <h3 class="font-semibold mb-1">Run Metrics</h3>
+                          <p>Scanned: {{ run.result?.bots_scanned ?? 0 }}</p>
+                          <p>Synced: {{ run.result?.bots_synced ?? 0 }}</p>
+                          <p>Failed: {{ run.result?.bots_failed ?? 0 }}</p>
+                          <p>Trades +{{ run.result?.inserted_trades ?? 0 }} / ~{{ run.result?.updated_trades ?? 0 }}</p>
+                          <p>Orders +{{ run.result?.inserted_orders ?? 0 }} / ~{{ run.result?.updated_orders ?? 0 }}</p>
+                          <p>Logs +{{ run.result?.inserted_log_events ?? 0 }}, anomalies ~{{ run.result?.updated_anomalies ?? 0 }}</p>
+                        </div>
+                        <div class="rounded border border-surface-700 p-3">
+                          <h3 class="font-semibold mb-1">Errors</h3>
+                          <p v-if="run.error" class="text-red-300 mb-1">{{ run.error }}</p>
+                          <p v-if="!run.result?.errors?.length && !run.error" class="text-surface-400">No errors recorded.</p>
+                          <ul v-else class="list-disc ms-5 space-y-1 text-red-300">
+                            <li v-for="(entry, index) in run.result?.errors ?? []" :key="`${run.id}-${index}`">{{ entry }}</li>
+                          </ul>
+                        </div>
+                        <div class="rounded border border-surface-700 p-3">
+                          <h3 class="font-semibold mb-1">Top Anomalies In Run</h3>
+                          <p v-if="loadingRunAnomalies[run.id]" class="text-surface-400">Loading...</p>
+                          <p v-else-if="!(runAnomalies[run.id]?.length)" class="text-surface-400">No anomaly spikes found.</p>
+                          <ul v-else class="space-y-1 text-surface-200">
+                            <li v-for="(row, index) in runAnomalies[run.id]" :key="`${run.id}-a-${index}`" class="text-xs">
+                              <span class="font-semibold">{{ row.occurrences }}x</span>
+                              <span class="text-surface-400"> {{ row.level }} / {{ row.logger }} </span>
+                              <span> {{ row.signature }} </span>
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section v-if="runResult" class="rounded border border-surface-700 p-4">
+          <h3 class="font-semibold mb-2">Last Run Errors</h3>
+          <p v-if="!runErrors.length" class="text-sm text-surface-400">No errors reported in the last run.</p>
+          <ul v-else class="list-disc ms-5 space-y-1 text-sm text-red-300">
+            <li v-for="(entry, index) in runErrors" :key="`${index}-${entry}`">{{ entry }}</li>
+          </ul>
+        </section>
+      </section>
+    </div>
+
+    <div
+      v-if="showAnomaliesModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      @click.self="showAnomaliesModal = false"
+    >
+      <section class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Anomaly Trends + Samples</h2>
+          <button class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800" @click="showAnomaliesModal = false">
+            Close
+          </button>
+        </div>
+
+        <section class="rounded border border-surface-700 p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="font-semibold">Anomaly Trends + Samples</h3>
+            <div class="flex items-center gap-2">
+              <input
+                v-model.number="anomaliesDays"
+                type="number"
+                min="1"
+                max="3650"
+                class="w-20 px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+              />
+              <button
+                class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+                :disabled="anomaliesLoading"
+                @click="loadAnomalies"
+              >
+                {{ anomaliesLoading ? 'Loading...' : 'Refresh' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="anomaliesLoading" class="text-sm text-surface-400">Loading anomalies...</div>
+          <div v-else-if="!anomalies.length" class="text-sm text-surface-400">No anomaly data yet.</div>
+          <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div class="rounded border border-surface-700 p-3 overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-surface-400 border-b border-surface-700">
+                    <th class="py-2 pe-2">Level</th>
+                    <th class="py-2 pe-2">Logger</th>
+                    <th class="py-2 pe-2">Count</th>
+                    <th class="py-2 pe-2">Signature</th>
+                    <th class="py-2">View</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in anomalies" :key="item.signature_hash" class="border-b border-surface-800">
+                    <td class="py-2 pe-2">{{ item.level }}</td>
+                    <td class="py-2 pe-2">{{ item.logger }}</td>
+                    <td class="py-2 pe-2">{{ item.occurrences }}</td>
+                    <td class="py-2 pe-2">{{ item.signature }}</td>
+                    <td class="py-2">
+                      <button
+                        class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
+                        @click="loadAnomalyDetail(item.signature_hash)"
+                      >
+                        {{ selectedAnomalyHash === item.signature_hash ? 'Selected' : 'Show' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="rounded border border-surface-700 p-3 space-y-3">
+              <h3 class="font-semibold">Selected Anomaly Detail</h3>
+              <p v-if="anomalyDetailLoading" class="text-sm text-surface-400">Loading detail...</p>
+              <template v-else>
+                <div>
+                  <p class="text-xs text-surface-400 mb-1">Hourly trend (last 7d)</p>
+                  <div v-if="!anomalyTrend.length" class="text-sm text-surface-400">No trend points.</div>
+                  <div v-else class="max-h-40 overflow-y-auto space-y-1">
+                    <div v-for="(point, index) in anomalyTrend" :key="`trend-${index}`" class="text-xs text-surface-200">
+                      {{ formatDate(point.bucket_ts) }} — {{ point.occurrences }}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p class="text-xs text-surface-400 mb-1">Recent samples</p>
+                  <div v-if="!anomalySamples.length" class="text-sm text-surface-400">No samples.</div>
+                  <div v-else class="max-h-56 overflow-y-auto space-y-2">
+                    <div v-for="(sample, index) in anomalySamples" :key="`sample-${index}`" class="rounded border border-surface-700 p-2 text-xs">
+                      <p class="text-surface-300">{{ formatDate(sample.event_ts) }} · #{{ sample.bot_id }} · {{ sample.level }} · {{ sample.logger }}</p>
+                      <p class="text-surface-100 whitespace-pre-wrap break-words">{{ sample.message }}</p>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <div
+      v-if="showCheckpointsModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      @click.self="showCheckpointsModal = false"
+    >
+      <section class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-semibold">Bot Checkpoints</h2>
+          <button class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800" @click="showCheckpointsModal = false">
+            Close
+          </button>
+        </div>
+
+        <section class="rounded border border-surface-700 p-4">
+          <h3 class="font-semibold mb-2">Bot Checkpoints</h3>
+          <div v-if="!summary?.checkpoints?.length" class="text-sm text-surface-400">No checkpoints yet.</div>
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-surface-400 border-b border-surface-700">
+                  <th class="py-2 pe-2">VPS</th>
+                  <th class="py-2 pe-2">Container</th>
+                  <th class="py-2 pe-2">Strategy</th>
+                  <th class="py-2 pe-2">Status</th>
+                  <th class="py-2 pe-2">Last Trade</th>
+                  <th class="py-2 pe-2">Last Order</th>
+                  <th class="py-2">Last Synced</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="checkpoint in summary.checkpoints" :key="`${checkpoint.bot_id}-${checkpoint.container_name}`" class="border-b border-surface-800">
+                  <td class="py-2 pe-2">{{ checkpoint.vps_name }}</td>
+                  <td class="py-2 pe-2">{{ checkpoint.container_name }}</td>
+                  <td class="py-2 pe-2">{{ checkpoint.strategy || '—' }}</td>
+                  <td class="py-2 pe-2">
+                    <span class="px-2 py-1 rounded text-xs font-medium" :class="checkpointStatusClass(checkpoint.last_status)">
+                      {{ checkpoint.last_status }}
+                    </span>
+                  </td>
+                  <td class="py-2 pe-2">{{ checkpoint.last_trade_id }}</td>
+                  <td class="py-2 pe-2">{{ checkpoint.last_order_id }}</td>
+                  <td class="py-2">{{ formatDate(checkpoint.last_synced_at) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </div>
 
     <div
       v-if="showSettingsModal"
