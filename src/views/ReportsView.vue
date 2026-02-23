@@ -1315,17 +1315,6 @@ async function loadTrailingTrades(days: number): Promise<DwhTrade[]> {
   return collected;
 }
 
-function isTrailingBenefitSignature(item: DwhAnomaly): boolean {
-  const text = `${item.signature} ${item.logger}`.toLowerCase();
-  return (
-    text.includes('trailing long') ||
-    text.includes('trailing short') ||
-    text.includes('triggering long') ||
-    text.includes('triggering short') ||
-    text.includes('price ok')
-  );
-}
-
 function isTrailingTriggerMessage(loweredMessage: string): boolean {
   if (loweredMessage.includes('update trailing ')) {
     return false;
@@ -1335,7 +1324,7 @@ function isTrailingTriggerMessage(loweredMessage: string): boolean {
     loweredMessage.includes('trailing long for ') ||
     loweredMessage.includes('triggering long') ||
     loweredMessage.includes('triggering short') ||
-    (loweredMessage.includes('price ok') && loweredMessage.includes('trailing'))
+    loweredMessage.includes('price ok for ')
   );
 }
 
@@ -1365,6 +1354,48 @@ function parseTrailingTriggerEvent(sample: {
     logger: sample.logger,
     message: sample.message,
   };
+}
+
+async function fetchTrailingAuditLogs(
+  botIds: number[],
+  hours: number,
+): Promise<Array<{ event_ts: string; bot_id: number; logger: string; message: string }>> {
+  const keywords = ['trailing', 'triggering', 'Price OK'];
+  const pageLimit = 500;
+
+  async function fetchPages(botId: number, keyword: string) {
+    const collected: Array<{ event_ts: string; bot_id: number; logger: string; message: string }> = [];
+    let offset = 0;
+    for (;;) {
+      const result = await vpsApi.dwhAuditMessages({
+        hours,
+        bot_id: botId,
+        logger: 'Printer',
+        q: keyword,
+        limit: pageLimit,
+        offset,
+      });
+      for (const msg of result.items) {
+        collected.push({
+          event_ts: msg.event_ts,
+          bot_id: msg.bot_id,
+          logger: msg.logger,
+          message: msg.message,
+        });
+      }
+      offset += result.items.length;
+      if (result.items.length < pageLimit || offset >= result.total) {
+        break;
+      }
+    }
+    return collected;
+  }
+
+  const tasks = botIds.flatMap((botId) =>
+    keywords.map((keyword) => fetchPages(botId, keyword)),
+  );
+  const results = await Promise.all(tasks);
+  return results.flat();
 }
 
 function pickSnapshotLog(
@@ -1734,50 +1765,42 @@ async function loadTrailingBenefitReport() {
       (trade) => !trade.is_open && isTrailEnterTag(trade.enter_tag),
     );
 
-    // Step 2: Fetch anomaly signatures + samples
-    const anomalies = await vpsApi.dwhAnomalies(trailingDays.value, 300);
-    const targetSignatures = anomalies.filter(isTrailingBenefitSignature).slice(0, 80);
+    // Step 2: Fetch trailing logs per bot via direct audit message queries
+    // (replaces anomaly signature → samples approach for full coverage)
+    const uniqueBotIds = [...new Set(closedTrailTrades.map((t) => t.bot_id))];
+    const hours = Math.min(trailingDays.value * 24, 720);
+    const [allAuditMessages, rpcTradeHints] = await Promise.all([
+      fetchTrailingAuditLogs(uniqueBotIds, hours),
+      loadRpcTradeHints(trailingDays.value),
+    ]);
 
-    // Step 3: Parse all log samples and match to trades
-    let allLogEvents: TrailingTriggerEvent[] = [];
-    if (targetSignatures.length) {
-      const samplesPerSignature = await Promise.all(
-        targetSignatures.map((item) => vpsApi.dwhAnomalySamples(item.signature_hash, 40)),
-      );
-      const [rpcHintsFromTrailing, rpcHintsFromRpcLogs] = await Promise.all([
-        Promise.resolve(buildRpcTradeHints(samplesPerSignature)),
-        loadRpcTradeHints(trailingDays.value),
-      ]);
-      const rpcTradeHints = [...rpcHintsFromTrailing, ...rpcHintsFromRpcLogs];
-      const closedTrailTradeIndex = indexTradesByBotPair(closedTrailTrades);
-      const tradeIndex = indexTradesByBotPair(allTrades);
+    // Step 3: Parse all log messages and match to trades
+    const closedTrailTradeIndex = indexTradesByBotPair(closedTrailTrades);
+    const tradeIndex = indexTradesByBotPair(allTrades);
+    const dedupe = new Map<string, TrailingTriggerEvent>();
 
-      const dedupe = new Map<string, TrailingTriggerEvent>();
-      for (const samples of samplesPerSignature) {
-        for (const sample of samples) {
-          const loweredMessage = sample.message.toLowerCase();
-          if (!isTrailingTriggerMessage(loweredMessage)) {
-            continue;
-          }
-          const parsedEvent = parseTrailingTriggerEvent(sample);
-          const closedTrailMatchedRaw = matchTrailingEventTrade(parsedEvent, closedTrailTradeIndex);
-          const closedTrailMatched =
-            closedTrailMatchedRaw.tradeId === null
-              ? closedTrailMatchedRaw
-              : { ...closedTrailMatchedRaw, matchSource: 'closed_trail' as const };
-          const broadTradeMatched =
-            closedTrailMatched.tradeId === null
-              ? matchTrailingEventTrade(closedTrailMatched, tradeIndex)
-              : closedTrailMatched;
-          const event =
-            broadTradeMatched.tradeId === null
-              ? matchTrailingEventRpcTradeHint(broadTradeMatched, rpcTradeHints)
-              : broadTradeMatched;
-          dedupe.set(`${sample.event_ts}|${sample.logger}|${sample.message}`, event);
-        }
+    for (const msg of allAuditMessages) {
+      const loweredMessage = msg.message.toLowerCase();
+      if (!isTrailingTriggerMessage(loweredMessage)) {
+        continue;
       }
-      allLogEvents = Array.from(dedupe.values());
+      const parsedEvent = parseTrailingTriggerEvent(msg);
+      const closedTrailMatchedRaw = matchTrailingEventTrade(parsedEvent, closedTrailTradeIndex);
+      const closedTrailMatched =
+        closedTrailMatchedRaw.tradeId === null
+          ? closedTrailMatchedRaw
+          : { ...closedTrailMatchedRaw, matchSource: 'closed_trail' as const };
+      const broadTradeMatched =
+        closedTrailMatched.tradeId === null
+          ? matchTrailingEventTrade(closedTrailMatched, tradeIndex)
+          : closedTrailMatched;
+      const event =
+        broadTradeMatched.tradeId === null
+          ? matchTrailingEventRpcTradeHint(broadTradeMatched, rpcTradeHints)
+          : broadTradeMatched;
+      dedupe.set(`${msg.event_ts}|${msg.logger}|${msg.message}`, event);
     }
+    const allLogEvents = Array.from(dedupe.values());
 
     // Step 4: Group log events by trade key
     const logsByTradeKey = new Map<string, TrailingTriggerEvent[]>();
