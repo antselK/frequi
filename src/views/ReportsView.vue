@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { vpsApi } from '@/composables/vpsApi';
 import type {
   DwhAnomaly,
+  DwhCheckpoint,
   DwhIngestionRun,
   DwhIngestionRunResult,
   DwhLogCauseSummary,
@@ -12,10 +13,17 @@ import type {
 
 type ReportCategory = 'system' | 'trades';
 type MissedTradeReasonCode =
+  | 'deep_dca_block'
+  | 'long_disabled'
+  | 'time_filter'
+  | 'eth_volatility'
   | 'funding_rate_unfavorable'
+  | 'funding_rate_too_high'
   | 'funding_rate_too_low'
   | 'funding_rate_guard'
-  | 'strategy_user_deny'
+  | 'price_momentum'
+  | 'slippage'
+  | 'trailing_entry'
   | 'trade_rejected'
   | 'other';
 
@@ -75,11 +83,23 @@ interface ReasonSummaryItem {
   count: number;
 }
 
+interface BotDisplayMeta {
+  vpsName: string;
+  containerName: string;
+}
+
 const MISSED_TRADE_REASON_LABELS: Record<MissedTradeReasonCode, string> = {
+  deep_dca_block: 'Deep DCA block',
+  long_disabled: 'Long trades disabled',
+  time_filter: 'Time filter block',
+  eth_volatility: 'ETH volatility block',
   funding_rate_unfavorable: 'Unfavorable funding rate',
+  funding_rate_too_high: 'Funding rate too high',
   funding_rate_too_low: 'Funding rate too low',
   funding_rate_guard: 'Funding rate filter',
-  strategy_user_deny: 'Strategy/user deny',
+  price_momentum: 'Insufficient momentum',
+  slippage: 'Slippage block',
+  trailing_entry: 'Trailing entry conditions',
   trade_rejected: 'Trade rejected',
   other: 'Other',
 };
@@ -120,6 +140,7 @@ const systemErrorTimelinePoints = ref<TimelinePoint[]>([]);
 const dwhIngestTimeline = ref<IngestTimelinePoint[]>([]);
 const logsCumulativeChartPoints = ref<LogsCumulativeChartPoint[]>([]);
 const missedTradeEvents = ref<ParsedLogEvent[]>([]);
+const botDisplayById = ref<Map<number, BotDisplayMeta>>(new Map());
 const systemSpikeSummary = ref<DwhLogCauseSummary | null>(null);
 const logsSpikeSummary = ref<DwhLogCauseSummary | null>(null);
 const systemDays = ref(7);
@@ -431,6 +452,18 @@ const missedTradeSummaryByReason = computed<ReasonSummaryItem[]>(() => {
   }));
 });
 
+const trailingEntryMissCount = computed(() => {
+  return filteredMissedTradeEventsByBotPair.value.filter((event) => event.reasonCode === 'trailing_entry').length;
+});
+
+const trailingEntryMissPct = computed(() => {
+  const total = filteredMissedTradeEventsByBotPair.value.length;
+  if (!total) {
+    return '0.0';
+  }
+  return ((trailingEntryMissCount.value / total) * 100).toFixed(1);
+});
+
 const totalSystemErrorCount = computed(() => {
   return systemErrorTimelinePoints.value.reduce((sum, point) => sum + point.count, 0);
 });
@@ -608,10 +641,75 @@ function classifyMissedTradeReason(message: string): {
   reason: string;
 } {
   const loweredMessage = message.toLowerCase();
+  if (
+    loweredMessage.includes('blocking new entry') ||
+    loweredMessage.includes('blocking new trades:') ||
+    loweredMessage.includes('deep dca')
+  ) {
+    return {
+      reasonCode: 'deep_dca_block',
+      reason: MISSED_TRADE_REASON_LABELS.deep_dca_block,
+    };
+  }
+  if (loweredMessage.includes('can_long is disabled') || loweredMessage.includes('long trade rejected')) {
+    return {
+      reasonCode: 'long_disabled',
+      reason: MISSED_TRADE_REASON_LABELS.long_disabled,
+    };
+  }
+  if (loweredMessage.includes('time filter active') || loweredMessage.includes('due to unfavorable time')) {
+    return {
+      reasonCode: 'time_filter',
+      reason: MISSED_TRADE_REASON_LABELS.time_filter,
+    };
+  }
+  if (loweredMessage.includes('eth volatility too high')) {
+    return {
+      reasonCode: 'eth_volatility',
+      reason: MISSED_TRADE_REASON_LABELS.eth_volatility,
+    };
+  }
+  if (loweredMessage.includes('insufficient price momentum')) {
+    return {
+      reasonCode: 'price_momentum',
+      reason: MISSED_TRADE_REASON_LABELS.price_momentum,
+    };
+  }
+  if (
+    loweredMessage.includes('slippage too high') ||
+    loweredMessage.includes('bad slippage') ||
+    loweredMessage.includes('rejecting short stoploss exit') ||
+    loweredMessage.includes('rejecting long stoploss exit')
+  ) {
+    return {
+      reasonCode: 'slippage',
+      reason: MISSED_TRADE_REASON_LABELS.slippage,
+    };
+  }
+  if (
+    loweredMessage.includes('start trailing long') ||
+    loweredMessage.includes('start trailing short') ||
+    loweredMessage.includes('stop trailing long') ||
+    loweredMessage.includes('stop trailing short') ||
+    loweredMessage.includes('price too high') ||
+    loweredMessage.includes('price too low') ||
+    loweredMessage.includes('offset returned none')
+  ) {
+    return {
+      reasonCode: 'trailing_entry',
+      reason: MISSED_TRADE_REASON_LABELS.trailing_entry,
+    };
+  }
   if (loweredMessage.includes('unfavorable funding rate')) {
     return {
       reasonCode: 'funding_rate_unfavorable',
       reason: MISSED_TRADE_REASON_LABELS.funding_rate_unfavorable,
+    };
+  }
+  if (loweredMessage.includes('funding rate too high')) {
+    return {
+      reasonCode: 'funding_rate_too_high',
+      reason: MISSED_TRADE_REASON_LABELS.funding_rate_too_high,
     };
   }
   if (loweredMessage.includes('funding rate too low')) {
@@ -624,12 +722,6 @@ function classifyMissedTradeReason(message: string): {
     return {
       reasonCode: 'funding_rate_guard',
       reason: MISSED_TRADE_REASON_LABELS.funding_rate_guard,
-    };
-  }
-  if (loweredMessage.includes('user denied entry')) {
-    return {
-      reasonCode: 'strategy_user_deny',
-      reason: MISSED_TRADE_REASON_LABELS.strategy_user_deny,
     };
   }
   if (loweredMessage.includes('trade rejected')) {
@@ -651,13 +743,57 @@ function extractPair(message: string): string {
 
 function extractDecisionDetails(message: string): string | null {
   const loweredMessage = message.toLowerCase();
+  const percentCompareMatch = message.match(/(-?\d+(?:\.\d+)?)%\s*([<>])\s*(-?\d+(?:\.\d+)?)%/);
+  if (percentCompareMatch && loweredMessage.includes('funding rate')) {
+    const comparator = percentCompareMatch[2] === '<' ? 'below' : 'above';
+    return `Funding rate ${percentCompareMatch[1]}% ${comparator} limit ${percentCompareMatch[3]}%`;
+  }
+
+  if (loweredMessage.includes('blocking new entry') || loweredMessage.includes('blocking new trades:')) {
+    return 'New entries blocked because an existing trade reached deep DCA level';
+  }
+
+  if (loweredMessage.includes('can_long is disabled')) {
+    return 'Long entries disabled by strategy parameter can_long';
+  }
+
+  if (loweredMessage.includes('time filter active') || loweredMessage.includes('due to unfavorable time')) {
+    return 'Trade blocked by configured day/time filter window';
+  }
+
+  if (loweredMessage.includes('eth volatility too high')) {
+    return 'ETH volatility exceeded configured threshold';
+  }
+
+  if (loweredMessage.includes('insufficient price momentum')) {
+    const momentumMatch = message.match(/(\d+(?:\.\d+)?)%\s*<\s*(\d+(?:\.\d+)?)%\s*over\s*(\d+)\s*candles/i);
+    if (momentumMatch) {
+      return `Momentum ${momentumMatch[1]}% below threshold ${momentumMatch[2]}% over ${momentumMatch[3]} candles`;
+    }
+    return 'Price momentum below configured threshold';
+  }
+
+  if (loweredMessage.includes('slippage too high') || loweredMessage.includes('bad slippage')) {
+    const slippageMatch = message.match(/slippage\s+([0-9]+(?:\.[0-9]+)?)%\s*>?=\s*([0-9]+(?:\.[0-9]+)?)%/i);
+    if (slippageMatch) {
+      return `Slippage ${slippageMatch[1]}% exceeded limit ${slippageMatch[2]}%`;
+    }
+    return 'Slippage exceeded configured limit';
+  }
+
+  if (
+    loweredMessage.includes('start trailing long') ||
+    loweredMessage.includes('start trailing short') ||
+    loweredMessage.includes('stop trailing long') ||
+    loweredMessage.includes('stop trailing short') ||
+    loweredMessage.includes('offset returned none')
+  ) {
+    return 'Trailing entry flow did not reach entry trigger';
+  }
+
   const match = message.match(/(-?\d+(?:\.\d+)?)%\s*<\s*(-?\d+(?:\.\d+)?)%/);
   if (match) {
     return `Funding rate ${match[1]}% below limit ${match[2]}%`;
-  }
-
-  if (loweredMessage.includes('user denied entry')) {
-    return 'Entry denied by strategy/user rule';
   }
 
   if (loweredMessage.includes('trade rejected')) {
@@ -671,6 +807,58 @@ function extractDecisionDetails(message: string): string | null {
   }
 
   return null;
+}
+
+function formatMissedTradeMessage(message: string): string {
+  const loweredMessage = message.toLowerCase();
+  const match = message.match(/(-?\d+(?:\.\d+)?)%\s*([<>])\s*(-?\d+(?:\.\d+)?)%/);
+  if (match && loweredMessage.includes('funding rate')) {
+    return `FR: ${match[1]}% , Threshold: ${match[3]}%`;
+  }
+  return message;
+}
+
+function isStrategyUserDenyMessage(loweredMessage: string): boolean {
+  return (
+    loweredMessage.includes('user denied entry') ||
+    loweredMessage.includes('entry denied by strategy/user rule') ||
+    loweredMessage.includes('strategy/user deny') ||
+    loweredMessage.includes('strategy_user_deny')
+  );
+}
+
+function buildBotDisplayMap(checkpoints: DwhCheckpoint[]): Map<number, BotDisplayMeta> {
+  const mapped = new Map<number, BotDisplayMeta>();
+  for (const checkpoint of checkpoints) {
+    if (mapped.has(checkpoint.bot_id)) {
+      continue;
+    }
+    mapped.set(checkpoint.bot_id, {
+      vpsName: checkpoint.vps_name || '—',
+      containerName: checkpoint.container_name || '—',
+    });
+  }
+  return mapped;
+}
+
+async function ensureBotDisplayMapLoaded() {
+  if (botDisplayById.value.size) {
+    return;
+  }
+  try {
+    const summary = await vpsApi.dwhSummary();
+    botDisplayById.value = buildBotDisplayMap(summary.checkpoints ?? []);
+  } catch {
+    botDisplayById.value = new Map();
+  }
+}
+
+function getBotVpsName(botId: number): string {
+  return botDisplayById.value.get(botId)?.vpsName ?? '—';
+}
+
+function getBotContainerName(botId: number): string {
+  return botDisplayById.value.get(botId)?.containerName ?? '—';
 }
 
 function isReasonSelected(reasonCode: MissedTradeReasonCode): boolean {
@@ -828,9 +1016,21 @@ async function loadLogsCumulativeChart() {
 
 function isMissedTradeSignature(item: DwhAnomaly): boolean {
   const text = `${item.signature} ${item.logger}`.toLowerCase();
+  if (isStrategyUserDenyMessage(text)) {
+    return false;
+  }
   return (
     text.includes('trade rejected') ||
-    text.includes('user denied entry') ||
+    text.includes('blocking new entry') ||
+    text.includes('blocking new trades:') ||
+    text.includes('can_long is disabled') ||
+    text.includes('time filter active') ||
+    text.includes('eth volatility too high') ||
+    text.includes('insufficient price momentum') ||
+    text.includes('slippage too high') ||
+    text.includes('bad slippage') ||
+    text.includes('trailing long') ||
+    text.includes('trailing short') ||
     text.includes('funding rate') ||
     text.includes('unfavorable')
   );
@@ -840,6 +1040,7 @@ async function loadMissedTradesReport() {
   loadingMissedTrades.value = true;
   reportsError.value = '';
   try {
+    await ensureBotDisplayMapLoaded();
     missedDays.value = normalizeIntInput(missedDays.value, 7, 1, 365);
     const anomalies = await vpsApi.dwhAnomalies(missedDays.value, 50);
     const targetSignatures = anomalies.filter(isMissedTradeSignature).slice(0, 10);
@@ -858,9 +1059,21 @@ async function loadMissedTradesReport() {
     for (const samples of samplesPerSignature) {
       for (const sample of samples) {
         const loweredMessage = sample.message.toLowerCase();
+        if (isStrategyUserDenyMessage(loweredMessage)) {
+          continue;
+        }
         const isMissed =
           loweredMessage.includes('trade rejected') ||
-          loweredMessage.includes('user denied entry') ||
+          loweredMessage.includes('blocking new entry') ||
+          loweredMessage.includes('blocking new trades:') ||
+          loweredMessage.includes('can_long is disabled') ||
+          loweredMessage.includes('time filter active') ||
+          loweredMessage.includes('eth volatility too high') ||
+          loweredMessage.includes('insufficient price momentum') ||
+          loweredMessage.includes('slippage too high') ||
+          loweredMessage.includes('bad slippage') ||
+          loweredMessage.includes('trailing long') ||
+          loweredMessage.includes('trailing short') ||
           loweredMessage.includes('funding rate');
         if (!isMissed) {
           continue;
@@ -871,7 +1084,7 @@ async function loadMissedTradesReport() {
           at: formatDate(sample.event_ts),
           level: sample.level,
           logger: sample.logger,
-          message: sample.message,
+          message: formatMissedTradeMessage(sample.message),
           botId: sample.bot_id,
           pair: extractPair(sample.message),
           ...classifyMissedTradeReason(sample.message),
@@ -929,7 +1142,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto mt-3 p-4 max-w-7xl flex flex-col gap-4">
+  <div class="mx-auto mt-3 p-4 w-[98vw] max-w-[98vw] flex flex-col gap-4">
     <Card>
       <template #title>
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -1458,14 +1671,27 @@ onMounted(async () => {
                 :outlined="!isReasonSelected(item.reasonCode)"
                 @click="toggleReasonFilter(item.reasonCode)"
               />
-              <Tag :value="`Total events: ${parsedMissedTradeEvents.length}`" severity="contrast" />
+              <Button
+                :label="`Total events: ${parsedMissedTradeEvents.length}`"
+                size="small"
+                severity="contrast"
+                outlined
+                @click="selectedReasonFilters = []"
+              />
+              <Button
+                :label="`Trailing-entry misses: ${trailingEntryMissCount} (${trailingEntryMissPct}%)`"
+                size="small"
+                severity="warn"
+                :outlined="!isReasonSelected('trailing_entry')"
+                @click="toggleReasonFilter('trailing_entry')"
+              />
             </div>
 
             <div v-if="!parsedMissedTradeEvents.length" class="text-sm text-surface-400">
               {{ loadingMissedTrades ? 'Loading missed trades...' : 'No missed trade events found.' }}
             </div>
 
-            <div v-else class="overflow-x-auto">
+            <div v-else class="overflow-x-auto w-full">
               <table class="w-full text-sm border-collapse">
                 <thead>
                   <tr class="border-b border-surface-600 text-left">
@@ -1486,7 +1712,10 @@ onMounted(async () => {
                     class="border-b border-surface-700/70 align-top"
                   >
                     <td class="py-2 pe-2 whitespace-nowrap">{{ event.at }}</td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ event.botId }}</td>
+                    <td class="py-2 pe-2 align-top whitespace-nowrap">
+                      <div class="font-medium">{{ getBotVpsName(event.botId) }}</div>
+                      <div class="text-xs text-surface-400">{{ getBotContainerName(event.botId) }} · ID {{ event.botId }}</div>
+                    </td>
                     <td class="py-2 pe-2 whitespace-nowrap">{{ event.pair }}</td>
                     <td class="py-2 pe-2 whitespace-nowrap">{{ event.reasonCode }}</td>
                     <td class="py-2 pe-2 whitespace-nowrap">{{ event.reason }}</td>
