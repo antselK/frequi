@@ -10,7 +10,6 @@ import type {
   DwhLogCauseSummary,
   DwhLogCumulativePoint,
   DwhTrade,
-  DwhTradeTimeline,
 } from '@/types/vps';
 
 type ReportCategory = 'system' | 'trades';
@@ -91,14 +90,12 @@ interface BotDisplayMeta {
 }
 
 type TrailingSide = 'long' | 'short' | 'unknown';
-type TrailingMatchMode = 'matched' | 'unmatched' | 'all';
 
 interface TrailingTriggerEvent {
   eventTs: string;
   at: string;
   botId: number;
   pair: string;
-  eventKind: 'trailing_status' | 'trigger_confirmation';
   side: TrailingSide;
   profitPct: number | null;
   offsetPct: number | null;
@@ -110,18 +107,9 @@ interface TrailingTriggerEvent {
   tradeId: number | null;
   enteredAt: string | null;
   enteredTs: string | null;
+  matchSource: 'none' | 'closed_trail' | 'trade_fallback' | 'rpc_hint' | 'trade_only';
   logger: string;
   message: string;
-}
-
-interface TrailTagTradeWithoutLogs {
-  tradeId: number;
-  botId: number;
-  pair: string;
-  side: TrailingSide;
-  openTs: string | null;
-  openAt: string | null;
-  enterTag: string | null;
 }
 
 interface RpcTradeHint {
@@ -189,7 +177,6 @@ const dwhIngestTimeline = ref<IngestTimelinePoint[]>([]);
 const logsCumulativeChartPoints = ref<LogsCumulativeChartPoint[]>([]);
 const missedTradeEvents = ref<ParsedLogEvent[]>([]);
 const trailingTriggerEvents = ref<TrailingTriggerEvent[]>([]);
-const trailTagTradesWithoutLogs = ref<TrailTagTradeWithoutLogs[]>([]);
 const botDisplayById = ref<Map<number, BotDisplayMeta>>(new Map());
 const systemSpikeSummary = ref<DwhLogCauseSummary | null>(null);
 const logsSpikeSummary = ref<DwhLogCauseSummary | null>(null);
@@ -211,14 +198,13 @@ const missedDays = ref(7);
 const missedFilterBotId = ref<number | null>(null);
 const missedFilterPair = ref('');
 const selectedReasonFilters = ref<MissedTradeReasonCode[]>([]);
-const trailingDays = ref(1);
+const trailingDays = ref(7);
 const trailingFilterBotId = ref<number | null>(null);
 const trailingFilterTradeId = ref<number | null>(null);
 const trailingFilterPair = ref('');
 const trailingFilterVps = ref('');
 const trailingFilterContainer = ref('');
 const trailingFilterSide = ref<'all' | TrailingSide>('all');
-const trailingMatchMode = ref<TrailingMatchMode>('matched');
 const loadingSystemTimeline = ref(false);
 const loadingSystemSpikeSummary = ref(false);
 const loadingIngestTimeline = ref(false);
@@ -532,7 +518,6 @@ const filteredTrailingTriggerEvents = computed(() => {
   const pairNeedle = trailingFilterPair.value.trim().toLowerCase();
   const vpsNeedle = trailingFilterVps.value.trim().toLowerCase();
   const containerNeedle = trailingFilterContainer.value.trim().toLowerCase();
-  const matchMode = trailingMatchMode.value;
   const botFilter = Number(trailingFilterBotId.value);
   const tradeFilter = Number(trailingFilterTradeId.value);
   const botFilterEnabled = Number.isFinite(botFilter) && botFilter > 0;
@@ -548,9 +533,7 @@ const filteredTrailingTriggerEvents = computed(() => {
     const vpsMatches = !vpsNeedle || vpsName.includes(vpsNeedle);
     const containerMatches = !containerNeedle || containerName.includes(containerNeedle);
     const sideMatches = sideFilter === 'all' || event.side === sideFilter;
-    const matchModeMatches =
-      matchMode === 'all' || (matchMode === 'matched' ? event.tradeId !== null : event.tradeId === null);
-    return botMatches && tradeMatches && pairMatches && vpsMatches && containerMatches && sideMatches && matchModeMatches;
+    return botMatches && tradeMatches && pairMatches && vpsMatches && containerMatches && sideMatches;
   });
 });
 
@@ -587,29 +570,6 @@ const trailingAvgDurationMinutes = computed(() => {
   }
   const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
   return `${avg.toFixed(1)} min`;
-});
-
-const filteredTrailTagTradesWithoutLogs = computed(() => {
-  const pairNeedle = trailingFilterPair.value.trim().toLowerCase();
-  const vpsNeedle = trailingFilterVps.value.trim().toLowerCase();
-  const containerNeedle = trailingFilterContainer.value.trim().toLowerCase();
-  const sideFilter = trailingFilterSide.value;
-  const botFilter = Number(trailingFilterBotId.value);
-  const tradeFilter = Number(trailingFilterTradeId.value);
-  const botFilterEnabled = Number.isFinite(botFilter) && botFilter > 0;
-  const tradeFilterEnabled = Number.isFinite(tradeFilter) && tradeFilter > 0;
-
-  return trailTagTradesWithoutLogs.value.filter((trade) => {
-    const botMatches = !botFilterEnabled || trade.botId === botFilter;
-    const tradeMatches = !tradeFilterEnabled || trade.tradeId === tradeFilter;
-    const pairMatches = !pairNeedle || trade.pair.toLowerCase().includes(pairNeedle);
-    const vpsName = getBotVpsName(trade.botId).toLowerCase();
-    const containerName = getBotContainerName(trade.botId).toLowerCase();
-    const vpsMatches = !vpsNeedle || vpsName.includes(vpsNeedle);
-    const containerMatches = !containerNeedle || containerName.includes(containerNeedle);
-    const sideMatches = sideFilter === 'all' || trade.side === sideFilter;
-    return botMatches && tradeMatches && pairMatches && vpsMatches && containerMatches && sideMatches;
-  });
 });
 
 const trailingProfitBuckets = computed(() => {
@@ -1045,14 +1005,6 @@ function extractTrailingSide(message: string): TrailingSide {
   return 'unknown';
 }
 
-function classifyTrailingEventKind(message: string): 'trailing_status' | 'trigger_confirmation' {
-  const loweredMessage = message.toLowerCase();
-  if (loweredMessage.includes('triggering short') || loweredMessage.includes('triggering long') || loweredMessage.includes('price ok for')) {
-    return 'trigger_confirmation';
-  }
-  return 'trailing_status';
-}
-
 function extractPairFlexible(message: string): string {
   const directPair = extractPair(message);
   if (directPair !== 'n/a') {
@@ -1071,6 +1023,14 @@ function normalizePairForMatch(pair: string | null | undefined): string {
 
 function simplifyPairForMatch(pair: string | null | undefined): string {
   return normalizePairForMatch(pair).split(':')[0] ?? '';
+}
+
+function isTrailEnterTag(value: string | null | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.endsWith('_trail') || normalized.includes('_trail_') || normalized.includes('trail');
 }
 
 function parseTradeIdFromMessage(message: string): number | null {
@@ -1179,6 +1139,7 @@ function matchTrailingEventRpcTradeHint(event: TrailingTriggerEvent, rpcHints: R
     tradeId: bestHint.tradeId,
     enteredTs: bestHint.eventTs,
     enteredAt: formatDate(bestHint.eventTs),
+    matchSource: 'rpc_hint',
   };
 }
 
@@ -1213,29 +1174,47 @@ function pickClosestTradeByTime(eventTs: string, trades: DwhTrade[]): DwhTrade |
     return null;
   }
 
-  let best: DwhTrade | null = null;
-  let bestScore = Number.POSITIVE_INFINITY;
-  for (const trade of trades) {
-    if (!trade.open_date) {
-      continue;
-    }
-    const tradeTime = new Date(trade.open_date).getTime();
-    if (!Number.isFinite(tradeTime)) {
-      continue;
-    }
+  const futureCandidates = trades
+    .filter((trade) => {
+      if (!trade.open_date) {
+        return false;
+      }
+      const tradeTime = new Date(trade.open_date).getTime();
+      if (!Number.isFinite(tradeTime)) {
+        return false;
+      }
+      const deltaMs = tradeTime - eventTime;
+      return deltaMs >= 0 && deltaMs <= 12 * 60 * 60 * 1000;
+    })
+    .sort((a, b) => {
+      const aTs = a.open_date ? new Date(a.open_date).getTime() : Number.POSITIVE_INFINITY;
+      const bTs = b.open_date ? new Date(b.open_date).getTime() : Number.POSITIVE_INFINITY;
+      return aTs - bTs;
+    });
 
-    const deltaMs = tradeTime - eventTime;
-    if (deltaMs < -5 * 60 * 1000 || deltaMs > 45 * 60 * 1000) {
-      continue;
-    }
-
-    const score = Math.abs(deltaMs) + (deltaMs < 0 ? 5_000 : 0);
-    if (score < bestScore) {
-      bestScore = score;
-      best = trade;
-    }
+  if (futureCandidates.length) {
+    return futureCandidates[0] ?? null;
   }
-  return best;
+
+  const recentPastCandidates = trades
+    .filter((trade) => {
+      if (!trade.open_date) {
+        return false;
+      }
+      const tradeTime = new Date(trade.open_date).getTime();
+      if (!Number.isFinite(tradeTime)) {
+        return false;
+      }
+      const deltaMs = tradeTime - eventTime;
+      return deltaMs < 0 && deltaMs >= -10 * 60 * 1000;
+    })
+    .sort((a, b) => {
+      const aTs = a.open_date ? new Date(a.open_date).getTime() : 0;
+      const bTs = b.open_date ? new Date(b.open_date).getTime() : 0;
+      return bTs - aTs;
+    });
+
+  return recentPastCandidates[0] ?? null;
 }
 
 function matchTrailingEventTrade(event: TrailingTriggerEvent, tradeIndex: Map<string, DwhTrade[]>): TrailingTriggerEvent {
@@ -1257,6 +1236,7 @@ function matchTrailingEventTrade(event: TrailingTriggerEvent, tradeIndex: Map<st
       tradeId: null,
       enteredAt: null,
       enteredTs: null,
+      matchSource: 'none',
     };
   }
 
@@ -1265,6 +1245,7 @@ function matchTrailingEventTrade(event: TrailingTriggerEvent, tradeIndex: Map<st
     tradeId: matchedTrade.source_trade_id,
     enteredTs: matchedTrade.open_date,
     enteredAt: matchedTrade.open_date ? formatDate(matchedTrade.open_date) : null,
+    matchSource: 'trade_fallback',
   };
 }
 
@@ -1278,7 +1259,6 @@ async function loadTrailingTrades(days: number): Promise<DwhTrade[]> {
   while (offset < total && collected.length < maxRows) {
     const page = await vpsApi.dwhTrades({
       days,
-      entry_reason: 'trail',
       limit: pageSize,
       offset,
     });
@@ -1293,12 +1273,7 @@ async function loadTrailingTrades(days: number): Promise<DwhTrade[]> {
     }
   }
 
-  return collected.filter((trade) => hasStrictTrailEnterTag(trade.enter_tag));
-}
-
-function hasStrictTrailEnterTag(enterTag: string | null | undefined): boolean {
-  const normalized = (enterTag ?? '').trim().toLowerCase();
-  return normalized.endsWith('_trail');
+  return collected;
 }
 
 function isTrailingBenefitSignature(item: DwhAnomaly): boolean {
@@ -1308,7 +1283,7 @@ function isTrailingBenefitSignature(item: DwhAnomaly): boolean {
     text.includes('trailing short') ||
     text.includes('triggering long') ||
     text.includes('triggering short') ||
-    text.includes('price ok for')
+    text.includes('price ok')
   );
 }
 
@@ -1325,19 +1300,6 @@ function isTrailingTriggerMessage(loweredMessage: string): boolean {
   );
 }
 
-function parseTrailingProfitPct(message: string): number | null {
-  const labeled = parseLabeledNumber(message, 'Profit');
-  if (labeled !== null) {
-    return labeled;
-  }
-  const triggerStyle = message.match(/\((-?\d+(?:\.\d+)?)\s*%\)/);
-  if (!triggerStyle) {
-    return null;
-  }
-  const parsed = Number(triggerStyle[1]);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function parseTrailingTriggerEvent(sample: {
   event_ts: string;
   bot_id: number;
@@ -1349,9 +1311,8 @@ function parseTrailingTriggerEvent(sample: {
     at: formatDate(sample.event_ts),
     botId: sample.bot_id,
     pair: extractPairFlexible(sample.message),
-    eventKind: classifyTrailingEventKind(sample.message),
     side: extractTrailingSide(sample.message),
-    profitPct: parseTrailingProfitPct(sample.message),
+    profitPct: parseLabeledNumber(sample.message, 'Profit'),
     offsetPct: parseLabeledNumber(sample.message, 'Offset'),
     durationMinutes: parseDurationMinutes(sample.message),
     startValue: parseLabeledNumber(sample.message, 'Start'),
@@ -1361,88 +1322,36 @@ function parseTrailingTriggerEvent(sample: {
     tradeId: null,
     enteredAt: null,
     enteredTs: null,
+    matchSource: 'none',
     logger: sample.logger,
     message: sample.message,
   };
 }
 
-function loggerFromTimelineTitle(title: string): string {
-  const parts = title.trim().split(/\s+/);
-  if (parts.length <= 1) {
-    return title;
-  }
-  return parts.slice(1).join(' ');
-}
-
-function parseTrailingTimelineEvent(trade: DwhTrade, timeline: DwhTradeTimeline, item: { ts: string; kind: 'order' | 'log'; title: string; details: string | null; }): TrailingTriggerEvent | null {
-  if (item.kind !== 'log' || !item.details) {
-    return null;
-  }
-  const message = item.details;
-  const loweredMessage = message.toLowerCase();
-  if (!isTrailingTriggerMessage(loweredMessage)) {
-    return null;
-  }
-
-  const pairFromMessage = extractPairFlexible(message);
-  const pair = pairFromMessage === 'n/a' ? trade.pair ?? 'n/a' : pairFromMessage;
-  const sideFromMessage = extractTrailingSide(message);
-  const sideFromTrade: TrailingSide = trade.is_short === true ? 'short' : trade.is_short === false ? 'long' : 'unknown';
-
+function buildSyntheticTrailingEventFromTrade(trade: DwhTrade): TrailingTriggerEvent {
+  const ts = trade.open_date ?? trade.close_date ?? new Date().toISOString();
+  const pair = trade.pair ?? 'n/a';
+  const side: TrailingSide = trade.is_short === true ? 'short' : trade.is_short === false ? 'long' : 'unknown';
   return {
-    eventTs: item.ts,
-    at: formatDate(item.ts),
+    eventTs: ts,
+    at: formatDate(ts),
     botId: trade.bot_id,
     pair,
-    eventKind: classifyTrailingEventKind(message),
-    side: sideFromMessage === 'unknown' ? sideFromTrade : sideFromMessage,
-    profitPct: parseTrailingProfitPct(message),
-    offsetPct: parseLabeledNumber(message, 'Offset'),
-    durationMinutes: parseDurationMinutes(message),
-    startValue: parseLabeledNumber(message, 'Start'),
-    currentValue: parseLabeledNumber(message, 'Current'),
-    lowLimitValue: parseLabeledNumber(message, 'Lowlimit'),
-    upLimitValue: parseLabeledNumber(message, 'Uplimit'),
+    side,
+    profitPct: null,
+    offsetPct: null,
+    durationMinutes: null,
+    startValue: trade.open_rate,
+    currentValue: trade.close_rate,
+    lowLimitValue: null,
+    upLimitValue: null,
     tradeId: trade.source_trade_id,
     enteredAt: trade.open_date ? formatDate(trade.open_date) : null,
     enteredTs: trade.open_date,
-    logger: loggerFromTimelineTitle(item.title),
-    message,
+    matchSource: 'trade_only',
+    logger: 'dwh_trades',
+    message: `No trailing log sample found. Inferred from closed _trail trade (${trade.enter_tag ?? 'trail'}).`,
   };
-}
-
-async function loadTrailingTimelineEvents(trailingTrades: DwhTrade[]): Promise<TrailingTriggerEvent[]> {
-  if (!trailingTrades.length) {
-    return [];
-  }
-
-  const limitedTrades = trailingTrades.slice(0, 80);
-  const timelineResults = await Promise.all(
-    limitedTrades.map(async (trade) => {
-      try {
-        return await vpsApi.dwhTradeTimeline(trade.id, 400);
-      } catch {
-        return null;
-      }
-    }),
-  );
-
-  const events: TrailingTriggerEvent[] = [];
-  for (let index = 0; index < limitedTrades.length; index += 1) {
-    const trade = limitedTrades[index];
-    const timeline = timelineResults[index];
-    if (!trade || !timeline) {
-      continue;
-    }
-    for (const item of timeline.items) {
-      const parsed = parseTrailingTimelineEvent(trade, timeline, item);
-      if (parsed) {
-        events.push(parsed);
-      }
-    }
-  }
-
-  return events;
 }
 
 function isStrategyUserDenyMessage(loweredMessage: string): boolean {
@@ -1743,40 +1652,6 @@ function clearTrailingBenefitFilters() {
   trailingFilterVps.value = '';
   trailingFilterContainer.value = '';
   trailingFilterSide.value = 'all';
-  trailingMatchMode.value = 'matched';
-}
-
-function buildTrailTagTradesWithoutLogs(trailingTrades: DwhTrade[], events: TrailingTriggerEvent[]): TrailTagTradeWithoutLogs[] {
-  const matchedTradeKeys = new Set(
-    events
-      .filter((event) => event.tradeId !== null)
-      .map((event) => `${event.botId}|${event.tradeId}|${simplifyPairForMatch(event.pair)}`),
-  );
-
-  return trailingTrades
-    .filter((trade) => {
-      const key = `${trade.bot_id}|${trade.source_trade_id}|${simplifyPairForMatch(trade.pair)}`;
-      return !matchedTradeKeys.has(key);
-    })
-    .map((trade) => ({
-      tradeId: trade.source_trade_id,
-      botId: trade.bot_id,
-      pair: trade.pair ?? 'n/a',
-      side: trade.is_short === true ? 'short' : trade.is_short === false ? 'long' : 'unknown',
-      openTs: trade.open_date,
-      openAt: trade.open_date ? formatDate(trade.open_date) : null,
-      enterTag: trade.enter_tag,
-    }))
-    .sort((a, b) => {
-      const aTs = a.openTs ? new Date(a.openTs).getTime() : 0;
-      const bTs = b.openTs ? new Date(b.openTs).getTime() : 0;
-      return bTs - aTs;
-    });
-}
-
-async function refreshTrailingBenefitReport() {
-  trailingMatchMode.value = 'matched';
-  await loadTrailingBenefitReport();
 }
 
 async function loadTrailingBenefitReport() {
@@ -1785,17 +1660,8 @@ async function loadTrailingBenefitReport() {
   try {
     await ensureBotDisplayMapLoaded();
     trailingDays.value = normalizeIntInput(trailingDays.value, 7, 1, 365);
-    const anomalies = await vpsApi.dwhAnomalies(trailingDays.value, 500);
-    const trailingCandidates = anomalies.filter(isTrailingBenefitSignature);
-    const priceOkCandidates = anomalies.filter((item) => {
-      const text = `${item.signature} ${item.logger}`.toLowerCase();
-      return text.includes('price ok for') || text.includes('triggering short') || text.includes('triggering long');
-    });
-    const signatureByHash = new Map<string, DwhAnomaly>();
-    for (const item of [...priceOkCandidates.slice(0, 120), ...trailingCandidates.slice(0, 120)]) {
-      signatureByHash.set(item.signature_hash, item);
-    }
-    const targetSignatures = Array.from(signatureByHash.values());
+    const anomalies = await vpsApi.dwhAnomalies(trailingDays.value, 300);
+    const targetSignatures = anomalies.filter(isTrailingBenefitSignature).slice(0, 80);
 
     if (!targetSignatures.length) {
       trailingTriggerEvents.value = [];
@@ -1807,8 +1673,9 @@ async function loadTrailingBenefitReport() {
       targetSignatures.map((item) => vpsApi.dwhAnomalySamples(item.signature_hash, 40)),
     );
     const trailingTrades = await loadTrailingTrades(trailingDays.value);
+    const closedTrailTrades = trailingTrades.filter((trade) => !trade.is_open && isTrailEnterTag(trade.enter_tag));
+    const closedTrailTradeIndex = indexTradesByBotPair(closedTrailTrades);
     const tradeIndex = indexTradesByBotPair(trailingTrades);
-    const timelineEvents = await loadTrailingTimelineEvents(trailingTrades);
     const [rpcHintsFromTrailing, rpcHintsFromRpcLogs] = await Promise.all([
       Promise.resolve(buildRpcTradeHints(samplesPerSignature)),
       loadRpcTradeHints(trailingDays.value),
@@ -1822,31 +1689,46 @@ async function loadTrailingBenefitReport() {
         if (!isTrailingTriggerMessage(loweredMessage)) {
           continue;
         }
-        const matchedTradeEvent = matchTrailingEventTrade(parseTrailingTriggerEvent(sample), tradeIndex);
-        const event = matchedTradeEvent.tradeId === null
-          ? matchTrailingEventRpcTradeHint(matchedTradeEvent, rpcTradeHints)
-          : matchedTradeEvent;
+        const parsedEvent = parseTrailingTriggerEvent(sample);
+        const closedTrailMatchedRaw = matchTrailingEventTrade(parsedEvent, closedTrailTradeIndex);
+        const closedTrailMatched =
+          closedTrailMatchedRaw.tradeId === null
+            ? closedTrailMatchedRaw
+            : { ...closedTrailMatchedRaw, matchSource: 'closed_trail' as const };
+        const broadTradeMatched =
+          closedTrailMatched.tradeId === null ? matchTrailingEventTrade(closedTrailMatched, tradeIndex) : closedTrailMatched;
+        const event =
+          broadTradeMatched.tradeId === null
+            ? matchTrailingEventRpcTradeHint(broadTradeMatched, rpcTradeHints)
+            : broadTradeMatched;
         dedupe.set(`${sample.event_ts}|${sample.logger}|${sample.message}`, event);
       }
     }
 
-    for (const event of timelineEvents) {
-      const key = `${event.eventTs}|${event.logger}|${event.message}`;
-      if (!dedupe.has(key)) {
-        dedupe.set(key, event);
+    const matchedTradeKeys = new Set<string>();
+    for (const event of dedupe.values()) {
+      if (event.tradeId !== null) {
+        matchedTradeKeys.add(`${event.botId}|${event.tradeId}`);
       }
     }
 
-    const finalEvents = Array.from(dedupe.values()).sort(
+    for (const trade of closedTrailTrades) {
+      const key = `${trade.bot_id}|${trade.source_trade_id}`;
+      if (matchedTradeKeys.has(key)) {
+        continue;
+      }
+      const syntheticEvent = buildSyntheticTrailingEventFromTrade(trade);
+      dedupe.set(`trade-only|${trade.bot_id}|${trade.source_trade_id}|${trade.open_date ?? ''}`, syntheticEvent);
+      matchedTradeKeys.add(key);
+    }
+
+    trailingTriggerEvents.value = Array.from(dedupe.values()).sort(
       (a, b) => new Date(b.eventTs).getTime() - new Date(a.eventTs).getTime(),
     );
-    trailingTriggerEvents.value = finalEvents;
-    trailTagTradesWithoutLogs.value = buildTrailTagTradesWithoutLogs(trailingTrades, finalEvents);
     trailingLoaded.value = true;
   } catch (error) {
     reportsError.value = String(error);
     trailingTriggerEvents.value = [];
-    trailTagTradesWithoutLogs.value = [];
   } finally {
     loadingTrailingBenefit.value = false;
   }
@@ -2519,18 +2401,6 @@ onMounted(async () => {
                   size="small"
                   class="w-32"
                 />
-                <Select
-                  v-model="trailingMatchMode"
-                  :options="[
-                    { label: 'Matched', value: 'matched' },
-                    { label: 'Unmatched', value: 'unmatched' },
-                    { label: 'All rows', value: 'all' },
-                  ]"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
-                  class="w-36"
-                />
                 <Button
                   label="Clear"
                   size="small"
@@ -2544,17 +2414,13 @@ onMounted(async () => {
                   severity="secondary"
                   outlined
                   :loading="loadingTrailingBenefit"
-                  @click="refreshTrailingBenefitReport"
+                  @click="loadTrailingBenefitReport"
                 />
               </div>
             </div>
 
             <div class="flex flex-wrap gap-2">
               <Tag :value="`Triggers: ${trailingTriggerCount}`" severity="contrast" />
-              <Tag
-                :value="`Trail-tag trades with no trailing logs: ${filteredTrailTagTradesWithoutLogs.length}`"
-                severity="secondary"
-              />
               <Tag :value="`Avg trigger profit: ${trailingAvgProfitPct}`" severity="warn" />
               <Tag :value="`Positive profit share: ${trailingPositiveShare}`" severity="warn" />
               <Tag :value="`Avg trailing duration: ${trailingAvgDurationMinutes}`" severity="warn" />
@@ -2576,56 +2442,18 @@ onMounted(async () => {
               {{ loadingTrailingBenefit ? 'Loading trailing trigger events...' : 'No trailing trigger events found for current filters.' }}
             </div>
 
-            <div
-              v-if="filteredTrailTagTradesWithoutLogs.length"
-              class="rounded border border-surface-700 bg-surface-900/40 p-3 space-y-2"
-            >
-              <div class="text-sm font-medium">Info: trail-tag trades without captured trailing logs</div>
-              <p class="text-xs text-surface-400">
-                These trades have `enter_tag` ending with `_trail`, but no `Trailing ...` / `Price OK ... triggering ...` logs were captured in DWH for the selected window and filters.
-              </p>
-              <div class="overflow-x-auto">
-                <table class="w-full text-xs border-collapse">
-                  <thead>
-                    <tr class="border-b border-surface-700 text-left">
-                      <th class="py-1 pe-2">Trade ID</th>
-                      <th class="py-1 pe-2">Open at</th>
-                      <th class="py-1 pe-2">Bot</th>
-                      <th class="py-1 pe-2">Pair</th>
-                      <th class="py-1 pe-2">Side</th>
-                      <th class="py-1">Entry tag</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="(trade, idx) in filteredTrailTagTradesWithoutLogs.slice(0, 20)"
-                      :key="`missing-trail-${trade.botId}-${trade.tradeId}-${idx}`"
-                      class="border-b border-surface-800/80"
-                    >
-                      <td class="py-1 pe-2 whitespace-nowrap">{{ trade.tradeId }}</td>
-                      <td class="py-1 pe-2 whitespace-nowrap">{{ trade.openAt ?? '—' }}</td>
-                      <td class="py-1 pe-2 whitespace-nowrap">{{ getBotContainerName(trade.botId) }} · ID {{ trade.botId }}</td>
-                      <td class="py-1 pe-2 whitespace-nowrap">{{ trade.pair }}</td>
-                      <td class="py-1 pe-2 whitespace-nowrap">{{ trade.side }}</td>
-                      <td class="py-1 whitespace-nowrap">{{ trade.enterTag ?? '—' }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
             <div v-else class="overflow-x-auto w-full">
               <table class="w-full text-sm border-collapse">
                 <thead>
                   <tr class="border-b border-surface-600 text-left">
                     <th class="py-2 pe-2">Trade ID</th>
-                    <th class="py-2 pe-2">Event</th>
+                    <th class="py-2 pe-2">Match source</th>
                     <th class="py-2 pe-2">Triggered at</th>
                     <th class="py-2 pe-2">Entered at</th>
                     <th class="py-2 pe-2">Bot</th>
                     <th class="py-2 pe-2">Pair</th>
                     <th class="py-2 pe-2">Side</th>
-                    <th class="py-2 pe-2">Profit %</th>
+                    <th class="py-2 pe-2">Trailing Profit %</th>
                     <th class="py-2 pe-2">Offset %</th>
                     <th class="py-2 pe-2">Duration (min)</th>
                     <th class="py-2 pe-2">Start</th>
@@ -2643,7 +2471,7 @@ onMounted(async () => {
                     class="border-b border-surface-700/70 align-top"
                   >
                     <td class="py-2 pe-2 whitespace-nowrap">{{ event.tradeId ?? '—' }}</td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ event.eventKind === 'trigger_confirmation' ? 'Trigger OK' : 'Trailing' }}</td>
+                    <td class="py-2 pe-2 whitespace-nowrap">{{ event.matchSource }}</td>
                     <td class="py-2 pe-2 whitespace-nowrap">{{ event.at }}</td>
                     <td class="py-2 pe-2 whitespace-nowrap">{{ event.enteredAt ?? '—' }}</td>
                     <td class="py-2 pe-2 align-top whitespace-nowrap">
