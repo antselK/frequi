@@ -174,6 +174,7 @@ declare global {
   const throttledWatch: typeof import('@vueuse/core').throttledWatch
   const timeformat: typeof import('./utils/formatters/timeformat').default
   const timestampHour: typeof import('./utils/formatters/timeformat').timestampHour
+  const timestampShort: typeof import('./utils/formatters/timeformat').timestampShort
   const timestampToDateString: typeof import('./utils/formatters/timeformat').timestampToDateString
   const timestampToTimeRangeString: typeof import('./utils/formatters/timeformat').timestampToTimeRangeString
   const timestampms: typeof import('./utils/formatters/timeformat').timestampms
@@ -591,6 +592,7 @@ declare module 'vue' {
     readonly throttledWatch: UnwrapRef<typeof import('@vueuse/core')['throttledWatch']>
     readonly timeformat: UnwrapRef<typeof import('./utils/formatters/timeformat')['default']>
     readonly timestampHour: UnwrapRef<typeof import('./utils/formatters/timeformat')['timestampHour']>
+    readonly timestampShort: UnwrapRef<typeof import('./utils/formatters/timeformat')['timestampShort']>
     readonly timestampToDateString: UnwrapRef<typeof import('./utils/formatters/timeformat')['timestampToDateString']>
     readonly timestampToTimeRangeString: UnwrapRef<typeof import('./utils/formatters/timeformat')['timestampToTimeRangeString']>
     readonly timestampms: UnwrapRef<typeof import('./utils/formatters/timeformat')['timestampms']>

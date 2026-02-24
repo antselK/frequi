@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
+import { timestampmsOrNa } from '@/utils/formatters/timeformat';
 import { vpsApi } from '@/composables/vpsApi';
 import type {
   DwhAlertConfig,
@@ -37,8 +38,10 @@ const ingestionConfig = ref<DwhIngestionConfig | null>(null);
 const ingestionTimeoutSeconds = ref(20);
 const ingestionConfigSaving = ref(false);
 const runHistory = ref<DwhIngestionRun[]>([]);
+const runHistoryDays = ref(3);
 const expandedRunId = ref<number | null>(null);
 const showFailedOnly = ref(false);
+const flushingRuns = ref(false);
 const runAnomalies = ref<Record<number, DwhRunAnomaly[]>>({});
 const loadingRunAnomalies = ref<Record<number, boolean>>({});
 const retentionConfig = ref<DwhRetentionConfig | null>(null);
@@ -191,7 +194,9 @@ async function loadIngestionConfig() {
 }
 
 async function loadRunHistory() {
-  const history = await vpsApi.dwhIngestionRuns(20);
+  const normalizedDays = normalizeIntInput(runHistoryDays.value, 3, 0, 3650);
+  runHistoryDays.value = normalizedDays;
+  const history = await vpsApi.dwhIngestionRuns(100, normalizedDays);
   runHistory.value = history;
 
   if (!history.length) {
@@ -205,6 +210,20 @@ async function loadRunHistory() {
 
   const newestFailed = history.find((run) => run.status === 'failed');
   expandedRunId.value = newestFailed ? newestFailed.id : null;
+}
+
+async function flushIngestionRuns() {
+  flushingRuns.value = true;
+  errorText.value = '';
+  try {
+    const result = await vpsApi.flushDwhIngestionRuns();
+    unstickMessage.value = `Flushed ${result.deleted_runs} ingestion run(s).`;
+    await loadRunHistory();
+  } catch (error) {
+    errorText.value = String(error);
+  } finally {
+    flushingRuns.value = false;
+  }
 }
 
 async function loadRetentionConfig() {
@@ -462,7 +481,7 @@ function formatDate(value: string | null): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toLocaleString();
+  return timestampmsOrNa(date);
 }
 
 function formatRatio(value: number | null): string {
@@ -1122,12 +1141,36 @@ onBeforeUnmount(() => {
         </div>
 
         <section class="rounded border border-surface-700 p-4">
-          <div class="flex items-center justify-between gap-3 mb-2">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
             <h3 class="font-semibold">Recent Ingestion Runs</h3>
-            <label class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap">
-              <input v-model="showFailedOnly" type="checkbox" class="accent-primary" />
-              Show failed only
-            </label>
+            <div class="flex flex-wrap items-center gap-2">
+              <label class="text-sm text-surface-300">Days</label>
+              <input
+                v-model.number="runHistoryDays"
+                type="number"
+                min="0"
+                max="3650"
+                class="w-20 px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+                placeholder="0=all"
+              />
+              <button
+                class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
+                @click="loadRunHistory"
+              >
+                Apply
+              </button>
+              <label class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap ms-2">
+                <input v-model="showFailedOnly" type="checkbox" class="accent-primary" />
+                Failed only
+              </label>
+              <button
+                class="px-3 py-1 rounded border border-red-700 text-red-300 text-sm hover:bg-red-950/30 disabled:opacity-50 ms-2"
+                :disabled="flushingRuns"
+                @click="flushIngestionRuns"
+              >
+                {{ flushingRuns ? 'Flushing...' : 'Flush All Runs' }}
+              </button>
+            </div>
           </div>
           <div v-if="!visibleRunHistory.length" class="text-sm text-surface-400">No runs to display.</div>
           <div v-else class="overflow-x-auto">

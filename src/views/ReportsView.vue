@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 
+import { timestampms, timestampShort } from '@/utils/formatters/timeformat';
 import { vpsApi } from '@/composables/vpsApi';
 import type {
   DwhAnomaly,
@@ -25,6 +26,8 @@ type MissedTradeReasonCode =
   | 'price_momentum'
   | 'slippage'
   | 'trailing_entry'
+  | 'insufficient_data'
+  | 'entry_error'
   | 'trade_rejected'
   | 'other';
 
@@ -154,8 +157,10 @@ const MISSED_TRADE_REASON_LABELS: Record<MissedTradeReasonCode, string> = {
   price_momentum: 'Insufficient momentum',
   slippage: 'Slippage block',
   trailing_entry: 'Trailing entry conditions',
+  insufficient_data: 'Insufficient data',
+  entry_error: 'Entry error',
   trade_rejected: 'Trade rejected',
-  other: 'Other',
+  other: 'Unclassified',
 };
 
 const categoryOptions: { value: ReportCategory; label: string }[] = [
@@ -202,12 +207,14 @@ const missedTradeEvents = ref<ParsedLogEvent[]>([]);
 const botDisplayById = ref<Map<number, BotDisplayMeta>>(new Map());
 const systemSpikeSummary = ref<DwhLogCauseSummary | null>(null);
 const logsSpikeSummary = ref<DwhLogCauseSummary | null>(null);
-const systemDays = ref(7);
+const systemDateFrom = ref(todayStr());
+const systemDateTo = ref(todayStr());
 const systemSpikeFromLocal = ref('');
 const systemSpikeToLocal = ref('');
 const systemSpikeLevels = ref('ERROR,WARNING');
 const systemSpikeLimit = ref(20);
-const logsDays = ref(7);
+const logsDateFrom = ref(todayStr());
+const logsDateTo = ref(todayStr());
 const logsSpikeFromLocal = ref('');
 const logsSpikeToLocal = ref('');
 const logsSpikeLevels = ref('INFO,WARNING,ERROR');
@@ -216,11 +223,27 @@ const logsFilterBotId = ref<number | null>(null);
 const logsFilterLogger = ref('');
 const logsFilterLevel = ref('');
 const logsChartMode = ref<LogsChartMode>('cumulative');
-const missedDays = ref(7);
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+function daysAgoStr(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+function dateFromToDays(dateFrom: string): number {
+  const from = new Date(dateFrom + 'T00:00:00');
+  const diffMs = Date.now() - from.getTime();
+  return Math.max(1, Math.ceil(diffMs / 86400000));
+}
+const missedDateFrom = ref(todayStr());
+const missedDateTo = ref(todayStr());
 const missedFilterBotId = ref<number | null>(null);
 const missedFilterPair = ref('');
+const missedFilterVps = ref('');
 const selectedReasonFilters = ref<MissedTradeReasonCode[]>([]);
-const trailingDays = ref(7);
+const trailingDateFrom = ref(todayStr());
+const trailingDateTo = ref(todayStr());
 const trailingFilterBotId = ref<number | null>(null);
 const trailingFilterTradeId = ref<number | null>(null);
 const trailingFilterPair = ref('');
@@ -356,7 +379,7 @@ const systemChartXTicks = computed(() => {
       const date = new Date(systemErrorTimelinePoints.value[index]?.ts ?? '');
       const label = Number.isNaN(date.getTime())
         ? point?.at ?? ''
-        : date.toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        : timestampShort(date);
       return { x: point?.x ?? 0, label };
     });
 });
@@ -470,7 +493,7 @@ const logsChartXTicks = computed(() => {
       const date = new Date(logsCumulativeChartPoints.value[index]?.ts ?? '');
       const label = Number.isNaN(date.getTime())
         ? point?.at ?? ''
-        : date.toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        : timestampShort(date);
       return { x: point?.x ?? 0, label };
     });
 });
@@ -490,13 +513,15 @@ const logsChartAreaPolyline = computed(() => {
 
 const filteredMissedTradeEventsByBotPair = computed(() => {
   const pairNeedle = missedFilterPair.value.trim().toLowerCase();
+  const vpsNeedle = missedFilterVps.value.trim().toLowerCase();
   const botFilter = Number(missedFilterBotId.value);
   const botFilterEnabled = Number.isFinite(botFilter) && botFilter > 0;
 
   return missedTradeEvents.value.filter((event) => {
     const botMatches = !botFilterEnabled || event.botId === botFilter;
     const pairMatches = !pairNeedle || event.pair.toLowerCase().includes(pairNeedle);
-    return botMatches && pairMatches;
+    const vpsMatches = !vpsNeedle || getBotVpsName(event.botId).toLowerCase().includes(vpsNeedle);
+    return botMatches && pairMatches && vpsMatches;
   });
 });
 
@@ -679,7 +704,7 @@ function formatDate(value: string): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toLocaleString();
+  return timestampms(date);
 }
 
 function toLocalDateTimeInput(value: string): string {
@@ -877,6 +902,12 @@ function classifyMissedTradeReason(message: string): {
     loweredMessage.includes('start trailing short') ||
     loweredMessage.includes('stop trailing long') ||
     loweredMessage.includes('stop trailing short') ||
+    loweredMessage.includes('update trailing long') ||
+    loweredMessage.includes('update trailing short') ||
+    loweredMessage.includes('trailing long for') ||
+    loweredMessage.includes('trailing short for') ||
+    loweredMessage.includes('triggering long') ||
+    loweredMessage.includes('triggering short') ||
     loweredMessage.includes('price too high') ||
     loweredMessage.includes('price too low') ||
     loweredMessage.includes('offset returned none')
@@ -910,6 +941,18 @@ function classifyMissedTradeReason(message: string): {
       reason: MISSED_TRADE_REASON_LABELS.funding_rate_guard,
     };
   }
+  if (loweredMessage.includes('insufficient data')) {
+    return {
+      reasonCode: 'insufficient_data',
+      reason: MISSED_TRADE_REASON_LABELS.insufficient_data,
+    };
+  }
+  if (loweredMessage.includes('entry confirmation error') || loweredMessage.includes('confirm_trade_entry error')) {
+    return {
+      reasonCode: 'entry_error',
+      reason: MISSED_TRADE_REASON_LABELS.entry_error,
+    };
+  }
   if (loweredMessage.includes('trade rejected')) {
     return {
       reasonCode: 'trade_rejected',
@@ -936,19 +979,31 @@ function extractDecisionDetails(message: string): string | null {
   }
 
   if (loweredMessage.includes('blocking new entry') || loweredMessage.includes('blocking new trades:')) {
-    return 'New entries blocked because an existing trade reached deep DCA level';
+    const dcaPairMatch = message.match(/:\s*([A-Z0-9]+\/[A-Z0-9]+(?::[A-Z0-9]+)?)\s+has\s+(\d+)\s+DCA.*?total entries:\s*(\d+)/i);
+    if (dcaPairMatch) {
+      return `${dcaPairMatch[1]} has ${dcaPairMatch[2]} DCA (${dcaPairMatch[3]} entries)`;
+    }
+    return 'Existing trade reached deep DCA level';
   }
 
   if (loweredMessage.includes('can_long is disabled')) {
-    return 'Long entries disabled by strategy parameter can_long';
+    return 'Long entries disabled (can_long=false)';
   }
 
   if (loweredMessage.includes('time filter active') || loweredMessage.includes('due to unfavorable time')) {
-    return 'Trade blocked by configured day/time filter window';
+    const timeMatch = message.match(/on\s+(\w+)\s+due to unfavorable time:\s*(\d{2}):?\w*/i);
+    if (timeMatch) {
+      return `${timeMatch[1]} ${timeMatch[2]}:XX UTC`;
+    }
+    return 'Day/time filter window active';
   }
 
   if (loweredMessage.includes('eth volatility too high')) {
-    return 'ETH volatility exceeded configured threshold';
+    const ethMatch = message.match(/(\d+(?:\.\d+)?)%\s*>\s*(\d+(?:\.\d+)?)%\s*\(over\s*(\d+)h\)/i);
+    if (ethMatch) {
+      return `ETH vol ${ethMatch[1]}% > ${ethMatch[2]}% (${ethMatch[3]}h)`;
+    }
+    return 'ETH volatility exceeded threshold';
   }
 
   if (loweredMessage.includes('insufficient price momentum')) {
@@ -967,19 +1022,55 @@ function extractDecisionDetails(message: string): string | null {
     return 'Slippage exceeded configured limit';
   }
 
-  if (
-    loweredMessage.includes('start trailing long') ||
-    loweredMessage.includes('start trailing short') ||
-    loweredMessage.includes('stop trailing long') ||
-    loweredMessage.includes('stop trailing short') ||
-    loweredMessage.includes('offset returned none')
-  ) {
-    return 'Trailing entry flow did not reach entry trigger';
+  if (loweredMessage.includes('start trailing long') || loweredMessage.includes('start trailing short')) {
+    const priceMatch = message.match(/at\s+(\d+(?:\.\d+)?)/);
+    const side = loweredMessage.includes('trailing long') ? 'long' : 'short';
+    return priceMatch ? `Start trailing ${side} @ ${priceMatch[1]}` : `Start trailing ${side}`;
+  }
+  if (loweredMessage.includes('stop trailing long') || loweredMessage.includes('stop trailing short')) {
+    const side = loweredMessage.includes('trailing long') ? 'long' : 'short';
+    if (loweredMessage.includes('offset returned none')) {
+      return `Stop trailing ${side}: offset=None`;
+    }
+    if (loweredMessage.includes('above max stop') || loweredMessage.includes('below max stop')) {
+      return `Stop trailing ${side}: price beyond max stop`;
+    }
+    return `Stop trailing ${side}`;
+  }
+  if (loweredMessage.includes('update trailing long') || loweredMessage.includes('update trailing short')) {
+    const side = loweredMessage.includes('trailing long') ? 'long' : 'short';
+    return `Update trailing ${side} limit`;
+  }
+  if (loweredMessage.includes('triggering long') || loweredMessage.includes('triggering short')) {
+    const side = loweredMessage.includes('triggering long') ? 'long' : 'short';
+    const profitMatch = message.match(/\((-?\d+(?:\.\d+)?)\s*%\)/);
+    return profitMatch ? `Trailing ${side} triggered (${profitMatch[1]}%)` : `Trailing ${side} triggered`;
+  }
+  if (loweredMessage.includes('trailing long for') || loweredMessage.includes('trailing short for')) {
+    const side = loweredMessage.includes('trailing long') ? 'long' : 'short';
+    const profitMatch = message.match(/Profit:\s*(-?\d+(?:\.\d+)?)%/i);
+    return profitMatch ? `Trailing ${side} status (${profitMatch[1]}%)` : `Trailing ${side} status`;
+  }
+  if (loweredMessage.includes('price too high') || loweredMessage.includes('price too low')) {
+    return 'Trailing: price outside entry range';
+  }
+  if (loweredMessage.includes('offset returned none')) {
+    return 'Trailing stopped: offset=None';
   }
 
   const match = message.match(/(-?\d+(?:\.\d+)?)%\s*<\s*(-?\d+(?:\.\d+)?)%/);
   if (match) {
     return `Funding rate ${match[1]}% below limit ${match[2]}%`;
+  }
+
+  if (loweredMessage.includes('insufficient data')) {
+    return 'Not enough candle data for analysis';
+  }
+
+  if (loweredMessage.includes('entry confirmation error') || loweredMessage.includes('confirm_trade_entry error')) {
+    const errMatch = message.match(/error.*?:\s*(.*)$/i);
+    const errMsg = errMatch?.[1]?.trim();
+    return errMsg ? `Error: ${errMsg}` : 'Exception in entry confirmation';
   }
 
   if (loweredMessage.includes('trade rejected')) {
@@ -1497,8 +1588,11 @@ function toggleReasonFilter(reasonCode: MissedTradeReasonCode) {
 }
 
 function clearMissedTradeFilters() {
+  missedDateFrom.value = todayStr();
+  missedDateTo.value = todayStr();
   missedFilterBotId.value = null;
   missedFilterPair.value = '';
+  missedFilterVps.value = '';
   selectedReasonFilters.value = [];
 }
 
@@ -1506,8 +1600,10 @@ async function loadSystemErrorsTimeline() {
   loadingSystemTimeline.value = true;
   reportsError.value = '';
   try {
-    systemDays.value = normalizeIntInput(systemDays.value, 7, 1, 365);
-    const anomalies = await vpsApi.dwhAnomalies(systemDays.value, 30);
+    if (!systemDateFrom.value) systemDateFrom.value = todayStr();
+    if (!systemDateTo.value) systemDateTo.value = todayStr();
+    const systemDaysComputed = dateFromToDays(systemDateFrom.value);
+    const anomalies = await vpsApi.dwhAnomalies(systemDaysComputed, 30);
     const targetAnomalies = anomalies
       .filter((item) => ['error', 'warning'].includes(item.level.toLowerCase()))
       .slice(0, 8);
@@ -1519,7 +1615,7 @@ async function loadSystemErrorsTimeline() {
     }
 
     const trends = await Promise.all(
-      targetAnomalies.map((item) => vpsApi.dwhAnomalyTrend(item.signature_hash, systemDays.value)),
+      targetAnomalies.map((item) => vpsApi.dwhAnomalyTrend(item.signature_hash, systemDaysComputed)),
     );
 
     const bucketMap = new Map<string, number>();
@@ -1598,14 +1694,16 @@ async function loadLogsCumulativeChart() {
   loadingLogsCumulative.value = true;
   reportsError.value = '';
   try {
-    logsDays.value = normalizeIntInput(logsDays.value, 7, 1, 90);
+    if (!logsDateFrom.value) logsDateFrom.value = todayStr();
+    if (!logsDateTo.value) logsDateTo.value = todayStr();
+    const logsDaysComputed = Math.min(dateFromToDays(logsDateFrom.value), 90);
     const normalizedBotId = Number.isFinite(Number(logsFilterBotId.value))
       ? Math.max(0, Math.floor(Number(logsFilterBotId.value)))
       : 0;
     logsFilterBotId.value = normalizedBotId > 0 ? normalizedBotId : null;
 
     const rows: DwhLogCumulativePoint[] = await vpsApi.dwhLogsCumulative({
-      hours: logsDays.value * 24,
+      hours: logsDaysComputed * 24,
       bot_id: normalizedBotId > 0 ? normalizedBotId : undefined,
       logger: logsFilterLogger.value.trim() || undefined,
       level: logsFilterLevel.value.trim().toUpperCase() || undefined,
@@ -1637,26 +1735,51 @@ async function loadLogsCumulativeChart() {
   }
 }
 
+function isMissedTradeMessage(loweredText: string): boolean {
+  if (loweredText.includes('[ok]')) {
+    return false;
+  }
+  // Exclude tick-by-tick trailing debug logs (massive volume, not actionable)
+  if (
+    loweredText.includes('update trailing long') ||
+    loweredText.includes('update trailing short') ||
+    (loweredText.includes('trailing long for') && loweredText.includes('duration:')) ||
+    (loweredText.includes('trailing short for') && loweredText.includes('duration:'))
+  ) {
+    return false;
+  }
+  return (
+    loweredText.includes('trade rejected') ||
+    loweredText.includes('blocking new entry') ||
+    loweredText.includes('blocking new trades:') ||
+    loweredText.includes('can_long is disabled') ||
+    loweredText.includes('time filter active') ||
+    loweredText.includes('due to unfavorable time') ||
+    loweredText.includes('eth volatility too high') ||
+    loweredText.includes('insufficient price momentum') ||
+    loweredText.includes('slippage too high') ||
+    loweredText.includes('bad slippage') ||
+    loweredText.includes('start trailing long') ||
+    loweredText.includes('start trailing short') ||
+    loweredText.includes('stop trailing long') ||
+    loweredText.includes('stop trailing short') ||
+    loweredText.includes('triggering long') ||
+    loweredText.includes('triggering short') ||
+    loweredText.includes('price too high') ||
+    loweredText.includes('price too low') ||
+    loweredText.includes('funding rate') ||
+    loweredText.includes('unfavorable funding') ||
+    loweredText.includes('insufficient data') ||
+    loweredText.includes('entry confirmation error')
+  );
+}
+
 function isMissedTradeSignature(item: DwhAnomaly): boolean {
   const text = `${item.signature} ${item.logger}`.toLowerCase();
   if (isStrategyUserDenyMessage(text)) {
     return false;
   }
-  return (
-    text.includes('trade rejected') ||
-    text.includes('blocking new entry') ||
-    text.includes('blocking new trades:') ||
-    text.includes('can_long is disabled') ||
-    text.includes('time filter active') ||
-    text.includes('eth volatility too high') ||
-    text.includes('insufficient price momentum') ||
-    text.includes('slippage too high') ||
-    text.includes('bad slippage') ||
-    text.includes('trailing long') ||
-    text.includes('trailing short') ||
-    text.includes('funding rate') ||
-    text.includes('unfavorable')
-  );
+  return isMissedTradeMessage(text);
 }
 
 async function loadMissedTradesReport() {
@@ -1664,57 +1787,30 @@ async function loadMissedTradesReport() {
   reportsError.value = '';
   try {
     await ensureBotDisplayMapLoaded();
-    missedDays.value = normalizeIntInput(missedDays.value, 7, 1, 365);
-    const anomalies = await vpsApi.dwhAnomalies(missedDays.value, 50);
-    const targetSignatures = anomalies.filter(isMissedTradeSignature).slice(0, 10);
+    if (!missedDateFrom.value) missedDateFrom.value = todayStr();
+    if (!missedDateTo.value) missedDateTo.value = todayStr();
 
-    if (!targetSignatures.length) {
-      missedTradeEvents.value = [];
-      missedLoaded.value = true;
-      return;
-    }
-
-    const samplesPerSignature = await Promise.all(
-      targetSignatures.map((item) => vpsApi.dwhAnomalySamples(item.signature_hash, 20)),
-    );
+    const samples = await vpsApi.dwhMissedTrades(missedDateFrom.value, missedDateTo.value, 2000);
 
     const dedupe = new Map<string, ParsedLogEvent>();
-    for (const samples of samplesPerSignature) {
-      for (const sample of samples) {
-        const loweredMessage = sample.message.toLowerCase();
-        if (isStrategyUserDenyMessage(loweredMessage)) {
-          continue;
-        }
-        const isMissed =
-          loweredMessage.includes('trade rejected') ||
-          loweredMessage.includes('blocking new entry') ||
-          loweredMessage.includes('blocking new trades:') ||
-          loweredMessage.includes('can_long is disabled') ||
-          loweredMessage.includes('time filter active') ||
-          loweredMessage.includes('eth volatility too high') ||
-          loweredMessage.includes('insufficient price momentum') ||
-          loweredMessage.includes('slippage too high') ||
-          loweredMessage.includes('bad slippage') ||
-          loweredMessage.includes('trailing long') ||
-          loweredMessage.includes('trailing short') ||
-          loweredMessage.includes('funding rate');
-        if (!isMissed) {
-          continue;
-        }
-
-        const event: ParsedLogEvent = {
-          eventTs: sample.event_ts,
-          at: formatDate(sample.event_ts),
-          level: sample.level,
-          logger: sample.logger,
-          message: formatMissedTradeMessage(sample.message),
-          botId: sample.bot_id,
-          pair: extractPair(sample.message),
-          ...classifyMissedTradeReason(sample.message),
-          details: extractDecisionDetails(sample.message),
-        };
-        dedupe.set(`${sample.event_ts}|${sample.logger}|${sample.message}`, event);
+    for (const sample of samples) {
+      const loweredMessage = sample.message.toLowerCase();
+      if (isStrategyUserDenyMessage(loweredMessage)) {
+        continue;
       }
+
+      const event: ParsedLogEvent = {
+        eventTs: sample.event_ts,
+        at: formatDate(sample.event_ts),
+        level: sample.level,
+        logger: sample.logger,
+        message: formatMissedTradeMessage(sample.message),
+        botId: sample.bot_id,
+        pair: extractPair(sample.message),
+        ...classifyMissedTradeReason(sample.message),
+        details: extractDecisionDetails(sample.message),
+      };
+      dedupe.set(`${sample.event_ts}|${sample.logger}|${sample.message}`, event);
     }
 
     missedTradeEvents.value = Array.from(dedupe.values()).sort(
@@ -1733,6 +1829,8 @@ async function loadMissedTradesReport() {
 }
 
 function clearTrailingBenefitFilters() {
+  trailingDateFrom.value = todayStr();
+  trailingDateTo.value = todayStr();
   trailingFilterBotId.value = null;
   trailingFilterTradeId.value = null;
   trailingFilterPair.value = '';
@@ -1757,10 +1855,12 @@ async function loadTrailingBenefitReport() {
   reportsError.value = '';
   try {
     await ensureBotDisplayMapLoaded();
-    trailingDays.value = normalizeIntInput(trailingDays.value, 7, 1, 365);
+    if (!trailingDateFrom.value) trailingDateFrom.value = todayStr();
+    if (!trailingDateTo.value) trailingDateTo.value = todayStr();
+    const trailingDaysComputed = dateFromToDays(trailingDateFrom.value);
 
     // Step 1: Fetch trades FIRST (reversed data flow)
-    const allTrades = await loadTrailingTrades(trailingDays.value);
+    const allTrades = await loadTrailingTrades(trailingDaysComputed);
     const closedTrailTrades = allTrades.filter(
       (trade) => !trade.is_open && isTrailEnterTag(trade.enter_tag),
     );
@@ -1768,10 +1868,10 @@ async function loadTrailingBenefitReport() {
     // Step 2: Fetch trailing logs per bot via direct audit message queries
     // (replaces anomaly signature → samples approach for full coverage)
     const uniqueBotIds = [...new Set(closedTrailTrades.map((t) => t.bot_id))];
-    const hours = Math.min(trailingDays.value * 24, 720);
+    const hours = Math.min(trailingDaysComputed * 24, 720);
     const [allAuditMessages, rpcTradeHints] = await Promise.all([
       fetchTrailingAuditLogs(uniqueBotIds, hours),
-      loadRpcTradeHints(trailingDays.value),
+      loadRpcTradeHints(trailingDaysComputed),
     ]);
 
     // Step 3: Parse all log messages and match to trades
@@ -1950,7 +2050,8 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">System Errors Timeline (DWH)</h5>
               <div class="flex items-center gap-2">
-                <InputNumber v-model="systemDays" :min="1" :max="365" size="small" input-class="w-16" />
+                <InputText v-model="systemDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="systemDateTo" type="date" size="small" class="w-36" />
                 <Button
                   label="Refresh"
                   size="small"
@@ -2154,7 +2255,8 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Cumulative Logs Generated</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputNumber v-model="logsDays" :min="1" :max="90" size="small" input-class="w-16" />
+                <InputText v-model="logsDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="logsDateTo" type="date" size="small" class="w-36" />
                 <InputNumber
                   v-model="logsFilterBotId"
                   :min="1"
@@ -2391,7 +2493,8 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Missed Trades Report (DWH)</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputNumber v-model="missedDays" :min="1" :max="365" size="small" input-class="w-16" />
+                <InputText v-model="missedDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="missedDateTo" type="date" size="small" class="w-36" />
                 <InputNumber
                   v-model="missedFilterBotId"
                   :min="1"
@@ -2400,6 +2503,7 @@ onMounted(async () => {
                   placeholder="Bot ID"
                 />
                 <InputText v-model="missedFilterPair" size="small" class="w-40" placeholder="Pair (e.g. JTO/USDT)" />
+                <InputText v-model="missedFilterVps" size="small" class="w-32" placeholder="VPS" />
                 <Button
                   label="Clear"
                   size="small"
@@ -2499,7 +2603,8 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Trailing Entries Benefit (DWH)</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputNumber v-model="trailingDays" :min="1" :max="365" size="small" input-class="w-16" />
+                <InputText v-model="trailingDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="trailingDateTo" type="date" size="small" class="w-36" />
                 <InputNumber
                   v-model="trailingFilterBotId"
                   :min="1"

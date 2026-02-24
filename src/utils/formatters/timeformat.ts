@@ -48,6 +48,14 @@ export function timestampmsOrNa(ts: number | Date | null): string {
 }
 
 /**
+ * Convert a timestamp / Date object to a short String (MM/dd HH:mm) for chart labels.
+ * @param ts Timestamp as number or date (in utc!!)
+ */
+export function timestampShort(ts: number | Date): string {
+  return formatDate(toDate(ts), 'MM/dd HH:mm');
+}
+
+/**
  * Convert a timestamp / Date object to String
  * @param ts Timestamp as number or date (in utc!!)
  * @param timezone timezone to use

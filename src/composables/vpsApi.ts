@@ -292,8 +292,12 @@ export const vpsApi = {
     const { data } = await vpsApiClient.get<DwhIngestionStatus>('/dwh/ingestion/status');
     return data;
   },
-  async dwhIngestionRuns(limit = 20): Promise<DwhIngestionRun[]> {
-    const { data } = await vpsApiClient.get<DwhIngestionRun[]>('/dwh/ingestion/runs', { params: { limit } });
+  async dwhIngestionRuns(limit = 20, days = 0): Promise<DwhIngestionRun[]> {
+    const { data } = await vpsApiClient.get<DwhIngestionRun[]>('/dwh/ingestion/runs', { params: { limit, days } });
+    return data;
+  },
+  async flushDwhIngestionRuns(): Promise<{ ok: boolean; deleted_runs: number }> {
+    const { data } = await vpsApiClient.delete<{ ok: boolean; deleted_runs: number }>('/dwh/ingestion/runs');
     return data;
   },
   async dwhRunAnomalies(runId: number, limit = 20): Promise<DwhRunAnomaly[]> {
@@ -342,6 +346,17 @@ export const vpsApi = {
   async dwhAnomalySamples(signatureHash: string, limit = 20): Promise<DwhAnomalySample[]> {
     const { data } = await vpsApiClient.get<DwhAnomalySample[]>(`/dwh/anomalies/${signatureHash}/samples`, {
       params: { limit },
+    });
+    return data;
+  },
+  async dwhMissedTrades(dateFrom: string, dateTo: string, limit = 500, botId?: number): Promise<DwhAnomalySample[]> {
+    const { data } = await vpsApiClient.get<DwhAnomalySample[]>('/dwh/missed-trades', {
+      params: {
+        date_from: dateFrom,
+        date_to: dateTo,
+        limit,
+        bot_id: botId,
+      },
     });
     return data;
   },
