@@ -303,11 +303,14 @@ export interface DwhTrade {
 
 export interface DwhTradeQuery {
   days?: number;
+  date_from?: string;
+  date_to?: string;
   bot_id?: number;
   pair?: string;
   strategy?: string;
   entry_reason?: string;
   exit_reason?: string;
+  is_short?: boolean;
   limit?: number;
   offset?: number;
 }

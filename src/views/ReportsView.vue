@@ -69,6 +69,7 @@ interface ChartTooltipState {
 type LogsChartMode = 'cumulative' | 'hourly';
 type MissedChartMode = 'cumulative' | 'hourly';
 type TrailingChartMetric = 'profit' | 'duration';
+type DrillChartMetric = 'profit_pct' | 'profit_abs' | 'duration';
 
 interface ParsedLogEvent {
   eventTs: string;
@@ -227,6 +228,7 @@ const logsFilterLevel = ref('');
 const logsChartMode = ref<LogsChartMode>('cumulative');
 const missedChartMode = ref<MissedChartMode>('cumulative');
 const trailingChartMetric = ref<TrailingChartMetric>('profit');
+const drillChartMetric = ref<DrillChartMetric>('profit_pct');
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -257,6 +259,21 @@ const trailingFilterSide = ref<'all' | TrailingSide>('all');
 const trailingFilterMatchSource = ref<'all' | TrailingTriggerEvent['matchSource']>('all');
 const trailingTradeRows = ref<TrailingTradeRow[]>([]);
 const trailingExpandedTradeKey = ref<string | null>(null);
+
+// Trade drill-down
+const drillDateFrom = ref(todayStr());
+const drillDateTo = ref(todayStr());
+const drillFilterBotId = ref<number | null>(null);
+const drillFilterPair = ref('');
+const drillFilterStrategy = ref('');
+const drillFilterEntryReason = ref('');
+const drillFilterExitReason = ref('');
+const drillFilterSide = ref<'all' | 'long' | 'short'>('all');
+const drillTrades = ref<import('@/types/vps').DwhTrade[]>([]);
+const drillTotal = ref(0);
+const drillOffset = ref(0);
+const drillPageSize = 100;
+
 const loadingSystemTimeline = ref(false);
 const loadingSystemSpikeSummary = ref(false);
 const loadingIngestTimeline = ref(false);
@@ -264,12 +281,14 @@ const loadingLogsCumulative = ref(false);
 const loadingLogsSpikeSummary = ref(false);
 const loadingMissedTrades = ref(false);
 const loadingTrailingBenefit = ref(false);
+const loadingDrilldown = ref(false);
 const reportsError = ref('');
 const systemLoaded = ref(false);
 const ingestLoaded = ref(false);
 const logsCumulativeLoaded = ref(false);
 const missedLoaded = ref(false);
 const trailingLoaded = ref(false);
+const drillLoaded = ref(false);
 const systemSpikeLoaded = ref(false);
 const logsSpikeLoaded = ref(false);
 const chartTooltip = ref<ChartTooltipState>({
@@ -907,6 +926,119 @@ const trailingChartXTicks = computed(() => {
 });
 
 // ── End Trailing Benefit Chart ─────────────────────────────────────────────
+
+// ── Trade Drill-down Chart ─────────────────────────────────────────────────
+
+const drillChartMetricOptions: { label: string; value: DrillChartMetric }[] = [
+  { label: 'Profit %', value: 'profit_pct' },
+  { label: 'Profit USDT', value: 'profit_abs' },
+  { label: 'Duration (min)', value: 'duration' },
+];
+
+function tradeDurationMinutes(trade: import('@/types/vps').DwhTrade): number | null {
+  if (!trade.open_date || !trade.close_date) return null;
+  const diff = new Date(trade.close_date).getTime() - new Date(trade.open_date).getTime();
+  return diff > 0 ? diff / 60000 : null;
+}
+
+const drillChartSeriesLabel = computed(() => {
+  if (drillChartMetric.value === 'profit_pct') return 'Profit % (per trade, by close date)';
+  if (drillChartMetric.value === 'profit_abs') return 'Profit USDT (per trade, by close date)';
+  return 'Duration min (per trade, by close date)';
+});
+
+const drillChartDateRangeLabel = computed(() => {
+  const trades = drillTrades.value;
+  if (!trades.length) return 'Date / Time: n/a';
+  const sorted = [...trades].sort((a, b) => (a.close_date ?? a.open_date ?? '').localeCompare(b.close_date ?? b.open_date ?? ''));
+  const fmt = (s: string | null) => {
+    if (!s) return '?';
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? s : timestampShort(d);
+  };
+  return `Date / Time: ${fmt(sorted[0]?.close_date ?? sorted[0]?.open_date ?? null)} → ${fmt(sorted[sorted.length - 1]?.close_date ?? sorted[sorted.length - 1]?.open_date ?? null)}`;
+});
+
+const drillChartYRange = computed(() => {
+  const trades = drillTrades.value;
+  if (!trades.length) return { min: 0, max: 1 };
+  const values = trades
+    .map((t) => {
+      if (drillChartMetric.value === 'profit_pct') return t.profit_ratio !== null ? t.profit_ratio * 100 : null;
+      if (drillChartMetric.value === 'profit_abs') return t.profit_abs;
+      return tradeDurationMinutes(t);
+    })
+    .filter((v): v is number => v !== null);
+  if (!values.length) return { min: 0, max: 1 };
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const pad = (max - min) * 0.1 || 0.5;
+  return {
+    min: drillChartMetric.value === 'duration' ? Math.max(min - pad, 0) : Math.min(min - pad, 0),
+    max: max + pad,
+  };
+});
+
+const drillChartYTicks = computed(() => {
+  const ticks = 5;
+  const { min, max } = drillChartYRange.value;
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  return Array.from({ length: ticks + 1 }, (_, i) => {
+    const ratio = i / ticks;
+    const value = max - ratio * (max - min);
+    const y = topPad + ratio * plotHeight;
+    let label = '';
+    if (drillChartMetric.value === 'profit_pct') label = `${value.toFixed(1)}%`;
+    else if (drillChartMetric.value === 'profit_abs') label = value.toFixed(2);
+    else label = value.toFixed(0);
+    return { y, value, label };
+  });
+});
+
+const drillChartZeroY = computed(() => {
+  const { min, max } = drillChartYRange.value;
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  const range = max - min || 1;
+  return topPad + ((max - 0) / range) * plotHeight;
+});
+
+const drillChartCoordinates = computed(() => {
+  const trades = drillTrades.value;
+  if (!trades.length) return [] as { x: number; y: number; at: string; tradeId: number; pair: string; value: number | null; positive: boolean }[];
+  const sorted = [...trades].sort((a, b) => (a.close_date ?? a.open_date ?? '').localeCompare(b.close_date ?? b.open_date ?? ''));
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(sorted.length - 1, 1);
+  const { min, max } = drillChartYRange.value;
+  const range = max - min || 1;
+  return sorted.map((trade, idx) => {
+    let rawVal: number | null = null;
+    if (drillChartMetric.value === 'profit_pct') rawVal = trade.profit_ratio !== null ? trade.profit_ratio * 100 : null;
+    else if (drillChartMetric.value === 'profit_abs') rawVal = trade.profit_abs;
+    else rawVal = tradeDurationMinutes(trade);
+    const val = rawVal ?? min;
+    const x = leftPad + (idx / denominator) * plotWidth;
+    const y = topPad + ((max - val) / range) * plotHeight;
+    const dateStr = trade.close_date ?? trade.open_date ?? '';
+    const d = new Date(dateStr);
+    const at = Number.isNaN(d.getTime()) ? dateStr : timestampShort(d);
+    return { x, y, at, tradeId: trade.source_trade_id, pair: trade.pair ?? '?', value: rawVal, positive: (rawVal ?? 0) >= 0 };
+  });
+});
+
+const drillChartXTicks = computed(() => {
+  const coords = drillChartCoordinates.value;
+  if (!coords.length) return [] as { x: number; label: string }[];
+  const indexes = new Set<number>([0, Math.floor((coords.length - 1) / 2), coords.length - 1]);
+  return Array.from(indexes)
+    .sort((a, b) => a - b)
+    .map((index) => ({ x: coords[index]?.x ?? 0, label: coords[index]?.at ?? '' }));
+});
+
+// ── End Trade Drill-down Chart ─────────────────────────────────────────────
 
 function reasonSharePct(count: number): string {
   const total = filteredMissedTradeEventsByBotPair.value.length;
@@ -2203,6 +2335,54 @@ async function loadTrailingBenefitReport() {
   }
 }
 
+function clearDrilldownFilters() {
+  drillDateFrom.value = todayStr();
+  drillDateTo.value = todayStr();
+  drillFilterBotId.value = null;
+  drillFilterPair.value = '';
+  drillFilterStrategy.value = '';
+  drillFilterEntryReason.value = '';
+  drillFilterExitReason.value = '';
+  drillFilterSide.value = 'all';
+}
+
+async function loadDrilldownReport(append = false) {
+  if (!drillDateFrom.value) drillDateFrom.value = todayStr();
+  if (!drillDateTo.value) drillDateTo.value = todayStr();
+  if (!append) {
+    drillOffset.value = 0;
+    drillTrades.value = [];
+  }
+  loadingDrilldown.value = true;
+  try {
+    const result = await vpsApi.dwhTrades({
+      date_from: drillDateFrom.value,
+      date_to: drillDateTo.value,
+      bot_id: drillFilterBotId.value ?? undefined,
+      pair: drillFilterPair.value.trim() || undefined,
+      strategy: drillFilterStrategy.value.trim() || undefined,
+      entry_reason: drillFilterEntryReason.value.trim() || undefined,
+      exit_reason: drillFilterExitReason.value.trim() || undefined,
+      is_short: drillFilterSide.value === 'all' ? undefined : drillFilterSide.value === 'short',
+      limit: drillPageSize,
+      offset: drillOffset.value,
+    });
+    drillTotal.value = result.total;
+    if (append) {
+      drillTrades.value = [...drillTrades.value, ...result.items];
+    } else {
+      drillTrades.value = result.items;
+    }
+    drillOffset.value += result.items.length;
+    drillLoaded.value = true;
+  } catch {
+    drillTrades.value = [];
+    drillTotal.value = 0;
+  } finally {
+    loadingDrilldown.value = false;
+  }
+}
+
 async function ensureDataForSubcategory(subCategory: string) {
   if (subCategory === 'system-errors' && !systemLoaded.value) {
     await loadSystemErrorsTimeline();
@@ -2218,6 +2398,10 @@ async function ensureDataForSubcategory(subCategory: string) {
   }
   if (subCategory === 'trailing-benefit' && !trailingLoaded.value) {
     await loadTrailingBenefitReport();
+    return;
+  }
+  if (subCategory === 'trade-drilldown' && !drillLoaded.value) {
+    await loadDrilldownReport();
   }
 }
 
@@ -2921,9 +3105,222 @@ onMounted(async () => {
 
           <div
             v-if="selectedSubCategory === 'trade-drilldown'"
-            class="border border-surface-400 rounded-sm p-4 text-sm text-surface-400"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
           >
-            Trade drill-down remains TODO for this page. Existing detailed trade filters/timeline are available in DWH Progress for now.
+            <!-- Header + filters -->
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h5 class="font-semibold">Trade Drill-down (DWH)</h5>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="drillDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="drillDateTo" type="date" size="small" class="w-36" />
+                <InputNumber
+                  v-model="drillFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
+                <InputText v-model="drillFilterPair" size="small" class="w-40" placeholder="Pair (e.g. BTC/USDT)" />
+                <InputText v-model="drillFilterStrategy" size="small" class="w-36" placeholder="Strategy" />
+                <InputText v-model="drillFilterEntryReason" size="small" class="w-36" placeholder="Entry tag" />
+                <InputText v-model="drillFilterExitReason" size="small" class="w-36" placeholder="Exit reason" />
+                <Select
+                  v-model="drillFilterSide"
+                  :options="[
+                    { label: 'All sides', value: 'all' },
+                    { label: 'Long', value: 'long' },
+                    { label: 'Short', value: 'short' },
+                  ]"
+                  option-label="label"
+                  option-value="value"
+                  size="small"
+                  class="w-28"
+                />
+                <Button label="Clear" size="small" severity="secondary" outlined @click="clearDrilldownFilters" />
+                <Button
+                  label="Refresh"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  :loading="loadingDrilldown"
+                  @click="loadDrilldownReport(false)"
+                />
+              </div>
+            </div>
+
+            <!-- Summary tags -->
+            <div v-if="drillTrades.length" class="flex flex-wrap gap-2">
+              <Tag :value="`Showing: ${drillTrades.length} / ${drillTotal}`" severity="contrast" />
+              <Tag
+                :value="`Avg profit: ${drillTrades.filter((t) => t.profit_ratio !== null).length ? (drillTrades.reduce((s, t) => s + (t.profit_ratio ?? 0), 0) / drillTrades.filter((t) => t.profit_ratio !== null).length * 100).toFixed(2) + '%' : 'n/a'}`"
+                severity="warn"
+              />
+              <Tag
+                :value="`Profitable: ${drillTrades.filter((t) => (t.profit_ratio ?? 0) > 0).length} / ${drillTrades.filter((t) => t.profit_ratio !== null).length}`"
+                severity="warn"
+              />
+              <Tag
+                :value="`Total profit: ${drillTrades.reduce((s, t) => s + (t.profit_abs ?? 0), 0).toFixed(2)} USDT`"
+                severity="warn"
+              />
+            </div>
+
+            <!-- Chart -->
+            <div v-if="drillTrades.length" class="space-y-1">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-3 text-xs text-surface-400">
+                  <span>{{ drillChartSeriesLabel }}</span>
+                  <span>{{ drillChartDateRangeLabel }}</span>
+                </div>
+                <Select
+                  v-model="drillChartMetric"
+                  :options="drillChartMetricOptions"
+                  option-label="label"
+                  option-value="value"
+                  size="small"
+                  class="w-40"
+                />
+              </div>
+              <svg viewBox="0 0 920 260" class="w-full h-64">
+                <defs>
+                  <linearGradient id="drillAreaGradientPos" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#34d399" stop-opacity="0.25" />
+                    <stop offset="100%" stop-color="#34d399" stop-opacity="0.02" />
+                  </linearGradient>
+                </defs>
+                <!-- Y-axis grid + labels -->
+                <g>
+                  <line
+                    v-for="(tick, idx) in drillChartYTicks"
+                    :key="`dgy-${idx}`"
+                    x1="46" :y1="tick.y" x2="900" :y2="tick.y"
+                    stroke="#334155" stroke-width="1" stroke-dasharray="4 4"
+                  />
+                  <text
+                    v-for="(tick, idx) in drillChartYTicks"
+                    :key="`dty-${idx}`"
+                    :x="42" :y="tick.y + 4"
+                    text-anchor="end" fill="#94a3b8" font-size="10"
+                  >{{ tick.label }}</text>
+                </g>
+                <!-- Zero line (profit modes) -->
+                <line
+                  v-if="drillChartMetric !== 'duration'"
+                  x1="46" :y1="drillChartZeroY" x2="900" :y2="drillChartZeroY"
+                  stroke="#64748b" stroke-width="1"
+                />
+                <!-- Axes -->
+                <line x1="46" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
+                <line x1="46" y1="14" x2="46" y2="230" stroke="#475569" stroke-width="1" />
+                <!-- Axis labels -->
+                <text x="8" y="24" fill="#94a3b8" font-size="11">{{ drillChartMetric === 'profit_pct' ? '%' : drillChartMetric === 'profit_abs' ? 'USDT' : 'min' }}</text>
+                <text x="473" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Trade close date</text>
+                <!-- X ticks -->
+                <text
+                  v-for="(tick, idx) in drillChartXTicks"
+                  :key="`dtx-${idx}`"
+                  :x="tick.x" y="245"
+                  text-anchor="middle" fill="#94a3b8" font-size="10"
+                >{{ tick.label }}</text>
+                <!-- Dots -->
+                <circle
+                  v-for="(point, idx) in drillChartCoordinates"
+                  :key="`dc-${idx}`"
+                  :cx="point.x" :cy="point.y" r="4"
+                  :fill="point.value === null ? '#475569' : drillChartMetric === 'duration' ? '#60a5fa' : (point.positive ? '#34d399' : '#f87171')"
+                  class="cursor-pointer"
+                  @mousemove="showChartTooltip($event, [
+                    `Trade #${point.tradeId} · ${point.pair}`,
+                    point.at,
+                    drillChartMetric === 'profit_pct'
+                      ? (point.value !== null ? `Profit: ${point.value.toFixed(2)}%` : 'Profit: n/a')
+                      : drillChartMetric === 'profit_abs'
+                        ? (point.value !== null ? `Profit: ${point.value.toFixed(2)} USDT` : 'Profit: n/a')
+                        : (point.value !== null ? `Duration: ${point.value.toFixed(1)} min` : 'Duration: n/a'),
+                  ])"
+                  @mouseleave="hideChartTooltip"
+                >
+                  <title>{{ `Trade #${point.tradeId} · ${point.pair}` }}</title>
+                </circle>
+              </svg>
+            </div>
+
+            <!-- Empty state -->
+            <div v-if="!drillTrades.length" class="text-sm text-surface-400">
+              {{ loadingDrilldown ? 'Loading trades...' : 'No trades found for selected filters.' }}
+            </div>
+
+            <!-- Table -->
+            <div v-else class="overflow-x-auto w-full">
+              <table class="w-full text-sm border-collapse">
+                <thead>
+                  <tr class="border-b border-surface-600 text-left">
+                    <th class="py-2 pe-3">#</th>
+                    <th class="py-2 pe-3">Bot</th>
+                    <th class="py-2 pe-3">Pair</th>
+                    <th class="py-2 pe-3">Side</th>
+                    <th class="py-2 pe-3">Entry tag</th>
+                    <th class="py-2 pe-3">Exit reason</th>
+                    <th class="py-2 pe-3">Open date</th>
+                    <th class="py-2 pe-3">Close date</th>
+                    <th class="py-2 pe-3 text-right">Duration</th>
+                    <th class="py-2 pe-3 text-right">Profit %</th>
+                    <th class="py-2 pe-3 text-right">Profit USDT</th>
+                    <th class="py-2 text-right">Anomalies</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="trade in drillTrades"
+                    :key="`${trade.bot_id}-${trade.source_trade_id}`"
+                    class="border-b border-surface-700/70 align-top"
+                  >
+                    <td class="py-2 pe-3 whitespace-nowrap">{{ trade.source_trade_id }}</td>
+                    <td class="py-2 pe-3 whitespace-nowrap">
+                      <div class="font-medium">{{ trade.vps_name ?? '—' }}</div>
+                      <div class="text-xs text-surface-400">{{ trade.container_name ?? '—' }} · ID {{ trade.bot_id }}</div>
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap font-medium">{{ trade.pair ?? '—' }}</td>
+                    <td class="py-2 pe-3 whitespace-nowrap">
+                      <span :class="trade.is_short ? 'text-red-400' : 'text-green-400'">
+                        {{ trade.is_short ? 'Short' : 'Long' }}
+                      </span>
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-surface-300">{{ trade.enter_tag ?? '—' }}</td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-surface-300">{{ trade.exit_reason ?? (trade.is_open ? 'Open' : '—') }}</td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-surface-400">{{ trade.open_date ? formatDate(trade.open_date) : '—' }}</td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-surface-400">{{ trade.close_date ? formatDate(trade.close_date) : (trade.is_open ? 'Open' : '—') }}</td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-right text-surface-400">
+                      {{ tradeDurationMinutes(trade) !== null ? `${tradeDurationMinutes(trade)!.toFixed(0)} min` : '—' }}
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-right font-medium"
+                      :class="trade.profit_ratio === null ? 'text-surface-400' : trade.profit_ratio >= 0 ? 'text-green-400' : 'text-red-400'">
+                      {{ trade.profit_ratio !== null ? `${(trade.profit_ratio * 100).toFixed(2)}%` : '—' }}
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-right"
+                      :class="trade.profit_abs === null ? 'text-surface-400' : trade.profit_abs >= 0 ? 'text-green-400' : 'text-red-400'">
+                      {{ trade.profit_abs !== null ? trade.profit_abs.toFixed(3) : '—' }}
+                    </td>
+                    <td class="py-2 whitespace-nowrap text-right">
+                      <span v-if="trade.anomaly_count > 0" class="text-yellow-400 font-medium">{{ trade.anomaly_count }}</span>
+                      <span v-else class="text-surface-600">0</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Load more -->
+            <div v-if="drillTrades.length && drillTrades.length < drillTotal" class="flex items-center gap-3">
+              <Button
+                :label="`Load more (${drillTotal - drillTrades.length} remaining)`"
+                size="small"
+                severity="secondary"
+                outlined
+                :loading="loadingDrilldown"
+                @click="loadDrilldownReport(true)"
+              />
+            </div>
           </div>
 
           <div
