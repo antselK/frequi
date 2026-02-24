@@ -67,6 +67,8 @@ interface ChartTooltipState {
 }
 
 type LogsChartMode = 'cumulative' | 'hourly';
+type MissedChartMode = 'cumulative' | 'hourly';
+type TrailingChartMetric = 'profit' | 'duration';
 
 interface ParsedLogEvent {
   eventTs: string;
@@ -223,6 +225,8 @@ const logsFilterBotId = ref<number | null>(null);
 const logsFilterLogger = ref('');
 const logsFilterLevel = ref('');
 const logsChartMode = ref<LogsChartMode>('cumulative');
+const missedChartMode = ref<MissedChartMode>('cumulative');
+const trailingChartMetric = ref<TrailingChartMetric>('profit');
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -511,6 +515,125 @@ const logsChartAreaPolyline = computed(() => {
   return `${first} ${line} ${last.split(',')[0]},230 ${first.split(',')[0]},230`;
 });
 
+// ── Missed Trades Chart ────────────────────────────────────────────────────
+
+interface MissedChartPoint {
+  hourKey: string;
+  at: string;
+  count: number;
+  cumulative: number;
+}
+
+const missedChartModeOptions: { label: string; value: MissedChartMode }[] = [
+  { label: 'Cumulative', value: 'cumulative' },
+  { label: 'Per-hour', value: 'hourly' },
+];
+
+const missedChartPoints = computed<MissedChartPoint[]>(() => {
+  const events = parsedMissedTradeEvents.value;
+  if (!events.length) return [];
+  const bucketMap = new Map<string, number>();
+  for (const ev of events) {
+    const key = ev.eventTs.slice(0, 13); // "YYYY-MM-DDTHH"
+    bucketMap.set(key, (bucketMap.get(key) ?? 0) + 1);
+  }
+  const sorted = Array.from(bucketMap.entries()).sort(([a], [b]) => a.localeCompare(b));
+  let cumulative = 0;
+  return sorted.map(([key, count]) => {
+    cumulative += count;
+    const date = new Date(key + ':00:00');
+    const at = Number.isNaN(date.getTime()) ? key : timestampShort(date);
+    return { hourKey: key, at, count, cumulative };
+  });
+});
+
+const maxMissedChartCount = computed(() => {
+  if (!missedChartPoints.value.length) return 1;
+  if (missedChartMode.value === 'hourly') {
+    return Math.max(...missedChartPoints.value.map((p) => p.count), 1);
+  }
+  return Math.max(...missedChartPoints.value.map((p) => p.cumulative), 1);
+});
+
+const missedChartSeriesLabel = computed(() => {
+  return missedChartMode.value === 'hourly'
+    ? 'Missed trades (Count per hour)'
+    : 'Missed trades (Cumulative)';
+});
+
+const missedChartDateRangeLabel = computed(() => {
+  const pts = missedChartPoints.value;
+  if (!pts.length) return 'Date / Time: n/a';
+  return `Date / Time: ${pts[0]!.at} → ${pts[pts.length - 1]!.at}`;
+});
+
+const missedChartPolyline = computed(() => {
+  const pts = missedChartPoints.value;
+  if (!pts.length) return '';
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(pts.length - 1, 1);
+  const maxY = maxMissedChartCount.value;
+  return pts
+    .map((pt, idx) => {
+      const x = leftPad + (idx / denominator) * plotWidth;
+      const val = missedChartMode.value === 'hourly' ? pt.count : pt.cumulative;
+      const y = topPad + (1 - val / maxY) * plotHeight;
+      return `${x},${y}`;
+    })
+    .join(' ');
+});
+
+const missedChartAreaPolyline = computed(() => {
+  const line = missedChartPolyline.value;
+  if (!line) return '';
+  const first = line.split(' ')[0];
+  const last = line.split(' ').slice(-1)[0];
+  if (!first || !last) return '';
+  return `${first} ${line} ${last.split(',')[0]},230 ${first.split(',')[0]},230`;
+});
+
+const missedChartCoordinates = computed(() => {
+  const pts = missedChartPoints.value;
+  if (!pts.length) return [] as { x: number; y: number; at: string; count: number; cumulative: number }[];
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(pts.length - 1, 1);
+  const maxY = maxMissedChartCount.value;
+  return pts.map((pt, idx) => {
+    const x = leftPad + (idx / denominator) * plotWidth;
+    const val = missedChartMode.value === 'hourly' ? pt.count : pt.cumulative;
+    const y = topPad + (1 - val / maxY) * plotHeight;
+    return { x, y, at: pt.at, count: pt.count, cumulative: pt.cumulative };
+  });
+});
+
+const missedChartYTicks = computed(() => {
+  const ticks = 5;
+  const maxY = maxMissedChartCount.value;
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  return Array.from({ length: ticks + 1 }, (_, i) => {
+    const ratio = i / ticks;
+    const value = Math.round((1 - ratio) * maxY);
+    const y = topPad + ratio * plotHeight;
+    return { y, value };
+  });
+});
+
+const missedChartXTicks = computed(() => {
+  const coords = missedChartCoordinates.value;
+  if (!coords.length) return [] as { x: number; label: string }[];
+  const indexes = new Set<number>([0, Math.floor((coords.length - 1) / 2), coords.length - 1]);
+  return Array.from(indexes)
+    .sort((a, b) => a - b)
+    .map((index) => ({ x: coords[index]?.x ?? 0, label: coords[index]?.at ?? '' }));
+});
+
+// ── End Missed Trades Chart ────────────────────────────────────────────────
+
 const filteredMissedTradeEventsByBotPair = computed(() => {
   const pairNeedle = missedFilterPair.value.trim().toLowerCase();
   const vpsNeedle = missedFilterVps.value.trim().toLowerCase();
@@ -666,6 +789,124 @@ const trailingMatchSourceCounts = computed(() => {
   }
   return counts;
 });
+
+// ── Trailing Benefit Chart ─────────────────────────────────────────────────
+
+const trailingChartMetricOptions: { label: string; value: TrailingChartMetric }[] = [
+  { label: 'Snapshot Profit %', value: 'profit' },
+  { label: 'Duration (min)', value: 'duration' },
+];
+
+interface TrailingChartPoint {
+  at: string;
+  tradeId: number;
+  pair: string;
+  profit: number | null;
+  duration: number | null;
+}
+
+const trailingChartPoints = computed<TrailingChartPoint[]>(() => {
+  return filteredTrailingTradeRows.value
+    .filter((row) => row.openDate !== null)
+    .map((row) => ({
+      at: row.openDate!,
+      tradeId: row.tradeId,
+      pair: row.pair,
+      profit: row.snapshotProfitPct,
+      duration: row.snapshotDurationMinutes,
+    }))
+    .sort((a, b) => a.at.localeCompare(b.at));
+});
+
+const trailingChartSeriesLabel = computed(() => {
+  return trailingChartMetric.value === 'profit'
+    ? 'Snapshot Profit % (per trade, by open date)'
+    : 'Duration min (per trade, by open date)';
+});
+
+const trailingChartDateRangeLabel = computed(() => {
+  const pts = trailingChartPoints.value;
+  if (!pts.length) return 'Date / Time: n/a';
+  const fmt = (s: string) => {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? s : timestampShort(d);
+  };
+  return `Date / Time: ${fmt(pts[0]!.at)} → ${fmt(pts[pts.length - 1]!.at)}`;
+});
+
+// Y range for the active metric — includes negative values for profit
+const trailingChartYRange = computed(() => {
+  const pts = trailingChartPoints.value;
+  if (!pts.length) return { min: 0, max: 1 };
+  const values = pts
+    .map((p) => (trailingChartMetric.value === 'profit' ? p.profit : p.duration))
+    .filter((v): v is number => v !== null);
+  if (!values.length) return { min: 0, max: 1 };
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  // Add 10% padding; for profit ensure 0 is visible
+  const pad = (max - min) * 0.1 || 0.5;
+  return {
+    min: trailingChartMetric.value === 'profit' ? Math.min(min - pad, 0) : Math.max(min - pad, 0),
+    max: max + pad,
+  };
+});
+
+const trailingChartYTicks = computed(() => {
+  const ticks = 5;
+  const { min, max } = trailingChartYRange.value;
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  return Array.from({ length: ticks + 1 }, (_, i) => {
+    const ratio = i / ticks;
+    const value = max - ratio * (max - min);
+    const y = topPad + ratio * plotHeight;
+    const label =
+      trailingChartMetric.value === 'profit'
+        ? `${value >= 0 ? '' : ''}${value.toFixed(1)}%`
+        : value.toFixed(0);
+    return { y, value, label };
+  });
+});
+
+// Zero-line Y position (only relevant for profit metric)
+const trailingChartZeroY = computed(() => {
+  const { min, max } = trailingChartYRange.value;
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  const range = max - min || 1;
+  return topPad + ((max - 0) / range) * plotHeight;
+});
+
+const trailingChartCoordinates = computed(() => {
+  const pts = trailingChartPoints.value;
+  if (!pts.length) return [] as { x: number; y: number; at: string; tradeId: number; pair: string; value: number | null; positive: boolean }[];
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(pts.length - 1, 1);
+  const { min, max } = trailingChartYRange.value;
+  const range = max - min || 1;
+  return pts.map((pt, idx) => {
+    const rawVal = trailingChartMetric.value === 'profit' ? pt.profit : pt.duration;
+    const val = rawVal ?? min; // place nulls at bottom
+    const x = leftPad + (idx / denominator) * plotWidth;
+    const y = topPad + ((max - val) / range) * plotHeight;
+    const at = (() => { const d = new Date(pt.at); return Number.isNaN(d.getTime()) ? pt.at : timestampShort(d); })();
+    return { x, y, at, tradeId: pt.tradeId, pair: pt.pair, value: rawVal, positive: (rawVal ?? 0) >= 0 };
+  });
+});
+
+const trailingChartXTicks = computed(() => {
+  const coords = trailingChartCoordinates.value;
+  if (!coords.length) return [] as { x: number; label: string }[];
+  const indexes = new Set<number>([0, Math.floor((coords.length - 1) / 2), coords.length - 1]);
+  return Array.from(indexes)
+    .sort((a, b) => a - b)
+    .map((index) => ({ x: coords[index]?.x ?? 0, label: coords[index]?.at ?? '' }));
+});
+
+// ── End Trailing Benefit Chart ─────────────────────────────────────────────
 
 function reasonSharePct(count: number): string {
   const total = filteredMissedTradeEventsByBotPair.value.length;
@@ -2548,6 +2789,95 @@ onMounted(async () => {
               />
             </div>
 
+            <!-- Missed Trades Chart -->
+            <div v-if="parsedMissedTradeEvents.length" class="space-y-1">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-3 text-xs text-surface-400">
+                  <span>{{ missedChartSeriesLabel }}</span>
+                  <span>{{ missedChartDateRangeLabel }}</span>
+                </div>
+                <Select
+                  v-model="missedChartMode"
+                  :options="missedChartModeOptions"
+                  option-label="label"
+                  option-value="value"
+                  size="small"
+                  class="w-36"
+                />
+              </div>
+              <svg viewBox="0 0 920 260" class="w-full h-64">
+                <defs>
+                  <linearGradient id="missedAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.35" />
+                    <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.03" />
+                  </linearGradient>
+                </defs>
+                <!-- Y-axis grid lines and labels -->
+                <g>
+                  <line
+                    v-for="(tick, idx) in missedChartYTicks"
+                    :key="`mgy-${idx}`"
+                    x1="40"
+                    :y1="tick.y"
+                    x2="900"
+                    :y2="tick.y"
+                    stroke="#334155"
+                    stroke-width="1"
+                    stroke-dasharray="4 4"
+                  />
+                  <text
+                    v-for="(tick, idx) in missedChartYTicks"
+                    :key="`mty-${idx}`"
+                    :x="36"
+                    :y="tick.y + 4"
+                    text-anchor="end"
+                    fill="#94a3b8"
+                    font-size="10"
+                  >{{ tick.value }}</text>
+                </g>
+                <!-- Axes -->
+                <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
+                <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
+                <!-- Axis labels -->
+                <text x="8" y="24" fill="#94a3b8" font-size="11">Count</text>
+                <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Date / Time</text>
+                <!-- X-axis tick labels -->
+                <text
+                  v-for="(tick, idx) in missedChartXTicks"
+                  :key="`mtx-${idx}`"
+                  :x="tick.x"
+                  y="245"
+                  text-anchor="middle"
+                  fill="#94a3b8"
+                  font-size="10"
+                >{{ tick.label }}</text>
+                <!-- Area fill -->
+                <polygon :points="missedChartAreaPolyline" fill="url(#missedAreaGradient)" />
+                <!-- Line -->
+                <polyline
+                  :points="missedChartPolyline"
+                  fill="none"
+                  stroke="#60a5fa"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                />
+                <!-- Interactive hover points -->
+                <circle
+                  v-for="(point, idx) in missedChartCoordinates"
+                  :key="`mc-${idx}`"
+                  :cx="point.x"
+                  :cy="point.y"
+                  r="4"
+                  fill="#cbd5e1"
+                  class="cursor-pointer"
+                  @mousemove="showChartTooltip($event, [point.at, missedChartMode === 'hourly' ? `Missed trades: ${point.count}` : `Cumulative missed: ${point.cumulative}`])"
+                  @mouseleave="hideChartTooltip"
+                >
+                  <title>{{ missedChartMode === 'hourly' ? `Missed trades: ${point.count}` : `Cumulative missed: ${point.cumulative}` }}</title>
+                </circle>
+              </svg>
+            </div>
+
             <div v-if="!parsedMissedTradeEvents.length" class="text-sm text-surface-400">
               {{ loadingMissedTrades ? 'Loading missed trades...' : 'No missed trade events found.' }}
             </div>
@@ -2704,6 +3034,105 @@ onMounted(async () => {
                 :value="`trade_only: ${trailingMatchSourceCounts.trade_only}`"
                 severity="secondary"
               />
+            </div>
+
+            <!-- Trailing Benefit Chart -->
+            <div v-if="filteredTrailingTradeRows.length" class="space-y-1">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-3 text-xs text-surface-400">
+                  <span>{{ trailingChartSeriesLabel }}</span>
+                  <span>{{ trailingChartDateRangeLabel }}</span>
+                </div>
+                <Select
+                  v-model="trailingChartMetric"
+                  :options="trailingChartMetricOptions"
+                  option-label="label"
+                  option-value="value"
+                  size="small"
+                  class="w-44"
+                />
+              </div>
+              <svg viewBox="0 0 920 260" class="w-full h-64">
+                <defs>
+                  <linearGradient id="trailingAreaGradientPos" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#34d399" stop-opacity="0.30" />
+                    <stop offset="100%" stop-color="#34d399" stop-opacity="0.02" />
+                  </linearGradient>
+                  <linearGradient id="trailingAreaGradientDur" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.30" />
+                    <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.02" />
+                  </linearGradient>
+                </defs>
+                <!-- Y-axis grid lines and labels -->
+                <g>
+                  <line
+                    v-for="(tick, idx) in trailingChartYTicks"
+                    :key="`tgy-${idx}`"
+                    x1="40"
+                    :y1="tick.y"
+                    x2="900"
+                    :y2="tick.y"
+                    stroke="#334155"
+                    stroke-width="1"
+                    stroke-dasharray="4 4"
+                  />
+                  <text
+                    v-for="(tick, idx) in trailingChartYTicks"
+                    :key="`tty-${idx}`"
+                    :x="36"
+                    :y="tick.y + 4"
+                    text-anchor="end"
+                    fill="#94a3b8"
+                    font-size="10"
+                  >{{ tick.label }}</text>
+                </g>
+                <!-- Zero line (profit mode only) -->
+                <line
+                  v-if="trailingChartMetric === 'profit'"
+                  x1="40"
+                  :y1="trailingChartZeroY"
+                  x2="900"
+                  :y2="trailingChartZeroY"
+                  stroke="#64748b"
+                  stroke-width="1"
+                />
+                <!-- Axes -->
+                <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
+                <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
+                <!-- Axis labels -->
+                <text x="8" y="24" fill="#94a3b8" font-size="11">{{ trailingChartMetric === 'profit' ? '%' : 'min' }}</text>
+                <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Trade open date</text>
+                <!-- X-axis tick labels -->
+                <text
+                  v-for="(tick, idx) in trailingChartXTicks"
+                  :key="`ttx-${idx}`"
+                  :x="tick.x"
+                  y="245"
+                  text-anchor="middle"
+                  fill="#94a3b8"
+                  font-size="10"
+                >{{ tick.label }}</text>
+                <!-- Dots per trade, colored by positive/negative -->
+                <circle
+                  v-for="(point, idx) in trailingChartCoordinates"
+                  :key="`tc-${idx}`"
+                  :cx="point.x"
+                  :cy="point.y"
+                  r="4"
+                  :fill="point.value === null ? '#475569' : trailingChartMetric === 'profit' ? (point.positive ? '#34d399' : '#f87171') : '#60a5fa'"
+                  class="cursor-pointer"
+                  @mousemove="showChartTooltip($event, [
+                    `Trade #${point.tradeId} · ${point.pair}`,
+                    point.at,
+                    trailingChartMetric === 'profit'
+                      ? (point.value !== null ? `Profit: ${point.value.toFixed(2)}%` : 'Profit: n/a')
+                      : (point.value !== null ? `Duration: ${point.value.toFixed(1)} min` : 'Duration: n/a'),
+                  ])"
+                  @mouseleave="hideChartTooltip"
+                >
+                  <title>{{ `Trade #${point.tradeId} · ${point.pair} · ${point.at}` }}</title>
+                </circle>
+              </svg>
             </div>
 
             <div v-if="!filteredTrailingTradeRows.length" class="text-sm text-surface-400">
