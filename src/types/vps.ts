@@ -405,3 +405,46 @@ export interface DwhAlertConfig {
   last_auto_run_at: string | null;
   next_auto_run_at: string | null;
 }
+
+export interface DwhMissedSignal {
+  id: number;
+  bot_id: number;
+  source_log_event_id: number | null;
+  pair: string;
+  signal_ts: string;
+  block_reason: string;
+  signal_price: number | null;
+  price_source: string | null; // "log" | "candle_open"
+  // Outcome (null until 24h have elapsed and fetch has run)
+  outcome_fetched_at: string | null;
+  outcome_window_hours: number;
+  candle_open_at_signal: number | null;
+  high_in_window: number | null;
+  low_in_window: number | null;
+  close_at_window_end: number | null;
+  max_gain_pct: number | null;
+  max_loss_pct: number | null;
+  close_pct: number | null;
+  fetch_error: string | null;
+  ingested_at: string;
+  // Enriched
+  vps_name: string | null;
+  container_name: string | null;
+}
+
+export interface DwhMissedSignalList {
+  total: number;
+  pending_outcomes: number;
+  items: DwhMissedSignal[];
+}
+
+export interface DwhMissedSignalParseResult {
+  parsed: number;
+  skipped_no_pair: number;
+}
+
+export interface DwhMissedSignalOutcomeFetchResult {
+  fetched: number;
+  errors: number;
+  pending: number;
+}

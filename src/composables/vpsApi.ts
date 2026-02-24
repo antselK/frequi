@@ -27,6 +27,9 @@ import type {
   DwhRollupCompactionConfig,
   DwhRollupCompactionRunResult,
   DwhLogCaptureRule,
+  DwhMissedSignalList,
+  DwhMissedSignalOutcomeFetchResult,
+  DwhMissedSignalParseResult,
   DwhSummary,
   VpsActionResult,
   VpsContainer,
@@ -385,6 +388,40 @@ export const vpsApi = {
   },
   async dwhAlertConfig(): Promise<DwhAlertConfig> {
     const { data } = await vpsApiClient.get<DwhAlertConfig>('/dwh/alerts/config');
+    return data;
+  },
+  async dwhMissedSignals(
+    dateFrom?: string,
+    dateTo?: string,
+    botId?: number,
+    pair?: string,
+    blockReason?: string,
+    outcomeReady?: boolean,
+    limit = 500,
+    offset = 0,
+  ): Promise<DwhMissedSignalList> {
+    const { data } = await vpsApiClient.get<DwhMissedSignalList>('/dwh/missed-signals', {
+      params: {
+        date_from: dateFrom,
+        date_to: dateTo,
+        bot_id: botId,
+        pair,
+        block_reason: blockReason,
+        outcome_ready: outcomeReady,
+        limit,
+        offset,
+      },
+    });
+    return data;
+  },
+  async parseMissedSignals(): Promise<DwhMissedSignalParseResult> {
+    const { data } = await vpsApiClient.post<DwhMissedSignalParseResult>('/dwh/missed-signals/parse');
+    return data;
+  },
+  async fetchMissedSignalOutcomes(): Promise<DwhMissedSignalOutcomeFetchResult> {
+    const { data } = await vpsApiClient.post<DwhMissedSignalOutcomeFetchResult>(
+      '/dwh/missed-signals/fetch-outcomes',
+    );
     return data;
   },
 };

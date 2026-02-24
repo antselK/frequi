@@ -10,6 +10,8 @@ import type {
   DwhIngestionRunResult,
   DwhLogCauseSummary,
   DwhLogCumulativePoint,
+  DwhMissedSignal,
+  DwhMissedSignalList,
   DwhTrade,
 } from '@/types/vps';
 
@@ -200,6 +202,74 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
       label: 'Trailing entries benefit',
       todo: 'Trailing trigger events with profit/duration summaries from DWH anomaly samples.',
     },
+    {
+      value: 'signal-outcomes',
+      label: 'Signal outcome analysis',
+      todo: 'Missed trade signals with 24h price outcome from Bybit — shows what would have happened.',
+    },
+    // ── Tier 1: high value, pure SQL ──────────────────────────────────────
+    {
+      value: 'entry-tag-performance',
+      label: '📋 Entry tag performance',
+      todo: 'TODO: Which entry signal tags win most? Group dwh_trades by enter_tag → win rate, avg profit%, avg duration, trade count.',
+    },
+    {
+      value: 'exit-reason-distribution',
+      label: '📋 Exit reason distribution',
+      todo: 'TODO: How often does trailing stop fire vs other exits? Group dwh_trades by exit_reason → count, avg profit_ratio, % share.',
+    },
+    {
+      value: 'equity-curve',
+      label: '📋 Equity curve & drawdown',
+      todo: 'TODO: Cumulative profit_abs over time per bot. Sum close_date profit_abs, compute rolling max drawdown.',
+    },
+    {
+      value: 'bot-comparison',
+      label: '📋 Bot comparison dashboard',
+      todo: 'TODO: All bots side-by-side: trades/day, win rate, avg profit%, total PnL, avg duration. Source: dwh_trades grouped by bot_id.',
+    },
+    {
+      value: 'pair-performance',
+      label: '📋 Pair-level performance',
+      todo: 'TODO: Which pairs are most profitable? Group dwh_trades by pair → win rate, avg profit%, trade count, total abs profit.',
+    },
+    // ── Tier 2: minor extra work ──────────────────────────────────────────
+    {
+      value: 'dca-analysis',
+      label: '📋 DCA / multi-order analysis',
+      todo: 'TODO: Do DCA trades outperform single-entry? Count buy orders per trade_id from dwh_orders, compare single vs multi-order performance.',
+    },
+    {
+      value: 'trade-duration',
+      label: '📋 Trade duration vs profit',
+      todo: 'TODO: Scatter: duration (hours) vs profit_ratio, colored by exit_reason. Helps spot if quick trades outperform long ones.',
+    },
+    {
+      value: 'slippage-quality',
+      label: '📋 Slippage & fill quality',
+      todo: 'TODO: dwh_orders.average vs dwh_trades.open_rate per pair/bot — are fills close to signal price? Which pairs slip most?',
+    },
+    {
+      value: 'fee-impact',
+      label: '📋 Fee impact',
+      todo: 'TODO: Sum dwh_orders.fee_base per trade vs gross profit_abs. What % of profit goes to fees per bot/pair?',
+    },
+    // ── Tier 3: interesting, lower urgency ───────────────────────────────
+    {
+      value: 'time-of-day-heatmap',
+      label: '📋 Time-of-day heatmap',
+      todo: 'TODO: 7×24 grid (weekday × hour) colored by avg profit_ratio. Identify best/worst times to trade. Source: dwh_trades.open_date.',
+    },
+    {
+      value: 'entry-exit-matrix',
+      label: '📋 Entry tag × exit reason matrix',
+      todo: 'TODO: Pivot table: rows = enter_tag, cols = exit_reason, cells = avg profit_ratio. Shows which tags exit cleanly via trailing vs stoploss.',
+    },
+    {
+      value: 'error-trade-correlation',
+      label: '📋 Error ↔ trade correlation',
+      todo: 'TODO: Do anomaly spikes correlate with missed trades or bad fills? Join dwh_anomaly_hourly_rollups with dwh_missed_signals by hour+bot.',
+    },
   ],
 };
 
@@ -242,6 +312,9 @@ function dateFromToDays(dateFrom: string): number {
   const diffMs = Date.now() - from.getTime();
   return Math.max(1, Math.ceil(diffMs / 86400000));
 }
+function candleBucketMs(eventTs: string): number {
+  return Math.floor(new Date(eventTs).getTime() / (15 * 60 * 1000)) * (15 * 60 * 1000);
+}
 const missedDateFrom = ref(todayStr());
 const missedDateTo = ref(todayStr());
 const missedFilterBotId = ref<number | null>(null);
@@ -259,6 +332,7 @@ const trailingFilterSide = ref<'all' | TrailingSide>('all');
 const trailingFilterMatchSource = ref<'all' | TrailingTriggerEvent['matchSource']>('all');
 const trailingTradeRows = ref<TrailingTradeRow[]>([]);
 const trailingExpandedTradeKey = ref<string | null>(null);
+const missedExpandedGroupKey = ref<string | null>(null);
 
 // Trade drill-down
 const drillDateFrom = ref(todayStr());
@@ -273,6 +347,24 @@ const drillTrades = ref<import('@/types/vps').DwhTrade[]>([]);
 const drillTotal = ref(0);
 const drillOffset = ref(0);
 const drillPageSize = 100;
+
+// Signal Outcomes state
+const signalOutcomes = ref<DwhMissedSignalList | null>(null);
+const signalOutcomesDateFrom = ref(daysAgoStr(1));
+const signalOutcomesDateTo = ref(todayStr());
+const signalOutcomesFilterBotId = ref<number | null>(null);
+const signalOutcomesFilterPair = ref('');
+const signalOutcomesFilterReason = ref('');
+const loadingSignalOutcomes = ref(false);
+const loadingParseMissedSignals = ref(false);
+const loadingFetchOutcomes = ref(false);
+const signalOutcomesLoaded = ref(false);
+
+// Shared filter state for stub (planned) reports — replaced per-report when built
+const stubDateFrom = ref(todayStr());
+const stubDateTo = ref(todayStr());
+const stubFilterBotId = ref<number | null>(null);
+const stubFilterPair = ref('');
 
 const loadingSystemTimeline = ref(false);
 const loadingSystemSpikeSummary = ref(false);
@@ -676,6 +768,23 @@ const parsedMissedTradeEvents = computed(() => {
   return filteredMissedTradeEventsByBotPair.value.filter((event) => selected.has(event.reasonCode));
 });
 
+interface MissedTradeGroup {
+  key: string;
+  bucketMs: number;
+  representative: ParsedLogEvent;
+  events: ParsedLogEvent[];
+}
+const groupedMissedTradeEvents = computed<MissedTradeGroup[]>(() => {
+  const groups = new Map<string, MissedTradeGroup>();
+  for (const event of parsedMissedTradeEvents.value) {
+    const bucket = candleBucketMs(event.eventTs);
+    const key = `${event.botId}|${event.pair}|${bucket}`;
+    if (!groups.has(key)) groups.set(key, { key, bucketMs: bucket, representative: event, events: [] });
+    groups.get(key)!.events.push(event);
+  }
+  return Array.from(groups.values()).sort((a, b) => b.bucketMs - a.bucketMs);
+});
+
 const missedTradeSummaryByReason = computed<ReasonSummaryItem[]>(() => {
   const grouped = new Map<MissedTradeReasonCode, number>();
 
@@ -705,6 +814,25 @@ const trailingEntryMissPct = computed(() => {
   }
   return ((trailingEntryMissCount.value / total) * 100).toFixed(1);
 });
+
+// Signal Outcomes computed stats
+const signalOutcomeItems = computed<DwhMissedSignal[]>(() => signalOutcomes.value?.items ?? []);
+
+const signalOutcomesEvaluated = computed(() =>
+  signalOutcomeItems.value.filter((s) => s.outcome_fetched_at !== null && s.fetch_error === null),
+);
+
+const signalOutcomesProfitable = computed(() =>
+  signalOutcomesEvaluated.value.filter((s) => (s.max_gain_pct ?? 0) >= 7.2),
+);
+
+const signalOutcomesProfitablePct = computed(() => {
+  const evaluated = signalOutcomesEvaluated.value.length;
+  if (!evaluated) return '0.0';
+  return ((signalOutcomesProfitable.value.length / evaluated) * 100).toFixed(1);
+});
+
+const signalOutcomesPendingCount = computed(() => signalOutcomes.value?.pending_outcomes ?? 0);
 
 const filteredTrailingTradeRows = computed(() => {
   const pairNeedle = trailingFilterPair.value.trim().toLowerCase();
@@ -2157,6 +2285,7 @@ function isMissedTradeSignature(item: DwhAnomaly): boolean {
 
 async function loadMissedTradesReport() {
   loadingMissedTrades.value = true;
+  missedExpandedGroupKey.value = null;
   reportsError.value = '';
   try {
     await ensureBotDisplayMapLoaded();
@@ -2201,6 +2330,50 @@ async function loadMissedTradesReport() {
   }
 }
 
+async function loadSignalOutcomes() {
+  loadingSignalOutcomes.value = true;
+  reportsError.value = '';
+  try {
+    signalOutcomes.value = await vpsApi.dwhMissedSignals(
+      signalOutcomesDateFrom.value || undefined,
+      signalOutcomesDateTo.value || undefined,
+      signalOutcomesFilterBotId.value ?? undefined,
+      signalOutcomesFilterPair.value || undefined,
+      signalOutcomesFilterReason.value || undefined,
+    );
+    signalOutcomesLoaded.value = true;
+  } catch (error) {
+    reportsError.value = String(error);
+    signalOutcomes.value = null;
+  } finally {
+    loadingSignalOutcomes.value = false;
+  }
+}
+
+async function runParseMissedSignals() {
+  loadingParseMissedSignals.value = true;
+  try {
+    await vpsApi.parseMissedSignals();
+    await loadSignalOutcomes();
+  } catch (error) {
+    reportsError.value = String(error);
+  } finally {
+    loadingParseMissedSignals.value = false;
+  }
+}
+
+async function runFetchOutcomes() {
+  loadingFetchOutcomes.value = true;
+  try {
+    await vpsApi.fetchMissedSignalOutcomes();
+    await loadSignalOutcomes();
+  } catch (error) {
+    reportsError.value = String(error);
+  } finally {
+    loadingFetchOutcomes.value = false;
+  }
+}
+
 function clearTrailingBenefitFilters() {
   trailingDateFrom.value = todayStr();
   trailingDateTo.value = todayStr();
@@ -2221,6 +2394,14 @@ function toggleTrailingTradeExpand(botId: number, tradeId: number) {
 
 function isTrailingTradeExpanded(botId: number, tradeId: number): boolean {
   return trailingExpandedTradeKey.value === `${botId}|${tradeId}`;
+}
+
+function toggleMissedGroup(key: string) {
+  missedExpandedGroupKey.value = missedExpandedGroupKey.value === key ? null : key;
+}
+
+function isMissedGroupExpanded(key: string): boolean {
+  return missedExpandedGroupKey.value === key;
 }
 
 async function loadTrailingBenefitReport() {
@@ -3062,7 +3243,7 @@ onMounted(async () => {
               </svg>
             </div>
 
-            <div v-if="!parsedMissedTradeEvents.length" class="text-sm text-surface-400">
+            <div v-if="!groupedMissedTradeEvents.length" class="text-sm text-surface-400">
               {{ loadingMissedTrades ? 'Loading missed trades...' : 'No missed trade events found.' }}
             </div>
 
@@ -3070,36 +3251,699 @@ onMounted(async () => {
               <table class="w-full text-sm border-collapse">
                 <thead>
                   <tr class="border-b border-surface-600 text-left">
-                    <th class="py-2 pe-2">Time</th>
+                    <th class="py-2 pe-2">Time (candle)</th>
                     <th class="py-2 pe-2">Bot</th>
                     <th class="py-2 pe-2">Pair</th>
-                    <th class="py-2 pe-2">Reason code</th>
-                    <th class="py-2 pe-2">Reason</th>
-                    <th class="py-2 pe-2">Details</th>
-                    <th class="py-2 pe-2">Logger</th>
-                    <th class="py-2">Message</th>
+                    <th class="py-2 pe-2">Reasons</th>
+                    <th class="py-2 pe-2 text-center">Events</th>
+                    <th class="py-2 text-center">Show</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="group in groupedMissedTradeEvents" :key="group.key">
+                    <!-- Grouped summary row -->
+                    <tr class="border-b border-surface-700/70 align-top">
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        {{ group.representative.at }}
+                      </td>
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        <div class="font-medium">{{ getBotVpsName(group.representative.botId) }}</div>
+                        <div class="text-xs text-surface-400">
+                          {{ getBotContainerName(group.representative.botId) }} · #{{ group.representative.botId }}
+                        </div>
+                      </td>
+                      <td class="py-2 pe-2 whitespace-nowrap font-mono">{{ group.representative.pair }}</td>
+                      <td class="py-2 pe-2">
+                        <span
+                          v-for="rc in [...new Set(group.events.map((e) => e.reasonCode))]"
+                          :key="rc"
+                          class="inline-block text-xs text-surface-300 bg-surface-700 rounded px-1 me-1 mb-0.5 whitespace-nowrap"
+                        >{{ rc }}</span>
+                      </td>
+                      <td class="py-2 pe-2 text-center whitespace-nowrap text-surface-400 text-xs">
+                        {{ group.events.length }}
+                      </td>
+                      <td class="py-2 text-center">
+                        <button
+                          class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
+                          @click="toggleMissedGroup(group.key)"
+                        >
+                          {{ isMissedGroupExpanded(group.key) ? 'Hide' : 'Show' }}
+                        </button>
+                      </td>
+                    </tr>
+                    <!-- Expanded detail sub-table -->
+                    <tr v-if="isMissedGroupExpanded(group.key)" class="border-b border-surface-800 bg-surface-950/40">
+                      <td colspan="6" class="py-3 px-2">
+                        <div class="max-h-72 overflow-y-auto">
+                          <table class="w-full text-xs border-collapse">
+                            <thead>
+                              <tr class="border-b border-surface-700 text-left">
+                                <th class="py-1 pe-2">Time</th>
+                                <th class="py-1 pe-2">Reason code</th>
+                                <th class="py-1 pe-2">Reason</th>
+                                <th class="py-1 pe-2">Details</th>
+                                <th class="py-1">Message</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr
+                                v-for="(event, idx) in group.events"
+                                :key="`detail-${group.key}-${idx}`"
+                                class="border-b border-surface-800/50 align-top"
+                              >
+                                <td class="py-1 pe-2 whitespace-nowrap">{{ event.at }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap">{{ event.reasonCode }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap">{{ event.reason }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap">{{ event.details ?? '—' }}</td>
+                                <td class="py-1 break-words">{{ event.message }}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- Signal Outcome Analysis                                     -->
+          <!-- ============================================================ -->
+          <div
+            v-if="selectedSubCategory === 'signal-outcomes'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
+            <!-- Header + filters -->
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h5 class="font-semibold">Signal Outcome Analysis</h5>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="signalOutcomesDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="signalOutcomesDateTo" type="date" size="small" class="w-36" />
+                <InputNumber
+                  v-model="signalOutcomesFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
+                <InputText
+                  v-model="signalOutcomesFilterPair"
+                  size="small"
+                  class="w-36"
+                  placeholder="Pair"
+                />
+                <InputText
+                  v-model="signalOutcomesFilterReason"
+                  size="small"
+                  class="w-36"
+                  placeholder="Reason code"
+                />
+                <Button
+                  label="Load"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  :loading="loadingSignalOutcomes"
+                  @click="loadSignalOutcomes"
+                />
+              </div>
+            </div>
+
+            <!-- Admin actions -->
+            <div class="flex flex-wrap gap-2 text-xs">
+              <Button
+                label="Parse signals"
+                size="small"
+                severity="secondary"
+                outlined
+                :loading="loadingParseMissedSignals"
+                title="Scan new log events and store as missed signals"
+                @click="runParseMissedSignals"
+              />
+              <Button
+                label="Fetch outcomes"
+                size="small"
+                severity="secondary"
+                outlined
+                :loading="loadingFetchOutcomes"
+                title="Fetch 24h OHLCV from Bybit for signals older than 24h"
+                @click="runFetchOutcomes"
+              />
+            </div>
+
+            <!-- Summary stats -->
+            <div
+              v-if="signalOutcomesLoaded && signalOutcomes"
+              class="flex flex-wrap gap-3 text-sm"
+            >
+              <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold">{{ signalOutcomes.total }}</div>
+                <div class="text-xs text-surface-400">Total signals</div>
+              </div>
+              <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold">{{ signalOutcomesEvaluated.length }}</div>
+                <div class="text-xs text-surface-400">Evaluated</div>
+              </div>
+              <div class="rounded border border-green-700 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold text-green-400">
+                  {{ signalOutcomesProfitable.length }}
+                  <span class="text-sm font-normal">({{ signalOutcomesProfitablePct }}%)</span>
+                </div>
+                <div class="text-xs text-surface-400">Would trigger trailing stop (≥7.2%)</div>
+              </div>
+              <div
+                v-if="signalOutcomesPendingCount > 0"
+                class="rounded border border-yellow-700 px-3 py-2 min-w-28 text-center"
+              >
+                <div class="text-lg font-bold text-yellow-400">{{ signalOutcomesPendingCount }}</div>
+                <div class="text-xs text-surface-400">Awaiting outcome fetch</div>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div
+              v-if="signalOutcomesLoaded && signalOutcomeItems.length === 0"
+              class="text-sm text-surface-400 py-4 text-center"
+            >
+              No signals found. Run "Parse signals" after an ingestion to populate this report.
+            </div>
+
+            <!-- Table -->
+            <div v-if="signalOutcomeItems.length > 0" class="overflow-x-auto w-full">
+              <table class="w-full text-sm border-collapse">
+                <thead>
+                  <tr class="border-b border-surface-600 text-left">
+                    <th class="py-2 pe-3">Time</th>
+                    <th class="py-2 pe-3">Bot</th>
+                    <th class="py-2 pe-3">Pair</th>
+                    <th class="py-2 pe-3">Reason</th>
+                    <th class="py-2 pe-3">Entry price</th>
+                    <th class="py-2 pe-3 text-green-400">Max gain</th>
+                    <th class="py-2 pe-3 text-red-400">Max loss</th>
+                    <th class="py-2">Outcome</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr
-                    v-for="(event, idx) in parsedMissedTradeEvents"
-                    :key="`${event.at}-${idx}`"
+                    v-for="sig in signalOutcomeItems"
+                    :key="sig.id"
                     class="border-b border-surface-700/70 align-top"
                   >
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ event.at }}</td>
-                    <td class="py-2 pe-2 align-top whitespace-nowrap">
-                      <div class="font-medium">{{ getBotVpsName(event.botId) }}</div>
-                      <div class="text-xs text-surface-400">{{ getBotContainerName(event.botId) }} · ID {{ event.botId }}</div>
+                    <td class="py-2 pe-3 whitespace-nowrap">
+                      {{ timestampShort(sig.signal_ts) }}
                     </td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ event.pair }}</td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ event.reasonCode }}</td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ event.reason }}</td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ event.details ?? '—' }}</td>
-                    <td class="py-2 pe-2 whitespace-nowrap">{{ event.logger }}</td>
-                    <td class="py-2 break-words">{{ event.message }}</td>
+                    <td class="py-2 pe-3 whitespace-nowrap">
+                      <div class="font-medium">{{ sig.vps_name ?? `Bot ${sig.bot_id}` }}</div>
+                      <div class="text-xs text-surface-400">{{ sig.container_name }} · #{{ sig.bot_id }}</div>
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap font-mono">{{ sig.pair }}</td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-xs text-surface-300">
+                      {{ sig.block_reason }}
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap font-mono text-xs">
+                      <template v-if="sig.signal_price !== null">
+                        {{ sig.signal_price.toFixed(4) }}
+                        <span class="text-surface-500 ms-1">(log)</span>
+                      </template>
+                      <template v-else-if="sig.candle_open_at_signal !== null">
+                        {{ sig.candle_open_at_signal.toFixed(4) }}
+                        <span class="text-surface-500 ms-1">(candle)</span>
+                      </template>
+                      <span v-else class="text-surface-500">—</span>
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap font-mono text-xs">
+                      <span
+                        v-if="sig.max_gain_pct !== null"
+                        class="text-green-400"
+                      >+{{ sig.max_gain_pct.toFixed(2) }}%</span>
+                      <span v-else class="text-surface-500">—</span>
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap font-mono text-xs">
+                      <span
+                        v-if="sig.max_loss_pct !== null"
+                        class="text-red-400"
+                      >{{ sig.max_loss_pct.toFixed(2) }}%</span>
+                      <span v-else class="text-surface-500">—</span>
+                    </td>
+                    <td class="py-2 whitespace-nowrap text-xs">
+                      <span
+                        v-if="sig.fetch_error"
+                        class="text-orange-400"
+                        :title="sig.fetch_error"
+                      >Error</span>
+                      <span
+                        v-else-if="sig.outcome_fetched_at === null"
+                        class="text-surface-500"
+                      >Pending</span>
+                      <span
+                        v-else-if="(sig.max_gain_pct ?? 0) >= 7.2"
+                        class="text-green-400 font-medium"
+                      >Win</span>
+                      <span
+                        v-else
+                        class="text-red-400 font-medium"
+                      >No trigger</span>
+                    </td>
                   </tr>
                 </tbody>
               </table>
+              <div v-if="signalOutcomes && signalOutcomes.total > signalOutcomeItems.length" class="mt-2 text-xs text-surface-400">
+                Showing {{ signalOutcomeItems.length }} of {{ signalOutcomes.total }} signals
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- Stub report pages — Tier 1                               -->
+          <!-- ============================================================ -->
+
+          <div v-if="selectedSubCategory === 'entry-tag-performance'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Entry Tag Performance</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Groups closed trades by <code class="bg-surface-700 px-1 rounded">enter_tag</code> and shows win rate, average profit %, average duration, and trade count per tag.
+              Answers: <em>which entry signal tags are actually worth acting on?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Table: enter_tag | trades | wins | win rate % | avg profit % | avg duration (h)</div>
+                <div class="text-surface-400">• Sorted by trade count or win rate</div>
+                <div class="text-surface-400">• Filter by bot, date range</div>
+                <div class="text-surface-400">• Summary stat bar at top (best/worst tag)</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">GET /dwh/reports/entry-tag-performance</code></div>
+                <div class="text-surface-400">• Query: <code class="bg-surface-800 px-1 rounded">SELECT enter_tag, COUNT(*), AVG(profit_ratio), ... FROM dwh_trades WHERE close_date IS NOT NULL GROUP BY enter_tag</code></div>
+                <div class="text-surface-400">• Schema: <code class="bg-surface-800 px-1 rounded">DwhEntryTagStat</code> list</div>
+                <div class="text-surface-400">• Frontend: simple table + summary cards, no chart needed for v1</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedSubCategory === 'exit-reason-distribution'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Exit Reason Distribution</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Groups closed trades by <code class="bg-surface-700 px-1 rounded">exit_reason</code> and shows count, avg profit %, and % share.
+              Answers: <em>how often does the trailing stop fire vs stoploss vs ROI? Are we exiting well?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Bar chart: exit_reason by count + avg profit</div>
+                <div class="text-surface-400">• Pie/donut: % share by exit reason</div>
+                <div class="text-surface-400">• Table: reason | count | % share | avg profit% | avg profit abs</div>
+                <div class="text-surface-400">• Filter by bot, date range, pair</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">GET /dwh/reports/exit-reason-distribution</code></div>
+                <div class="text-surface-400">• Query: <code class="bg-surface-800 px-1 rounded">SELECT exit_reason, COUNT(*), AVG(profit_ratio) FROM dwh_trades WHERE close_date IS NOT NULL GROUP BY exit_reason</code></div>
+                <div class="text-surface-400">• Printer.py key exit reasons: trailing_stop_loss, roi, stop_loss, force_sell</div>
+                <div class="text-surface-400">• Frontend: table + optional SVG bar chart reusing existing chart patterns</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedSubCategory === 'equity-curve'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Equity Curve & Drawdown</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Plots cumulative <code class="bg-surface-700 px-1 rounded">profit_abs</code> over time per bot, with rolling max drawdown.
+              Answers: <em>is each bot growing its account? When were the worst drawdown periods?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Line chart: cumulative profit_abs over close_date, one line per bot</div>
+                <div class="text-surface-400">• Shaded area below line = drawdown depth</div>
+                <div class="text-surface-400">• Summary: total PnL, max drawdown, recovery factor per bot</div>
+                <div class="text-surface-400">• Bot toggle to show/hide individual lines</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Backend: return sorted <code class="bg-surface-800 px-1 rounded">(close_date, bot_id, profit_abs)</code> rows</div>
+                <div class="text-surface-400">• Frontend: compute running sum + rolling max in JS, then render with SVG polyline (pattern exists in system errors chart)</div>
+                <div class="text-surface-400">• Drawdown = (running_max - current) / running_max</div>
+                <div class="text-surface-400">• One API call, all bots; group client-side</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedSubCategory === 'bot-comparison'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Bot Comparison Dashboard</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              All bots side-by-side with key performance metrics.
+              Answers: <em>which bots are outperforming? Which are dragging down results?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Table: Bot | VPS | Trades | Trades/day | Win rate | Avg profit% | Total PnL | Avg duration</div>
+                <div class="text-surface-400">• Color-coded: green/red for win rate and avg profit</div>
+                <div class="text-surface-400">• Sortable columns</div>
+                <div class="text-surface-400">• Date range filter</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">SELECT bot_id, COUNT(*), AVG(profit_ratio), SUM(profit_abs), ... FROM dwh_trades GROUP BY bot_id</code></div>
+                <div class="text-surface-400">• Join managed_bots + vps_servers for display names</div>
+                <div class="text-surface-400">• Frontend: sortable table, stat cards for fleet-level totals</div>
+                <div class="text-surface-400">• Reuse <code class="bg-surface-800 px-1 rounded">getBotVpsName / getBotContainerName</code> helpers</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedSubCategory === 'pair-performance'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Pair-Level Performance</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Groups closed trades by <code class="bg-surface-700 px-1 rounded">pair</code> and shows win rate, avg profit, trade count, total abs profit.
+              Answers: <em>which pairs are consistently profitable? Which should be removed from the pairlist?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Table: Pair | trades | win rate | avg profit% | total PnL | avg duration</div>
+                <div class="text-surface-400">• Sort by total PnL or win rate</div>
+                <div class="text-surface-400">• Filter by bot, date range</div>
+                <div class="text-surface-400">• Highlight top 5 / bottom 5 pairs</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">SELECT pair, COUNT(*), SUM(profit_abs), AVG(profit_ratio) FROM dwh_trades WHERE close_date IS NOT NULL GROUP BY pair ORDER BY SUM(profit_abs) DESC</code></div>
+                <div class="text-surface-400">• Optional bot_id filter to see per-bot pair performance</div>
+                <div class="text-surface-400">• Frontend: sortable table, color-coded PnL column</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- Stub report pages — Tier 2                               -->
+          <!-- ============================================================ -->
+
+          <div v-if="selectedSubCategory === 'dca-analysis'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">DCA / Multi-Order Analysis</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 2</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Compares single-entry trades against trades that used deep DCA (multiple buy orders).
+              Answers: <em>does adding DCA orders improve final profit? Which pairs benefit most from DCA?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Table: trade_id | pair | buy order count | avg buy price | final profit% | exit reason</div>
+                <div class="text-surface-400">• Summary: single-entry avg profit vs multi-order avg profit</div>
+                <div class="text-surface-400">• Distribution: histogram of buy order counts per trade</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Join dwh_trades with dwh_orders on trade_id, count buy orders (ft_order_side='buy')</div>
+                <div class="text-surface-400">• Group: trades with 1 buy = single entry; 2+ = DCA</div>
+                <div class="text-surface-400">• Note: dwh_orders data availability depends on ingestion (check if populated)</div>
+                <div class="text-surface-400">• Backend may need a dedicated endpoint since it joins two tables</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedSubCategory === 'trade-duration'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Trade Duration vs Profit</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 2</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Scatter plot of trade duration (hours) vs profit_ratio, colored by exit reason.
+              Answers: <em>do short trades outperform long ones? Are long-held trades more likely to stop-loss?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• SVG scatter: x = duration (h), y = profit_ratio, color = exit_reason</div>
+                <div class="text-surface-400">• Buckets: &lt;1h | 1–4h | 4–12h | 12–24h | &gt;24h → avg profit per bucket</div>
+                <div class="text-surface-400">• Filter by bot, pair, date range, exit reason</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Backend: return (open_date, close_date, profit_ratio, exit_reason) — duration computed client-side</div>
+                <div class="text-surface-400">• <code class="bg-surface-800 px-1 rounded">duration_h = (close_date - open_date).seconds / 3600</code></div>
+                <div class="text-surface-400">• Frontend: SVG scatter reusing coordinate system from existing charts</div>
+                <div class="text-surface-400">• Color map: trailing_stop=green, stop_loss=red, roi=blue, other=gray</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedSubCategory === 'slippage-quality'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Slippage & Fill Quality</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 2</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Compares <code class="bg-surface-700 px-1 rounded">dwh_orders.average</code> (actual fill) vs <code class="bg-surface-700 px-1 rounded">dwh_trades.open_rate</code> (signal price) per pair/bot.
+              Answers: <em>are we getting filled near the signal price, or is slippage eating into profits?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Table: pair | avg slippage% | max slippage% | trade count</div>
+                <div class="text-surface-400">• slippage% = (fill_price - signal_price) / signal_price × 100</div>
+                <div class="text-surface-400">• Sorted by worst avg slippage</div>
+                <div class="text-surface-400">• Alert: pairs with avg slippage &gt; 0.1%</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Join dwh_orders (ft_order_side='buy', status='closed') with dwh_trades on trade_id</div>
+                <div class="text-surface-400">• <code class="bg-surface-800 px-1 rounded">slippage = (orders.average - trades.open_rate) / trades.open_rate</code></div>
+                <div class="text-surface-400">• Check dwh_orders has average column populated before building</div>
+                <div class="text-surface-400">• Backend aggregation; frontend table only</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedSubCategory === 'fee-impact'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Fee Impact</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 2</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Sums <code class="bg-surface-700 px-1 rounded">dwh_orders.fee_base</code> per trade and compares against gross <code class="bg-surface-700 px-1 rounded">profit_abs</code>.
+              Answers: <em>what % of gross profit goes to fees? Which bots/pairs pay the most in fees?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Summary: total fees paid, total gross profit, net efficiency %</div>
+                <div class="text-surface-400">• Table: bot | total fees | gross PnL | fee % of profit</div>
+                <div class="text-surface-400">• Per-pair breakdown: which pairs cost the most in fees</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• <code class="bg-surface-800 px-1 rounded">SELECT trade_id, SUM(fee_base) FROM dwh_orders GROUP BY trade_id</code></div>
+                <div class="text-surface-400">• Join result with dwh_trades.profit_abs</div>
+                <div class="text-surface-400">• <code class="bg-surface-800 px-1 rounded">fee_pct = total_fees / (profit_abs + total_fees) × 100</code></div>
+                <div class="text-surface-400">• Check fee_base column is populated in dwh_orders before building</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- Stub report pages — Tier 3                               -->
+          <!-- ============================================================ -->
+
+          <div v-if="selectedSubCategory === 'time-of-day-heatmap'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Time-of-Day Heatmap</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 3</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              7×24 grid (weekday × hour UTC) colored by avg <code class="bg-surface-700 px-1 rounded">profit_ratio</code>.
+              Answers: <em>are there consistently good or bad times to open trades?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• 7 rows (Mon–Sun) × 24 cols (hours), cell = avg profit% for that slot</div>
+                <div class="text-surface-400">• Color scale: dark red (loss) → neutral → dark green (profit)</div>
+                <div class="text-surface-400">• Tooltip on hover: avg profit%, trade count</div>
+                <div class="text-surface-400">• Filter by bot, pair, date range</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">SELECT EXTRACT(dow FROM open_date), EXTRACT(hour FROM open_date), AVG(profit_ratio), COUNT(*) FROM dwh_trades GROUP BY 1, 2</code></div>
+                <div class="text-surface-400">• Frontend: render 7×24 grid of colored divs using Tailwind bg-opacity</div>
+                <div class="text-surface-400">• Color = lerp(red, green) based on profit_ratio range</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedSubCategory === 'entry-exit-matrix'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Entry Tag × Exit Reason Matrix</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 3</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Pivot table: rows = enter_tag, cols = exit_reason, cells = avg profit_ratio and trade count.
+              Answers: <em>which entry tags lead to clean trailing-stop exits vs stop-loss exits?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Pivot grid: enter_tag rows × exit_reason cols</div>
+                <div class="text-surface-400">• Each cell: avg profit% (color coded) + trade count</div>
+                <div class="text-surface-400">• Row totals + column totals</div>
+                <div class="text-surface-400">• Empty cells = gray (no trades for that combination)</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">SELECT enter_tag, exit_reason, AVG(profit_ratio), COUNT(*) FROM dwh_trades WHERE close_date IS NOT NULL GROUP BY 1, 2</code></div>
+                <div class="text-surface-400">• Frontend: pivot client-side — collect unique tags/reasons, build 2D map</div>
+                <div class="text-surface-400">• Render as CSS grid or table; color each cell by avg profit</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedSubCategory === 'error-trade-correlation'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2">
+                <h5 class="font-semibold">Error ↔ Trade Correlation</h5>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 3</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <Button label="Load" size="small" severity="secondary" outlined disabled />
+              </div>
+            </div>
+            <p class="text-sm text-surface-300">
+              Correlates anomaly spikes from <code class="bg-surface-700 px-1 rounded">dwh_anomaly_hourly_rollups</code> with missed signals or bad fills in the same time window.
+              Answers: <em>when bots log lots of errors, do they also miss more trades or fill worse?</em>
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">What it will show</div>
+                <div class="text-surface-400">• Dual-axis timeline: error count (red) + missed signal count (blue) per hour</div>
+                <div class="text-surface-400">• Correlation score: Pearson correlation between error rate and missed trade rate</div>
+                <div class="text-surface-400">• Highlight hours where both spike together</div>
+              </div>
+              <div class="rounded border border-surface-700 p-3 space-y-1">
+                <div class="font-medium text-surface-200 mb-2">How to build</div>
+                <div class="text-surface-400">• Join dwh_anomaly_hourly_rollups with dwh_missed_signals bucketed to the same hour</div>
+                <div class="text-surface-400">• Backend: return hourly series of (hour, error_count, missed_count)</div>
+                <div class="text-surface-400">• Frontend: dual SVG polyline reusing existing timeline chart pattern</div>
+                <div class="text-surface-400">• This report requires both anomaly rollups AND missed_signals to be populated</div>
+              </div>
             </div>
           </div>
 
