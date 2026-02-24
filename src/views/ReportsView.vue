@@ -13,6 +13,10 @@ import type {
   DwhMissedSignal,
   DwhMissedSignalList,
   DwhTrade,
+  DwhEntryTagStat,
+  DwhEntryTagPerformanceList,
+  DwhDcaStat,
+  DwhDcaAnalysisList,
 } from '@/types/vps';
 
 type ReportCategory = 'system' | 'trades';
@@ -210,8 +214,7 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
     // ── Tier 1: high value, pure SQL ──────────────────────────────────────
     {
       value: 'entry-tag-performance',
-      label: '📋 Entry tag performance',
-      todo: 'TODO: Which entry signal tags win most? Group dwh_trades by enter_tag → win rate, avg profit%, avg duration, trade count.',
+      label: 'Entry tag performance',
     },
     {
       value: 'exit-reason-distribution',
@@ -236,8 +239,7 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
     // ── Tier 2: minor extra work ──────────────────────────────────────────
     {
       value: 'dca-analysis',
-      label: '📋 DCA / multi-order analysis',
-      todo: 'TODO: Do DCA trades outperform single-entry? Count buy orders per trade_id from dwh_orders, compare single vs multi-order performance.',
+      label: 'DCA / multi-order analysis',
     },
     {
       value: 'trade-duration',
@@ -359,6 +361,27 @@ const loadingSignalOutcomes = ref(false);
 const loadingParseMissedSignals = ref(false);
 const loadingFetchOutcomes = ref(false);
 const signalOutcomesLoaded = ref(false);
+
+// Entry Tag Performance state
+const entryTagPerformance = ref<DwhEntryTagPerformanceList | null>(null);
+const entryTagLoaded = ref(false);
+const loadingEntryTag = ref(false);
+const entryTagDateFrom = ref(daysAgoStr(30));
+const entryTagDateTo = ref(todayStr());
+const entryTagFilterBotId = ref<number | null>(null);
+const entryTagMinTrades = ref(1);
+const entryTagSortCol = ref<'trades' | 'wins' | 'win_rate_pct' | 'avg_profit_pct' | 'avg_duration_hours' | 'total_profit_abs'>('trades');
+const entryTagSortAsc = ref(false);
+
+// DCA Analysis state
+const dcaAnalysis = ref<DwhDcaAnalysisList | null>(null);
+const dcaLoaded = ref(false);
+const loadingDca = ref(false);
+const dcaDateFrom = ref(daysAgoStr(30));
+const dcaDateTo = ref(todayStr());
+const dcaFilterBotId = ref<number | null>(null);
+const dcaSortCol = ref<'order_count' | 'trades' | 'wins' | 'win_rate_pct' | 'avg_profit_pct' | 'avg_duration_hours' | 'total_profit_abs'>('order_count');
+const dcaSortAsc = ref(true);
 
 // Shared filter state for stub (planned) reports — replaced per-report when built
 const stubDateFrom = ref(todayStr());
@@ -833,6 +856,50 @@ const signalOutcomesProfitablePct = computed(() => {
 });
 
 const signalOutcomesPendingCount = computed(() => signalOutcomes.value?.pending_outcomes ?? 0);
+
+// Entry Tag Performance computed
+const entryTagItems = computed<DwhEntryTagStat[]>(() => {
+  const rows = entryTagPerformance.value?.items ?? [];
+  const col = entryTagSortCol.value;
+  const asc = entryTagSortAsc.value;
+  return [...rows].sort((a, b) => {
+    const av = a[col] ?? -Infinity;
+    const bv = b[col] ?? -Infinity;
+    return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
+  });
+});
+const entryTagBestWinRate = computed(() => {
+  const rows = entryTagPerformance.value?.items ?? [];
+  if (!rows.length) return null;
+  return rows.reduce((best, r) => r.win_rate_pct > best.win_rate_pct ? r : best);
+});
+const entryTagBestAvgProfit = computed(() => {
+  const rows = entryTagPerformance.value?.items ?? [];
+  if (!rows.length) return null;
+  return rows.reduce((best, r) => r.avg_profit_pct > best.avg_profit_pct ? r : best);
+});
+
+// DCA Analysis computed
+const dcaItems = computed<DwhDcaStat[]>(() => {
+  const rows = dcaAnalysis.value?.items ?? [];
+  const col = dcaSortCol.value;
+  const asc = dcaSortAsc.value;
+  return [...rows].sort((a, b) => {
+    const av = a[col] ?? -Infinity;
+    const bv = b[col] ?? -Infinity;
+    return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
+  });
+});
+const dcaSingleEntry = computed(() => dcaAnalysis.value?.items.find(r => r.order_count === 1) ?? null);
+const dcaMultiEntry = computed(() => {
+  const rows = dcaAnalysis.value?.items.filter(r => r.order_count > 1) ?? [];
+  if (!rows.length) return null;
+  const totalTrades = rows.reduce((s, r) => s + r.trades, 0);
+  const totalWins = rows.reduce((s, r) => s + r.wins, 0);
+  const totalProfit = rows.reduce((s, r) => s + r.total_profit_abs, 0);
+  const avgProfit = rows.reduce((s, r) => s + r.avg_profit_pct * r.trades, 0) / totalTrades;
+  return { trades: totalTrades, wins: totalWins, win_rate_pct: totalWins / totalTrades * 100, avg_profit_pct: avgProfit, total_profit_abs: totalProfit };
+});
 
 const filteredTrailingTradeRows = computed(() => {
   const pairNeedle = trailingFilterPair.value.trim().toLowerCase();
@@ -2374,6 +2441,43 @@ async function runFetchOutcomes() {
   }
 }
 
+async function loadEntryTagPerformance() {
+  loadingEntryTag.value = true;
+  reportsError.value = '';
+  try {
+    entryTagPerformance.value = await vpsApi.dwhEntryTagPerformance(
+      entryTagDateFrom.value || undefined,
+      entryTagDateTo.value || undefined,
+      entryTagFilterBotId.value ?? undefined,
+      entryTagMinTrades.value,
+    );
+    entryTagLoaded.value = true;
+  } catch (error) {
+    reportsError.value = String(error);
+    entryTagPerformance.value = null;
+  } finally {
+    loadingEntryTag.value = false;
+  }
+}
+
+async function loadDcaAnalysis() {
+  loadingDca.value = true;
+  reportsError.value = '';
+  try {
+    dcaAnalysis.value = await vpsApi.dwhDcaAnalysis(
+      dcaDateFrom.value || undefined,
+      dcaDateTo.value || undefined,
+      dcaFilterBotId.value ?? undefined,
+    );
+    dcaLoaded.value = true;
+  } catch (error) {
+    reportsError.value = String(error);
+    dcaAnalysis.value = null;
+  } finally {
+    loadingDca.value = false;
+  }
+}
+
 function clearTrailingBenefitFilters() {
   trailingDateFrom.value = todayStr();
   trailingDateTo.value = todayStr();
@@ -3520,39 +3624,154 @@ onMounted(async () => {
           <!-- Stub report pages — Tier 1                               -->
           <!-- ============================================================ -->
 
-          <div v-if="selectedSubCategory === 'entry-tag-performance'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <!-- ============================================================ -->
+          <!-- Entry Tag Performance                                        -->
+          <!-- ============================================================ -->
+          <div
+            v-if="selectedSubCategory === 'entry-tag-performance'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
+            <!-- Header + filters -->
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <div class="flex items-center gap-2">
-                <h5 class="font-semibold">Entry Tag Performance</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
-              </div>
+              <h5 class="font-semibold">Entry Tag Performance</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
-                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <InputText v-model="entryTagDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="entryTagDateTo" type="date" size="small" class="w-36" />
+                <InputNumber
+                  v-model="entryTagFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
+                <InputNumber
+                  v-model="entryTagMinTrades"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Min trades"
+                />
+                <Button
+                  label="Load"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  :loading="loadingEntryTag"
+                  @click="loadEntryTagPerformance"
+                />
               </div>
             </div>
-            <p class="text-sm text-surface-300">
-              Groups closed trades by <code class="bg-surface-700 px-1 rounded">enter_tag</code> and shows win rate, average profit %, average duration, and trade count per tag.
-              Answers: <em>which entry signal tags are actually worth acting on?</em>
-            </p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div class="rounded border border-surface-700 p-3 space-y-1">
-                <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• Table: enter_tag | trades | wins | win rate % | avg profit % | avg duration (h)</div>
-                <div class="text-surface-400">• Sorted by trade count or win rate</div>
-                <div class="text-surface-400">• Filter by bot, date range</div>
-                <div class="text-surface-400">• Summary stat bar at top (best/worst tag)</div>
+
+            <!-- Summary stats -->
+            <div
+              v-if="entryTagLoaded && entryTagPerformance"
+              class="flex flex-wrap gap-3 text-sm"
+            >
+              <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold">{{ entryTagPerformance.total_tags }}</div>
+                <div class="text-xs text-surface-400">Unique tags</div>
               </div>
-              <div class="rounded border border-surface-700 p-3 space-y-1">
-                <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">GET /dwh/reports/entry-tag-performance</code></div>
-                <div class="text-surface-400">• Query: <code class="bg-surface-800 px-1 rounded">SELECT enter_tag, COUNT(*), AVG(profit_ratio), ... FROM dwh_trades WHERE close_date IS NOT NULL GROUP BY enter_tag</code></div>
-                <div class="text-surface-400">• Schema: <code class="bg-surface-800 px-1 rounded">DwhEntryTagStat</code> list</div>
-                <div class="text-surface-400">• Frontend: simple table + summary cards, no chart needed for v1</div>
+              <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold">{{ entryTagPerformance.items.reduce((s, r) => s + r.trades, 0) }}</div>
+                <div class="text-xs text-surface-400">Total trades</div>
               </div>
+              <div
+                v-if="entryTagBestWinRate"
+                class="rounded border border-green-700 px-3 py-2 min-w-36 text-center"
+              >
+                <div class="text-lg font-bold text-green-400">
+                  {{ entryTagBestWinRate.win_rate_pct.toFixed(1) }}%
+                </div>
+                <div class="text-xs text-surface-400">Best win rate ({{ entryTagBestWinRate.enter_tag ?? 'null' }})</div>
+              </div>
+              <div
+                v-if="entryTagBestAvgProfit"
+                class="rounded border border-green-700 px-3 py-2 min-w-36 text-center"
+              >
+                <div class="text-lg font-bold text-green-400">
+                  {{ entryTagBestAvgProfit.avg_profit_pct > 0 ? '+' : '' }}{{ entryTagBestAvgProfit.avg_profit_pct.toFixed(2) }}%
+                </div>
+                <div class="text-xs text-surface-400">Best avg profit ({{ entryTagBestAvgProfit.enter_tag ?? 'null' }})</div>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div
+              v-if="entryTagLoaded && entryTagItems.length === 0"
+              class="text-sm text-surface-400 py-4 text-center"
+            >
+              No closed trades found for the selected filters.
+            </div>
+
+            <!-- Table -->
+            <div v-if="entryTagItems.length > 0" class="overflow-x-auto w-full">
+              <table class="w-full text-sm border-collapse">
+                <thead>
+                  <tr class="border-b border-surface-600 text-left">
+                    <th class="py-2 pe-3">Tag</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="entryTagSortCol === 'trades' ? 'text-primary-400' : ''"
+                      @click="entryTagSortCol === 'trades' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'trades'), (entryTagSortAsc = false))"
+                    >Trades {{ entryTagSortCol === 'trades' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="entryTagSortCol === 'wins' ? 'text-primary-400' : ''"
+                      @click="entryTagSortCol === 'wins' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'wins'), (entryTagSortAsc = false))"
+                    >Wins {{ entryTagSortCol === 'wins' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="entryTagSortCol === 'win_rate_pct' ? 'text-primary-400' : ''"
+                      @click="entryTagSortCol === 'win_rate_pct' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'win_rate_pct'), (entryTagSortAsc = false))"
+                    >Win rate {{ entryTagSortCol === 'win_rate_pct' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="entryTagSortCol === 'avg_profit_pct' ? 'text-primary-400' : ''"
+                      @click="entryTagSortCol === 'avg_profit_pct' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'avg_profit_pct'), (entryTagSortAsc = false))"
+                    >Avg profit {{ entryTagSortCol === 'avg_profit_pct' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="entryTagSortCol === 'avg_duration_hours' ? 'text-primary-400' : ''"
+                      @click="entryTagSortCol === 'avg_duration_hours' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'avg_duration_hours'), (entryTagSortAsc = false))"
+                    >Avg duration {{ entryTagSortCol === 'avg_duration_hours' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 cursor-pointer select-none whitespace-nowrap"
+                      :class="entryTagSortCol === 'total_profit_abs' ? 'text-primary-400' : ''"
+                      @click="entryTagSortCol === 'total_profit_abs' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'total_profit_abs'), (entryTagSortAsc = false))"
+                    >Total profit {{ entryTagSortCol === 'total_profit_abs' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in entryTagItems"
+                    :key="row.enter_tag ?? '__null__'"
+                    class="border-b border-surface-700/70"
+                  >
+                    <td class="py-2 pe-3 font-mono text-xs">{{ row.enter_tag ?? '(none)' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.trades }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.wins }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">
+                      <span :class="row.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'">
+                        {{ row.win_rate_pct.toFixed(1) }}%
+                      </span>
+                    </td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">
+                      <span :class="row.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'">
+                        {{ row.avg_profit_pct >= 0 ? '+' : '' }}{{ row.avg_profit_pct.toFixed(2) }}%
+                      </span>
+                    </td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">
+                      <span v-if="row.avg_duration_hours !== null">{{ row.avg_duration_hours.toFixed(1) }}h</span>
+                      <span v-else class="text-surface-500">—</span>
+                    </td>
+                    <td class="py-2 text-right font-mono text-xs">
+                      <span :class="row.total_profit_abs >= 0 ? 'text-green-400' : 'text-red-400'">
+                        {{ row.total_profit_abs >= 0 ? '+' : '' }}{{ row.total_profit_abs.toFixed(2) }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -3701,37 +3920,161 @@ onMounted(async () => {
           <!-- ============================================================ -->
 
           <div v-if="selectedSubCategory === 'dca-analysis'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <!-- Header + filters -->
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <div class="flex items-center gap-2">
-                <h5 class="font-semibold">DCA / Multi-Order Analysis</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 2</span>
-              </div>
+              <h5 class="font-semibold">DCA / Multi-Order Analysis</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
-                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <InputText v-model="dcaDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="dcaDateTo" type="date" size="small" class="w-36" />
+                <InputNumber v-model="dcaFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <Button
+                  label="Load"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  :loading="loadingDca"
+                  @click="loadDcaAnalysis"
+                />
               </div>
             </div>
-            <p class="text-sm text-surface-300">
-              Compares single-entry trades against trades that used deep DCA (multiple buy orders).
-              Answers: <em>does adding DCA orders improve final profit? Which pairs benefit most from DCA?</em>
-            </p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div class="rounded border border-surface-700 p-3 space-y-1">
-                <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• Table: trade_id | pair | buy order count | avg buy price | final profit% | exit reason</div>
-                <div class="text-surface-400">• Summary: single-entry avg profit vs multi-order avg profit</div>
-                <div class="text-surface-400">• Distribution: histogram of buy order counts per trade</div>
+
+            <!-- Coverage note -->
+            <div v-if="dcaLoaded && dcaAnalysis" class="text-xs text-surface-400">
+              {{ dcaAnalysis.trades_with_orders.toLocaleString() }} of {{ dcaAnalysis.total_closed_trades.toLocaleString() }} closed trades have order data
+              <span v-if="dcaAnalysis.total_closed_trades > 0">
+                ({{ Math.round(dcaAnalysis.trades_with_orders / dcaAnalysis.total_closed_trades * 100) }}% coverage)
+              </span>
+            </div>
+
+            <!-- Single vs DCA summary cards -->
+            <div v-if="dcaLoaded && dcaAnalysis && dcaAnalysis.items.length > 0" class="flex flex-wrap gap-3 text-sm">
+              <div v-if="dcaSingleEntry" class="rounded border border-surface-600 px-3 py-2 min-w-40 text-center">
+                <div class="text-xs text-surface-400 mb-1">Single entry (1 order)</div>
+                <div class="text-lg font-bold">{{ dcaSingleEntry.trades }}</div>
+                <div class="text-xs text-surface-400">trades</div>
+                <div class="mt-1 font-mono text-sm" :class="dcaSingleEntry.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'">
+                  {{ dcaSingleEntry.avg_profit_pct >= 0 ? '+' : '' }}{{ dcaSingleEntry.avg_profit_pct.toFixed(2) }}% avg
+                </div>
+                <div class="font-mono text-xs" :class="dcaSingleEntry.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'">
+                  {{ dcaSingleEntry.win_rate_pct.toFixed(1) }}% win rate
+                </div>
               </div>
-              <div class="rounded border border-surface-700 p-3 space-y-1">
-                <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Join dwh_trades with dwh_orders on trade_id, count buy orders (ft_order_side='buy')</div>
-                <div class="text-surface-400">• Group: trades with 1 buy = single entry; 2+ = DCA</div>
-                <div class="text-surface-400">• Note: dwh_orders data availability depends on ingestion (check if populated)</div>
-                <div class="text-surface-400">• Backend may need a dedicated endpoint since it joins two tables</div>
+              <div v-if="dcaMultiEntry" class="rounded border border-primary-700 px-3 py-2 min-w-40 text-center">
+                <div class="text-xs text-surface-400 mb-1">DCA (2+ orders)</div>
+                <div class="text-lg font-bold">{{ dcaMultiEntry.trades }}</div>
+                <div class="text-xs text-surface-400">trades</div>
+                <div class="mt-1 font-mono text-sm" :class="dcaMultiEntry.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'">
+                  {{ dcaMultiEntry.avg_profit_pct >= 0 ? '+' : '' }}{{ dcaMultiEntry.avg_profit_pct.toFixed(2) }}% avg
+                </div>
+                <div class="font-mono text-xs" :class="dcaMultiEntry.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'">
+                  {{ dcaMultiEntry.win_rate_pct.toFixed(1) }}% win rate
+                </div>
               </div>
+              <div
+                v-if="dcaSingleEntry && dcaMultiEntry"
+                class="rounded border border-surface-600 px-3 py-2 min-w-40 text-center"
+              >
+                <div class="text-xs text-surface-400 mb-1">DCA vs single edge</div>
+                <div
+                  class="text-lg font-bold font-mono"
+                  :class="dcaMultiEntry.avg_profit_pct - dcaSingleEntry.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'"
+                >
+                  {{ (dcaMultiEntry.avg_profit_pct - dcaSingleEntry.avg_profit_pct) >= 0 ? '+' : '' }}{{ (dcaMultiEntry.avg_profit_pct - dcaSingleEntry.avg_profit_pct).toFixed(2) }}%
+                </div>
+                <div class="text-xs text-surface-400">avg profit diff</div>
+                <div
+                  class="font-mono text-xs"
+                  :class="(dcaMultiEntry.win_rate_pct - dcaSingleEntry.win_rate_pct) >= 0 ? 'text-green-400' : 'text-red-400'"
+                >
+                  {{ (dcaMultiEntry.win_rate_pct - dcaSingleEntry.win_rate_pct) >= 0 ? '+' : '' }}{{ (dcaMultiEntry.win_rate_pct - dcaSingleEntry.win_rate_pct).toFixed(1) }}% win rate diff
+                </div>
+              </div>
+            </div>
+
+            <!-- Empty state -->
+            <div
+              v-if="dcaLoaded && dcaItems.length === 0"
+              class="text-sm text-surface-400 py-4 text-center"
+            >
+              No closed trades with order data found for the selected filters.
+            </div>
+
+            <!-- Table -->
+            <div v-if="dcaItems.length > 0" class="overflow-x-auto w-full">
+              <table class="w-full text-sm border-collapse">
+                <thead>
+                  <tr class="border-b border-surface-600 text-left">
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="dcaSortCol === 'order_count' ? 'text-primary-400' : ''"
+                      @click="dcaSortCol === 'order_count' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'order_count'), (dcaSortAsc = true))"
+                    >Buy orders {{ dcaSortCol === 'order_count' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="dcaSortCol === 'trades' ? 'text-primary-400' : ''"
+                      @click="dcaSortCol === 'trades' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'trades'), (dcaSortAsc = false))"
+                    >Trades {{ dcaSortCol === 'trades' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="dcaSortCol === 'wins' ? 'text-primary-400' : ''"
+                      @click="dcaSortCol === 'wins' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'wins'), (dcaSortAsc = false))"
+                    >Wins {{ dcaSortCol === 'wins' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="dcaSortCol === 'win_rate_pct' ? 'text-primary-400' : ''"
+                      @click="dcaSortCol === 'win_rate_pct' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'win_rate_pct'), (dcaSortAsc = false))"
+                    >Win rate {{ dcaSortCol === 'win_rate_pct' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="dcaSortCol === 'avg_profit_pct' ? 'text-primary-400' : ''"
+                      @click="dcaSortCol === 'avg_profit_pct' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'avg_profit_pct'), (dcaSortAsc = false))"
+                    >Avg profit {{ dcaSortCol === 'avg_profit_pct' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="dcaSortCol === 'avg_duration_hours' ? 'text-primary-400' : ''"
+                      @click="dcaSortCol === 'avg_duration_hours' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'avg_duration_hours'), (dcaSortAsc = false))"
+                    >Avg duration {{ dcaSortCol === 'avg_duration_hours' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 cursor-pointer select-none whitespace-nowrap"
+                      :class="dcaSortCol === 'total_profit_abs' ? 'text-primary-400' : ''"
+                      @click="dcaSortCol === 'total_profit_abs' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'total_profit_abs'), (dcaSortAsc = false))"
+                    >Total profit {{ dcaSortCol === 'total_profit_abs' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in dcaItems"
+                    :key="row.order_count"
+                    class="border-b border-surface-700/70"
+                    :class="row.order_count === 1 ? 'bg-surface-800/30' : ''"
+                  >
+                    <td class="py-2 pe-3 font-mono text-xs font-semibold">
+                      {{ row.order_count === 1 ? '1 (single)' : row.order_count }}
+                    </td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.trades }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.wins }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">
+                      <span :class="row.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'">
+                        {{ row.win_rate_pct.toFixed(1) }}%
+                      </span>
+                    </td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">
+                      <span :class="row.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'">
+                        {{ row.avg_profit_pct >= 0 ? '+' : '' }}{{ row.avg_profit_pct.toFixed(2) }}%
+                      </span>
+                    </td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">
+                      <span v-if="row.avg_duration_hours !== null">{{ row.avg_duration_hours.toFixed(1) }}h</span>
+                      <span v-else class="text-surface-500">—</span>
+                    </td>
+                    <td class="py-2 text-right font-mono text-xs">
+                      <span :class="row.total_profit_abs >= 0 ? 'text-green-400' : 'text-red-400'">
+                        {{ row.total_profit_abs >= 0 ? '+' : '' }}{{ row.total_profit_abs.toFixed(2) }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 

@@ -30,6 +30,8 @@ import type {
   DwhMissedSignalList,
   DwhMissedSignalOutcomeFetchResult,
   DwhMissedSignalParseResult,
+  DwhEntryTagPerformanceList,
+  DwhDcaAnalysisList,
   DwhSummary,
   VpsActionResult,
   VpsContainer,
@@ -421,6 +423,43 @@ export const vpsApi = {
   async fetchMissedSignalOutcomes(): Promise<DwhMissedSignalOutcomeFetchResult> {
     const { data } = await vpsApiClient.post<DwhMissedSignalOutcomeFetchResult>(
       '/dwh/missed-signals/fetch-outcomes',
+    );
+    return data;
+  },
+  async dwhEntryTagPerformance(
+    dateFrom?: string,
+    dateTo?: string,
+    botId?: number,
+    minTrades = 1,
+  ): Promise<DwhEntryTagPerformanceList> {
+    const { data } = await vpsApiClient.get<DwhEntryTagPerformanceList>(
+      '/dwh/reports/entry-tag-performance',
+      {
+        params: {
+          date_from: dateFrom,
+          date_to: dateTo,
+          bot_id: botId,
+          min_trades: minTrades,
+        },
+      },
+    );
+    return data;
+  },
+
+  async dwhDcaAnalysis(
+    dateFrom?: string,
+    dateTo?: string,
+    botId?: number,
+  ): Promise<DwhDcaAnalysisList> {
+    const { data } = await vpsApiClient.get<DwhDcaAnalysisList>(
+      '/dwh/reports/dca-analysis',
+      {
+        params: {
+          date_from: dateFrom,
+          date_to: dateTo,
+          bot_id: botId,
+        },
+      },
     );
     return data;
   },

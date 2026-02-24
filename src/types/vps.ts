@@ -448,3 +448,34 @@ export interface DwhMissedSignalOutcomeFetchResult {
   errors: number;
   pending: number;
 }
+
+export interface DwhEntryTagStat {
+  enter_tag: string | null;
+  trades: number;
+  wins: number;
+  win_rate_pct: number;
+  avg_profit_pct: number;
+  avg_duration_hours: number | null;
+  total_profit_abs: number;
+}
+
+export interface DwhEntryTagPerformanceList {
+  total_tags: number;
+  items: DwhEntryTagStat[];
+}
+
+export interface DwhDcaStat {
+  order_count: number;
+  trades: number;
+  wins: number;
+  win_rate_pct: number;
+  avg_profit_pct: number;
+  avg_duration_hours: number | null;
+  total_profit_abs: number;
+}
+
+export interface DwhDcaAnalysisList {
+  total_closed_trades: number;
+  trades_with_orders: number;
+  items: DwhDcaStat[];
+}
