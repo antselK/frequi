@@ -71,6 +71,9 @@ const rows = computed<DiscoveredBotRow[]>(() => {
   for (const server of vpsStore.servers) {
     const containers = vpsStore.getContainersForVps(server.id);
     for (const container of containers) {
+      if (!container.enabled) {
+        continue;
+      }
       result.push(toDiscoveredRow(server, container));
     }
   }

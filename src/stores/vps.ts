@@ -236,5 +236,19 @@ export const useVpsStore = defineStore('vpsStore', {
         this.actionLoading = false;
       }
     },
+    async setContainerEnabled(vpsId: number, containerName: string, enabled: boolean): Promise<VpsActionResult> {
+      this.actionLoading = true;
+      this.lastError = '';
+      try {
+        await vpsApi.setContainerEnabled(vpsId, containerName, enabled);
+        await this.loadContainers(vpsId);
+        return { ok: true, message: enabled ? 'Enabled' : 'Disabled' };
+      } catch (error) {
+        this.setError(error);
+        throw error;
+      } finally {
+        this.actionLoading = false;
+      }
+    },
   },
 });

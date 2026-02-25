@@ -60,6 +60,7 @@ export interface VpsContainer {
   source_runtime: boolean;
   config_mismatch: boolean;
   is_freqtrade: boolean;
+  enabled: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -196,6 +196,13 @@ export const vpsApi = {
     );
     return data;
   },
+  async setContainerEnabled(vpsId: number, containerName: string, enabled: boolean): Promise<VpsContainer> {
+    const { data } = await vpsApiClient.patch<VpsContainer>(
+      `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/enabled`,
+      { enabled },
+    );
+    return data;
+  },
   async audit(limit = 100): Promise<AuditLogEntry[]> {
     const { data } = await vpsApiClient.get<AuditLogEntry[]>('/audit', { params: { limit } });
     return data;

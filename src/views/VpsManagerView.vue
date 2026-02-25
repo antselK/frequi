@@ -452,6 +452,22 @@ async function handleStop(containerName: string) {
   }
 }
 
+async function handleToggleEnabled(containerName: string, currentEnabled: boolean) {
+  if (!selectedVpsId.value) {
+    return;
+  }
+  try {
+    const result = await vpsStore.setContainerEnabled(selectedVpsId.value, containerName, !currentEnabled);
+    handleActionToast(
+      `${!currentEnabled ? 'Enable' : 'Disable'} ${containerName}`,
+      result.message,
+      result.ok,
+    );
+  } catch (error) {
+    handleActionToast(`Toggle ${containerName}`, String(error), false);
+  }
+}
+
 async function openLogs(containerName: string) {
   if (!selectedVpsId.value) {
     return;
@@ -493,7 +509,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="mx-auto mt-3 p-4 max-w-7xl flex flex-col gap-4">
+  <div class="mx-auto mt-3 p-4 w-[98vw] max-w-[98vw] flex flex-col gap-4">
     <Card>
       <template #title>
         <div class="flex flex-col gap-2">
@@ -673,9 +689,17 @@ onBeforeUnmount(() => {
               />
             </template>
           </Column>
-          <Column header="Actions" style="min-width: 200px">
+          <Column header="Enabled">
             <template #body="slotProps">
-              <div class="flex gap-2">
+              <Tag
+                :value="slotProps.data.enabled ? 'Active' : 'Disabled'"
+                :severity="slotProps.data.enabled ? 'success' : 'secondary'"
+              />
+            </template>
+          </Column>
+          <Column header="Actions" style="min-width: 240px">
+            <template #body="slotProps">
+              <div class="flex gap-2 flex-wrap">
                 <Button
                   label="Start"
                   size="small"
@@ -701,6 +725,14 @@ onBeforeUnmount(() => {
                   label="Logs"
                   size="small"
                   @click="openLogs(slotProps.data.container_name)"
+                />
+                <Button
+                  :label="slotProps.data.enabled ? 'Disable' : 'Enable'"
+                  size="small"
+                  :severity="slotProps.data.enabled ? 'warn' : 'success'"
+                  outlined
+                  :title="slotProps.data.enabled ? 'Exclude from DWH ingestion and Console' : 'Include in DWH ingestion and Console'"
+                  @click="handleToggleEnabled(slotProps.data.container_name, slotProps.data.enabled)"
                 />
               </div>
             </template>
