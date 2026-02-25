@@ -428,6 +428,7 @@ export interface DwhMissedSignal {
   close_pct: number | null;
   fetch_error: string | null;
   ingested_at: string;
+  direction: string | null; // "long" | "short" | null
   // Enriched
   vps_name: string | null;
   container_name: string | null;

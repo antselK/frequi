@@ -209,7 +209,7 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
     {
       value: 'signal-outcomes',
       label: 'Signal outcome analysis',
-      todo: 'Missed trade signals with 24h price outcome from Bybit — shows what would have happened.',
+      todo: 'Missed entry signals with price outcome over the analysis window — shows what would have happened.',
     },
     // ── Tier 1: high value, pure SQL ──────────────────────────────────────
     {
@@ -357,6 +357,7 @@ const signalOutcomesDateTo = ref(todayStr());
 const signalOutcomesFilterBotId = ref<number | null>(null);
 const signalOutcomesFilterPair = ref('');
 const signalOutcomesFilterReason = ref('');
+const signalOutcomesProfitThreshold = ref(2.0);
 const loadingSignalOutcomes = ref(false);
 const loadingParseMissedSignals = ref(false);
 const loadingFetchOutcomes = ref(false);
@@ -846,7 +847,9 @@ const signalOutcomesEvaluated = computed(() =>
 );
 
 const signalOutcomesProfitable = computed(() =>
-  signalOutcomesEvaluated.value.filter((s) => (s.max_gain_pct ?? 0) >= 7.2),
+  signalOutcomesEvaluated.value.filter(
+    (s) => (s.max_gain_pct ?? 0) >= signalOutcomesProfitThreshold.value,
+  ),
 );
 
 const signalOutcomesProfitablePct = computed(() => {
@@ -856,6 +859,14 @@ const signalOutcomesProfitablePct = computed(() => {
 });
 
 const signalOutcomesPendingCount = computed(() => signalOutcomes.value?.pending_outcomes ?? 0);
+
+/** True when a signal has been fetched but its outcome window hasn't elapsed yet. */
+function isPartialOutcome(sig: DwhMissedSignal): boolean {
+  if (!sig.outcome_fetched_at || sig.fetch_error) return false;
+  const windowEndMs =
+    new Date(sig.signal_ts).getTime() + sig.outcome_window_hours * 3_600_000;
+  return Date.now() < windowEndMs;
+}
 
 // Entry Tag Performance computed
 const entryTagItems = computed<DwhEntryTagStat[]>(() => {
@@ -3465,6 +3476,18 @@ onMounted(async () => {
                   class="w-36"
                   placeholder="Reason code"
                 />
+                <InputNumber
+                  v-model="signalOutcomesProfitThreshold"
+                  :min="0.1"
+                  :max="100"
+                  :step="0.5"
+                  :min-fraction-digits="1"
+                  :max-fraction-digits="1"
+                  size="small"
+                  input-class="w-16"
+                  suffix="%"
+                  title="Win threshold: min max_gain_pct to count as Win"
+                />
                 <Button
                   label="Load"
                   size="small"
@@ -3493,7 +3516,7 @@ onMounted(async () => {
                 severity="secondary"
                 outlined
                 :loading="loadingFetchOutcomes"
-                title="Fetch 24h OHLCV from Bybit for signals older than 24h"
+                title="Fetch OHLCV data for signals older than 48h to compute outcome"
                 @click="runFetchOutcomes"
               />
             </div>
@@ -3516,7 +3539,7 @@ onMounted(async () => {
                   {{ signalOutcomesProfitable.length }}
                   <span class="text-sm font-normal">({{ signalOutcomesProfitablePct }}%)</span>
                 </div>
-                <div class="text-xs text-surface-400">Would trigger trailing stop (≥7.2%)</div>
+                <div class="text-xs text-surface-400">Win (≥{{ signalOutcomesProfitThreshold }}%)</div>
               </div>
               <div
                 v-if="signalOutcomesPendingCount > 0"
@@ -3544,6 +3567,7 @@ onMounted(async () => {
                     <th class="py-2 pe-3">Bot</th>
                     <th class="py-2 pe-3">Pair</th>
                     <th class="py-2 pe-3">Reason</th>
+                    <th class="py-2 pe-3">Side</th>
                     <th class="py-2 pe-3">Entry price</th>
                     <th class="py-2 pe-3 text-green-400">Max gain</th>
                     <th class="py-2 pe-3 text-red-400">Max loss</th>
@@ -3566,6 +3590,17 @@ onMounted(async () => {
                     <td class="py-2 pe-3 whitespace-nowrap font-mono">{{ sig.pair }}</td>
                     <td class="py-2 pe-3 whitespace-nowrap text-xs text-surface-300">
                       {{ sig.block_reason }}
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-xs">
+                      <span
+                        v-if="sig.direction === 'long'"
+                        class="px-1.5 py-0.5 rounded text-green-400 bg-green-900/40 font-medium"
+                      >Long</span>
+                      <span
+                        v-else-if="sig.direction === 'short'"
+                        class="px-1.5 py-0.5 rounded text-red-400 bg-red-900/40 font-medium"
+                      >Short</span>
+                      <span v-else class="text-surface-500">—</span>
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap font-mono text-xs">
                       <template v-if="sig.signal_price !== null">
@@ -3602,14 +3637,25 @@ onMounted(async () => {
                         v-else-if="sig.outcome_fetched_at === null"
                         class="text-surface-500"
                       >Pending</span>
-                      <span
-                        v-else-if="(sig.max_gain_pct ?? 0) >= 7.2"
-                        class="text-green-400 font-medium"
-                      >Win</span>
-                      <span
-                        v-else
-                        class="text-red-400 font-medium"
-                      >No trigger</span>
+                      <template v-else-if="(sig.max_gain_pct ?? 0) >= signalOutcomesProfitThreshold">
+                        <span class="text-green-400 font-medium">Win</span>
+                        <span
+                          v-if="isPartialOutcome(sig)"
+                          class="text-yellow-400 ms-1"
+                          title="Window still open — outcome may improve"
+                        >⟳</span>
+                      </template>
+                      <template v-else>
+                        <span
+                          v-if="isPartialOutcome(sig)"
+                          class="text-yellow-400 font-medium"
+                          :title="`${sig.outcome_window_hours}h window still open`"
+                        >Live</span>
+                        <span
+                          v-else
+                          class="text-red-400 font-medium"
+                        >No trigger</span>
+                      </template>
                     </td>
                   </tr>
                 </tbody>
