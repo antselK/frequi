@@ -85,6 +85,7 @@ interface ParsedLogEvent {
   message: string;
   botId: number;
   pair: string;
+  side: 'long' | 'short' | null;
   reasonCode: MissedTradeReasonCode;
   reason: string;
   details: string | null;
@@ -349,6 +350,9 @@ const drillTrades = ref<import('@/types/vps').DwhTrade[]>([]);
 const drillTotal = ref(0);
 const drillOffset = ref(0);
 const drillPageSize = 100;
+const drillExpandedKey = ref<string | null>(null);
+const drillOrdersCache = ref<Map<string, import('@/types/vps').DwhOrder[]>>(new Map());
+const drillOrdersLoading = ref<Set<string>>(new Set());
 
 // Signal Outcomes state
 const signalOutcomes = ref<DwhMissedSignalList | null>(null);
@@ -1549,6 +1553,11 @@ function extractPair(message: string): string {
   return pairMatch?.[1] ?? 'n/a';
 }
 
+function extractMissedTradeSide(message: string): 'long' | 'short' | null {
+  const m = message.match(/\b(long|short)\b/i);
+  return m ? (m[1].toLowerCase() as 'long' | 'short') : null;
+}
+
 function extractDecisionDetails(message: string): string | null {
   const loweredMessage = message.toLowerCase();
   const percentCompareMatch = message.match(/(-?\d+(?:\.\d+)?)%\s*([<>])\s*(-?\d+(?:\.\d+)?)%/);
@@ -2386,7 +2395,8 @@ async function loadMissedTradesReport() {
         logger: sample.logger,
         message: formatMissedTradeMessage(sample.message),
         botId: sample.bot_id,
-        pair: extractPair(sample.message),
+        pair: extractPairFlexible(sample.message),
+        side: extractMissedTradeSide(sample.message),
         ...classifyMissedTradeReason(sample.message),
         details: extractDecisionDetails(sample.message),
       };
@@ -2428,10 +2438,10 @@ async function loadSignalOutcomes() {
   }
 }
 
-async function runParseMissedSignals() {
+async function runParseMissedSignals(fullRescan = false) {
   loadingParseMissedSignals.value = true;
   try {
-    await vpsApi.parseMissedSignals();
+    await vpsApi.parseMissedSignals(fullRescan);
     await loadSignalOutcomes();
   } catch (error) {
     reportsError.value = String(error);
@@ -2677,6 +2687,40 @@ async function loadDrilldownReport(append = false) {
   } finally {
     loadingDrilldown.value = false;
   }
+}
+
+function drillTradeKey(trade: import('@/types/vps').DwhTrade): string {
+  return `${trade.bot_id}|${trade.source_trade_id}`;
+}
+
+async function toggleDrillTradeExpand(trade: import('@/types/vps').DwhTrade) {
+  const key = drillTradeKey(trade);
+  if (drillExpandedKey.value === key) {
+    drillExpandedKey.value = null;
+    return;
+  }
+  drillExpandedKey.value = key;
+  if (!drillOrdersCache.value.has(key) && !drillOrdersLoading.value.has(key)) {
+    drillOrdersLoading.value = new Set([...drillOrdersLoading.value, key]);
+    try {
+      const orders = await vpsApi.dwhTradeOrders(trade.id);
+      const newMap = new Map(drillOrdersCache.value);
+      newMap.set(key, orders);
+      drillOrdersCache.value = newMap;
+    } catch {
+      const newMap = new Map(drillOrdersCache.value);
+      newMap.set(key, []);
+      drillOrdersCache.value = newMap;
+    } finally {
+      const newSet = new Set(drillOrdersLoading.value);
+      newSet.delete(key);
+      drillOrdersLoading.value = newSet;
+    }
+  }
+}
+
+function isDrillTradeExpanded(trade: import('@/types/vps').DwhTrade): boolean {
+  return drillExpandedKey.value === drillTradeKey(trade);
 }
 
 async function ensureDataForSubcategory(subCategory: string) {
@@ -3369,6 +3413,7 @@ onMounted(async () => {
                     <th class="py-2 pe-2">Time (candle)</th>
                     <th class="py-2 pe-2">Bot</th>
                     <th class="py-2 pe-2">Pair</th>
+                    <th class="py-2 pe-2">Side</th>
                     <th class="py-2 pe-2">Reasons</th>
                     <th class="py-2 pe-2 text-center">Events</th>
                     <th class="py-2 text-center">Show</th>
@@ -3388,6 +3433,19 @@ onMounted(async () => {
                         </div>
                       </td>
                       <td class="py-2 pe-2 whitespace-nowrap font-mono">{{ group.representative.pair }}</td>
+                      <td class="py-2 pe-2 whitespace-nowrap text-xs">
+                        <template v-for="s in [...new Set(group.events.map((e) => e.side))].filter(Boolean)" :key="s">
+                          <span
+                            v-if="s === 'long'"
+                            class="px-1.5 py-0.5 rounded text-green-400 bg-green-900/40 font-medium me-1"
+                          >Long</span>
+                          <span
+                            v-else-if="s === 'short'"
+                            class="px-1.5 py-0.5 rounded text-red-400 bg-red-900/40 font-medium me-1"
+                          >Short</span>
+                        </template>
+                        <span v-if="!group.events.some((e) => e.side)" class="text-surface-500">—</span>
+                      </td>
                       <td class="py-2 pe-2">
                         <span
                           v-for="rc in [...new Set(group.events.map((e) => e.reasonCode))]"
@@ -3409,7 +3467,7 @@ onMounted(async () => {
                     </tr>
                     <!-- Expanded detail sub-table -->
                     <tr v-if="isMissedGroupExpanded(group.key)" class="border-b border-surface-800 bg-surface-950/40">
-                      <td colspan="6" class="py-3 px-2">
+                      <td colspan="7" class="py-3 px-2">
                         <div class="max-h-72 overflow-y-auto">
                           <table class="w-full text-xs border-collapse">
                             <thead>
@@ -3508,7 +3566,16 @@ onMounted(async () => {
                 outlined
                 :loading="loadingParseMissedSignals"
                 title="Scan new log events and store as missed signals"
-                @click="runParseMissedSignals"
+                @click="runParseMissedSignals(false)"
+              />
+              <Button
+                label="Re-scan all"
+                size="small"
+                severity="secondary"
+                outlined
+                :loading="loadingParseMissedSignals"
+                title="Reset parse cursor and re-process all historical log events (recovers previously skipped pairs)"
+                @click="runParseMissedSignals(true)"
               />
               <Button
                 label="Fetch outcomes"
@@ -4499,46 +4566,103 @@ onMounted(async () => {
                     <th class="py-2 pe-3 text-right">Duration</th>
                     <th class="py-2 pe-3 text-right">Profit %</th>
                     <th class="py-2 pe-3 text-right">Profit USDT</th>
-                    <th class="py-2 text-right">Anomalies</th>
+                    <th class="py-2 pe-3 text-right">Anomalies</th>
+                    <th class="py-2 text-center">Detail</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr
+                  <template
                     v-for="trade in drillTrades"
                     :key="`${trade.bot_id}-${trade.source_trade_id}`"
-                    class="border-b border-surface-700/70 align-top"
                   >
-                    <td class="py-2 pe-3 whitespace-nowrap">{{ trade.source_trade_id }}</td>
-                    <td class="py-2 pe-3 whitespace-nowrap">
-                      <div class="font-medium">{{ trade.vps_name ?? '—' }}</div>
-                      <div class="text-xs text-surface-400">{{ trade.container_name ?? '—' }} · ID {{ trade.bot_id }}</div>
-                    </td>
-                    <td class="py-2 pe-3 whitespace-nowrap font-medium">{{ trade.pair ?? '—' }}</td>
-                    <td class="py-2 pe-3 whitespace-nowrap">
-                      <span :class="trade.is_short ? 'text-red-400' : 'text-green-400'">
-                        {{ trade.is_short ? 'Short' : 'Long' }}
-                      </span>
-                    </td>
-                    <td class="py-2 pe-3 whitespace-nowrap text-surface-300">{{ trade.enter_tag ?? '—' }}</td>
-                    <td class="py-2 pe-3 whitespace-nowrap text-surface-300">{{ trade.exit_reason ?? (trade.is_open ? 'Open' : '—') }}</td>
-                    <td class="py-2 pe-3 whitespace-nowrap text-surface-400">{{ trade.open_date ? formatDate(trade.open_date) : '—' }}</td>
-                    <td class="py-2 pe-3 whitespace-nowrap text-surface-400">{{ trade.close_date ? formatDate(trade.close_date) : (trade.is_open ? 'Open' : '—') }}</td>
-                    <td class="py-2 pe-3 whitespace-nowrap text-right text-surface-400">
-                      {{ tradeDurationMinutes(trade) !== null ? `${tradeDurationMinutes(trade)!.toFixed(0)} min` : '—' }}
-                    </td>
-                    <td class="py-2 pe-3 whitespace-nowrap text-right font-medium"
-                      :class="trade.profit_ratio === null ? 'text-surface-400' : trade.profit_ratio >= 0 ? 'text-green-400' : 'text-red-400'">
-                      {{ trade.profit_ratio !== null ? `${(trade.profit_ratio * 100).toFixed(2)}%` : '—' }}
-                    </td>
-                    <td class="py-2 pe-3 whitespace-nowrap text-right"
-                      :class="trade.profit_abs === null ? 'text-surface-400' : trade.profit_abs >= 0 ? 'text-green-400' : 'text-red-400'">
-                      {{ trade.profit_abs !== null ? trade.profit_abs.toFixed(3) : '—' }}
-                    </td>
-                    <td class="py-2 whitespace-nowrap text-right">
-                      <span v-if="trade.anomaly_count > 0" class="text-yellow-400 font-medium">{{ trade.anomaly_count }}</span>
-                      <span v-else class="text-surface-600">0</span>
-                    </td>
-                  </tr>
+                    <tr class="border-b border-surface-700/70 align-top">
+                      <td class="py-2 pe-3 whitespace-nowrap">{{ trade.source_trade_id }}</td>
+                      <td class="py-2 pe-3 whitespace-nowrap">
+                        <div class="font-medium">{{ trade.vps_name ?? '—' }}</div>
+                        <div class="text-xs text-surface-400">{{ trade.container_name ?? '—' }} · ID {{ trade.bot_id }}</div>
+                      </td>
+                      <td class="py-2 pe-3 whitespace-nowrap font-medium">{{ trade.pair ?? '—' }}</td>
+                      <td class="py-2 pe-3 whitespace-nowrap">
+                        <span :class="trade.is_short ? 'text-red-400' : 'text-green-400'">
+                          {{ trade.is_short ? 'Short' : 'Long' }}
+                        </span>
+                      </td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-surface-300">{{ trade.enter_tag ?? '—' }}</td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-surface-300">{{ trade.exit_reason ?? (trade.is_open ? 'Open' : '—') }}</td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-surface-400">{{ trade.open_date ? formatDate(trade.open_date) : '—' }}</td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-surface-400">{{ trade.close_date ? formatDate(trade.close_date) : (trade.is_open ? 'Open' : '—') }}</td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-right text-surface-400">
+                        {{ tradeDurationMinutes(trade) !== null ? `${tradeDurationMinutes(trade)!.toFixed(0)} min` : '—' }}
+                      </td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-right font-medium"
+                        :class="trade.profit_ratio === null ? 'text-surface-400' : trade.profit_ratio >= 0 ? 'text-green-400' : 'text-red-400'">
+                        {{ trade.profit_ratio !== null ? `${(trade.profit_ratio * 100).toFixed(2)}%` : '—' }}
+                      </td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-right"
+                        :class="trade.profit_abs === null ? 'text-surface-400' : trade.profit_abs >= 0 ? 'text-green-400' : 'text-red-400'">
+                        {{ trade.profit_abs !== null ? trade.profit_abs.toFixed(3) : '—' }}
+                      </td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-right">
+                        <span v-if="trade.anomaly_count > 0" class="text-yellow-400 font-medium">{{ trade.anomaly_count }}</span>
+                        <span v-else class="text-surface-600">0</span>
+                      </td>
+                      <td class="py-2 text-center align-top">
+                        <button
+                          class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
+                          :disabled="drillOrdersLoading.has(drillTradeKey(trade))"
+                          @click="toggleDrillTradeExpand(trade)"
+                        >
+                          {{ drillOrdersLoading.has(drillTradeKey(trade)) ? '...' : isDrillTradeExpanded(trade) ? 'Hide' : 'Show' }}
+                        </button>
+                      </td>
+                    </tr>
+                    <tr
+                      v-if="isDrillTradeExpanded(trade)"
+                      class="border-b border-surface-800 bg-surface-950/40"
+                    >
+                      <td colspan="13" class="py-3 px-2">
+                        <div class="space-y-1 max-h-72 overflow-y-auto">
+                          <div v-if="!drillOrdersCache.get(drillTradeKey(trade))?.length" class="text-xs text-surface-400 py-1">
+                            No orders found for this trade.
+                          </div>
+                          <table v-else class="w-full text-xs border-collapse">
+                            <thead>
+                              <tr class="border-b border-surface-700 text-left">
+                                <th class="py-1 pe-2">Date</th>
+                                <th class="py-1 pe-2">Side</th>
+                                <th class="py-1 pe-2">Type</th>
+                                <th class="py-1 pe-2">Status</th>
+                                <th class="py-1 pe-2">Tag</th>
+                                <th class="py-1 pe-2 text-right">Amount</th>
+                                <th class="py-1 pe-2 text-right">Filled</th>
+                                <th class="py-1 pe-2 text-right">Avg price</th>
+                                <th class="py-1 text-right">Fee</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr
+                                v-for="(order, oi) in drillOrdersCache.get(drillTradeKey(trade))"
+                                :key="`drill-order-${order.id}-${oi}`"
+                                class="border-b border-surface-800/50 align-top"
+                              >
+                                <td class="py-1 pe-2 whitespace-nowrap">{{ order.order_date ? formatDate(order.order_date) : '—' }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  <span :class="order.side === 'sell' ? 'text-red-400' : 'text-green-400'">{{ order.side ?? '—' }}</span>
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-surface-300">{{ order.order_type ?? '—' }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-surface-300">{{ order.status ?? '—' }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-surface-400">{{ order.order_tag ?? '—' }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-right">{{ order.amount !== null ? order.amount.toFixed(4) : '—' }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-right">{{ order.filled !== null ? order.filled.toFixed(4) : '—' }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-right">{{ order.average !== null ? order.average.toFixed(4) : (order.price !== null ? order.price.toFixed(4) : '—') }}</td>
+                                <td class="py-1 whitespace-nowrap text-right text-surface-400">{{ order.fee_base !== null ? order.fee_base.toFixed(6) : '—' }}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
             </div>

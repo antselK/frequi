@@ -481,3 +481,22 @@ export interface DwhDcaAnalysisList {
   trades_with_orders: number;
   items: DwhDcaStat[];
 }
+
+export interface DwhOrder {
+  id: number;
+  bot_id: number;
+  source_order_id: string;
+  source_trade_id: number | null;
+  pair: string | null;
+  side: string | null;
+  order_type: string | null;
+  status: string | null;
+  order_date: string | null;
+  average: number | null;
+  amount: number | null;
+  filled: number | null;
+  remaining: number | null;
+  price: number | null;
+  fee_base: number | null;
+  order_tag: string | null;
+}

@@ -32,6 +32,7 @@ import type {
   DwhMissedSignalParseResult,
   DwhEntryTagPerformanceList,
   DwhDcaAnalysisList,
+  DwhOrder,
   DwhSummary,
   VpsActionResult,
   VpsContainer,
@@ -339,6 +340,10 @@ export const vpsApi = {
     });
     return data;
   },
+  async dwhTradeOrders(tradeId: number): Promise<DwhOrder[]> {
+    const { data } = await vpsApiClient.get<DwhOrder[]>(`/dwh/trades/${tradeId}/orders`);
+    return data;
+  },
   async dwhAnomalies(days = 30, limit = 50, botId?: number): Promise<DwhAnomaly[]> {
     const { data } = await vpsApiClient.get<DwhAnomaly[]>('/dwh/anomalies', {
       params: {
@@ -423,8 +428,12 @@ export const vpsApi = {
     });
     return data;
   },
-  async parseMissedSignals(): Promise<DwhMissedSignalParseResult> {
-    const { data } = await vpsApiClient.post<DwhMissedSignalParseResult>('/dwh/missed-signals/parse');
+  async parseMissedSignals(fullRescan = false): Promise<DwhMissedSignalParseResult> {
+    const { data } = await vpsApiClient.post<DwhMissedSignalParseResult>(
+      '/dwh/missed-signals/parse',
+      null,
+      { params: fullRescan ? { full_rescan: true } : {} },
+    );
     return data;
   },
   async fetchMissedSignalOutcomes(): Promise<DwhMissedSignalOutcomeFetchResult> {
