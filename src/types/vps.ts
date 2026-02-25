@@ -300,6 +300,7 @@ export interface DwhTrade {
   profit_ratio: number | null;
   profit_abs: number | null;
   anomaly_count: number;
+  dca_order_count: number;
 }
 
 export interface DwhTradeQuery {

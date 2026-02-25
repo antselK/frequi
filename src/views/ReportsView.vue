@@ -4566,6 +4566,7 @@ onMounted(async () => {
                     <th class="py-2 pe-3 text-right">Duration</th>
                     <th class="py-2 pe-3 text-right">Profit %</th>
                     <th class="py-2 pe-3 text-right">Profit USDT</th>
+                    <th class="py-2 pe-3 text-right">DCA orders</th>
                     <th class="py-2 pe-3 text-right">Anomalies</th>
                     <th class="py-2 text-center">Detail</th>
                   </tr>
@@ -4602,6 +4603,11 @@ onMounted(async () => {
                         :class="trade.profit_abs === null ? 'text-surface-400' : trade.profit_abs >= 0 ? 'text-green-400' : 'text-red-400'">
                         {{ trade.profit_abs !== null ? trade.profit_abs.toFixed(3) : '—' }}
                       </td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-right font-mono text-xs">
+                        <span v-if="trade.dca_order_count > 1" class="text-primary-400 font-medium">{{ trade.dca_order_count }}</span>
+                        <span v-else-if="trade.dca_order_count === 1" class="text-surface-400">1</span>
+                        <span v-else class="text-surface-600">—</span>
+                      </td>
                       <td class="py-2 pe-3 whitespace-nowrap text-right">
                         <span v-if="trade.anomaly_count > 0" class="text-yellow-400 font-medium">{{ trade.anomaly_count }}</span>
                         <span v-else class="text-surface-600">0</span>
@@ -4620,7 +4626,7 @@ onMounted(async () => {
                       v-if="isDrillTradeExpanded(trade)"
                       class="border-b border-surface-800 bg-surface-950/40"
                     >
-                      <td colspan="13" class="py-3 px-2">
+                      <td colspan="14" class="py-3 px-2">
                         <div class="space-y-1 max-h-72 overflow-y-auto">
                           <div v-if="!drillOrdersCache.get(drillTradeKey(trade))?.length" class="text-xs text-surface-400 py-1">
                             No orders found for this trade.
