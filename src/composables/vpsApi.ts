@@ -32,6 +32,7 @@ import type {
   DwhMissedSignalParseResult,
   DwhEntryTagPerformanceList,
   DwhDcaAnalysisList,
+  DwhSignalIndicatorAnalysis,
   DwhOrder,
   DwhSummary,
   VpsActionResult,
@@ -474,6 +475,28 @@ export const vpsApi = {
           date_from: dateFrom,
           date_to: dateTo,
           bot_id: botId,
+        },
+      },
+    );
+    return data;
+  },
+
+  async dwhSignalIndicatorAnalysis(
+    dateFrom?: string,
+    dateTo?: string,
+    botId?: number,
+    pair?: string,
+    enterTag?: string,
+  ): Promise<DwhSignalIndicatorAnalysis> {
+    const { data } = await vpsApiClient.get<DwhSignalIndicatorAnalysis>(
+      '/dwh/reports/signal-indicator-analysis',
+      {
+        params: {
+          date_from: dateFrom,
+          date_to: dateTo,
+          bot_id: botId,
+          pair: pair,
+          enter_tag: enterTag,
         },
       },
     );

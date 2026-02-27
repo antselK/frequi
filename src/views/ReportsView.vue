@@ -17,6 +17,8 @@ import type {
   DwhEntryTagPerformanceList,
   DwhDcaStat,
   DwhDcaAnalysisList,
+  DwhSignalIndicatorTradeRow,
+  DwhSignalIndicatorAnalysis,
 } from '@/types/vps';
 
 type ReportCategory = 'system' | 'trades';
@@ -243,6 +245,10 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
       label: 'DCA / multi-order analysis',
     },
     {
+      value: 'signal-indicator-analysis',
+      label: 'Signal indicator analysis',
+    },
+    {
       value: 'trade-duration',
       label: '📋 Trade duration vs profit',
       todo: 'TODO: Scatter: duration (hours) vs profit_ratio, colored by exit_reason. Helps spot if quick trades outperform long ones.',
@@ -387,6 +393,20 @@ const dcaDateTo = ref(todayStr());
 const dcaFilterBotId = ref<number | null>(null);
 const dcaSortCol = ref<'order_count' | 'trades' | 'wins' | 'win_rate_pct' | 'avg_profit_pct' | 'avg_duration_hours' | 'total_profit_abs'>('order_count');
 const dcaSortAsc = ref(true);
+
+// Signal Indicator Analysis state
+const signalIndData = ref<DwhSignalIndicatorAnalysis | null>(null);
+const signalIndLoaded = ref(false);
+const loadingSignalInd = ref(false);
+const signalIndDateFrom = ref(daysAgoStr(30));
+const signalIndDateTo = ref(todayStr());
+const signalIndFilterBotId = ref<number | null>(null);
+const signalIndFilterPair = ref('');
+const signalIndFilterTag = ref('');
+const signalIndSortCol = ref<string>('quality_score');
+const signalIndSortAsc = ref(true);
+const signalIndChartIndicator = ref('rsi');
+const signalIndChartYAxis = ref<'profit_pct' | 'quality_score'>('profit_pct');
 
 // Shared filter state for stub (planned) reports — replaced per-report when built
 const stubDateFrom = ref(todayStr());
@@ -915,6 +935,163 @@ const dcaMultiEntry = computed(() => {
   const avgProfit = rows.reduce((s, r) => s + r.avg_profit_pct * r.trades, 0) / totalTrades;
   return { trades: totalTrades, wins: totalWins, win_rate_pct: totalWins / totalTrades * 100, avg_profit_pct: avgProfit, total_profit_abs: totalProfit };
 });
+
+// ── Signal Indicator Analysis computed ─────────────────────────────────────
+
+const signalIndIndicatorOptions = [
+  { label: 'RSI', value: 'rsi' },
+  { label: 'HV', value: 'hv' },
+  { label: 'ROCR 1h', value: 'rocr_1h' },
+  { label: 'ROCR', value: 'rocr' },
+  { label: 'HH 48 diff', value: 'hh_48_diff' },
+  { label: 'LL 48 diff', value: 'll_48_diff' },
+  { label: 'Chop', value: 'chop' },
+];
+
+const _sigIndDateCols = new Set<string>(['open_date', 'close_date']);
+
+const signalIndItems = computed<DwhSignalIndicatorTradeRow[]>(() => {
+  const rows = signalIndData.value?.items ?? [];
+  const col = signalIndSortCol.value as keyof DwhSignalIndicatorTradeRow;
+  const asc = signalIndSortAsc.value;
+  return [...rows].sort((a, b) => {
+    if (_sigIndDateCols.has(col)) {
+      // ISO date strings sort lexicographically; nulls (open trades) sort last
+      const av = (a[col] as string | null) ?? (asc ? '\uFFFF' : '');
+      const bv = (b[col] as string | null) ?? (asc ? '\uFFFF' : '');
+      return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+    }
+    const av = (a[col] as number | null) ?? (asc ? Infinity : -Infinity);
+    const bv = (b[col] as number | null) ?? (asc ? Infinity : -Infinity);
+    return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
+  });
+});
+
+const signalIndMatchedItems = computed(() => signalIndItems.value.filter((r) => r.rsi !== null && !r.is_open));
+
+const signalIndAvgQuality = computed(() => {
+  const rows = signalIndMatchedItems.value.filter((r) => r.quality_score !== null);
+  if (!rows.length) return null;
+  return rows.reduce((s, r) => s + (r.quality_score ?? 0), 0) / rows.length;
+});
+
+const signalIndAvgProfit = computed(() => {
+  const rows = signalIndMatchedItems.value.filter((r) => r.profit_pct !== null);
+  if (!rows.length) return null;
+  return rows.reduce((s, r) => s + (r.profit_pct ?? 0), 0) / rows.length;
+});
+
+const signalIndAvgDuration = computed(() => {
+  const rows = signalIndMatchedItems.value.filter((r) => r.duration_hours !== null);
+  if (!rows.length) return null;
+  return rows.reduce((s, r) => s + (r.duration_hours ?? 0), 0) / rows.length;
+});
+
+// Chart: scatter X=indicator, Y=profit or quality
+const signalIndChartYRange = computed(() => {
+  const rows = signalIndMatchedItems.value;
+  const yKey = signalIndChartYAxis.value;
+  const vals = rows.map((r) => r[yKey] as number | null).filter((v): v is number => v !== null);
+  if (!vals.length) return { min: 0, max: 1 };
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const pad = (max - min) * 0.1 || 1;
+  return { min: min - pad, max: max + pad };
+});
+
+const signalIndChartXRange = computed(() => {
+  const rows = signalIndMatchedItems.value;
+  const xKey = signalIndChartIndicator.value as keyof DwhSignalIndicatorTradeRow;
+  const vals = rows.map((r) => r[xKey] as number | null).filter((v): v is number => v !== null);
+  if (!vals.length) return { min: 0, max: 1 };
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const pad = (max - min) * 0.1 || 1;
+  return { min: min - pad, max: max + pad };
+});
+
+const signalIndChartCoordinates = computed(() => {
+  const rows = signalIndMatchedItems.value;
+  const xKey = signalIndChartIndicator.value as keyof DwhSignalIndicatorTradeRow;
+  const yKey = signalIndChartYAxis.value;
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const { min: xMin, max: xMax } = signalIndChartXRange.value;
+  const { min: yMin, max: yMax } = signalIndChartYRange.value;
+  const xRange = xMax - xMin || 1;
+  const yRange = yMax - yMin || 1;
+
+  return rows
+    .filter((r) => r[xKey] != null && r[yKey] != null)
+    .map((r) => {
+      const xVal = r[xKey] as number;
+      const yVal = r[yKey] as number;
+      const x = leftPad + ((xVal - xMin) / xRange) * plotWidth;
+      const y = topPad + ((yMax - yVal) / yRange) * plotHeight;
+      return {
+        x, y, xVal, yVal,
+        pair: r.pair ?? '?',
+        tag: r.enter_tag ?? '?',
+        profit: r.profit_pct,
+        duration: r.duration_hours,
+        dca: r.dca_order_count,
+        quality: r.quality_score,
+        positive: (r.profit_pct ?? 0) > 0,
+      };
+    });
+});
+
+const signalIndChartXTicks = computed(() => {
+  const { min, max } = signalIndChartXRange.value;
+  const { leftPad, width, rightPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const range = max - min || 1;
+  const ticks = 5;
+  return Array.from({ length: ticks + 1 }, (_, i) => {
+    const val = min + (i / ticks) * range;
+    const x = leftPad + ((val - min) / range) * plotWidth;
+    return { x, label: val.toFixed(val >= 10 ? 1 : val >= 1 ? 2 : 4) };
+  });
+});
+
+const signalIndChartYTicks = computed(() => {
+  const { min, max } = signalIndChartYRange.value;
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  const range = max - min || 1;
+  const ticks = 5;
+  return Array.from({ length: ticks + 1 }, (_, i) => {
+    const ratio = i / ticks;
+    const val = max - ratio * range;
+    const y = topPad + ratio * plotHeight;
+    return { y, label: val.toFixed(1) };
+  });
+});
+
+const signalIndChartZeroY = computed(() => {
+  const { min, max } = signalIndChartYRange.value;
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  const range = max - min || 1;
+  return topPad + ((max - 0) / range) * plotHeight;
+});
+
+function toggleSignalIndSort(col: string) {
+  if (signalIndSortCol.value === col) {
+    signalIndSortAsc.value = !signalIndSortAsc.value;
+  } else {
+    signalIndSortCol.value = col;
+    signalIndSortAsc.value = col === 'quality_score' || col === 'duration_hours' || col === 'dca_order_count';
+  }
+}
+
+function signalIndSortArrow(col: string): string {
+  if (signalIndSortCol.value !== col) return '';
+  return signalIndSortAsc.value ? ' \u2191' : ' \u2193';
+}
+
+// ── End Signal Indicator Analysis computed ──────────────────────────────────
 
 const filteredTrailingTradeRows = computed(() => {
   const pairNeedle = trailingFilterPair.value.trim().toLowerCase();
@@ -2496,6 +2673,26 @@ async function loadDcaAnalysis() {
     dcaAnalysis.value = null;
   } finally {
     loadingDca.value = false;
+  }
+}
+
+async function loadSignalIndicatorAnalysis() {
+  loadingSignalInd.value = true;
+  reportsError.value = '';
+  try {
+    signalIndData.value = await vpsApi.dwhSignalIndicatorAnalysis(
+      signalIndDateFrom.value || undefined,
+      signalIndDateTo.value || undefined,
+      signalIndFilterBotId.value ?? undefined,
+      signalIndFilterPair.value || undefined,
+      signalIndFilterTag.value || undefined,
+    );
+    signalIndLoaded.value = true;
+  } catch (error) {
+    reportsError.value = String(error);
+    signalIndData.value = null;
+  } finally {
+    loadingSignalInd.value = false;
   }
 }
 
@@ -4185,6 +4382,313 @@ onMounted(async () => {
                         {{ row.total_profit_abs >= 0 ? '+' : '' }}{{ row.total_profit_abs.toFixed(2) }}
                       </span>
                     </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- Signal Indicator Analysis -->
+          <!-- ============================================================ -->
+          <div
+            v-if="selectedSubCategory === 'signal-indicator-analysis'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
+            <!-- Header + filters -->
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-start gap-3">
+                <h5 class="font-semibold">Signal Indicator Analysis</h5>
+                <div class="text-xs text-surface-400 max-w-xl leading-relaxed pt-0.5">
+                  Correlates each trade with its <code class="bg-surface-700 px-1 rounded">[SIGNAL_FLASH]</code> indicator
+                  snapshot (captured at signal time, up to 20 min before entry).
+                  Use this to find which indicator ranges produce the best trade outcomes.
+                  <span class="block mt-1">
+                    <strong class="text-surface-300">Score</strong> = Duration (h) + (DCA orders − 1) × 4 h penalty.
+                    Lower is better — a fast single-order trade scores near 0.
+                  </span>
+                  <span class="block mt-0.5 text-surface-500">
+                    Indicators: RSI (momentum), HV (volatility %), ROCR 1h / ROCR (rate of change),
+                    HH48 / LL48 (48h high/low distance %), Chop (choppiness index), BB (Bollinger band position).
+                  </span>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <InputText v-model="signalIndDateFrom" type="date" size="small" class="w-36" />
+                <InputText v-model="signalIndDateTo" type="date" size="small" class="w-36" />
+                <InputNumber
+                  v-model="signalIndFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
+                <InputText
+                  v-model="signalIndFilterPair"
+                  size="small"
+                  class="w-36"
+                  placeholder="Pair"
+                />
+                <InputText
+                  v-model="signalIndFilterTag"
+                  size="small"
+                  class="w-40"
+                  placeholder="Enter tag"
+                />
+                <Button
+                  label="Load"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  :loading="loadingSignalInd"
+                  @click="loadSignalIndicatorAnalysis"
+                />
+              </div>
+            </div>
+
+            <!-- Coverage note -->
+            <div v-if="signalIndLoaded && signalIndData" class="text-xs text-surface-400">
+              {{ signalIndData.matched_trades }} of {{ signalIndData.total_trades }} trades
+              have indicator snapshots (closed trades only)
+              <span v-if="signalIndData.total_trades > 0">
+                ({{ signalIndData.match_rate_pct.toFixed(0) }}% match rate)
+              </span>
+            </div>
+
+            <!-- Summary cards -->
+            <div v-if="signalIndLoaded && signalIndData" class="flex flex-wrap gap-3 text-sm">
+              <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold">{{ signalIndData.matched_trades }}</div>
+                <div class="text-xs text-surface-400">Matched trades</div>
+              </div>
+              <div v-if="signalIndAvgProfit !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div
+                  class="text-lg font-bold font-mono"
+                  :class="signalIndAvgProfit >= 0 ? 'text-green-400' : 'text-red-400'"
+                >
+                  {{ signalIndAvgProfit >= 0 ? '+' : '' }}{{ signalIndAvgProfit.toFixed(2) }}%
+                </div>
+                <div class="text-xs text-surface-400">Avg profit</div>
+              </div>
+              <div v-if="signalIndAvgDuration !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold font-mono">{{ signalIndAvgDuration.toFixed(1) }}h</div>
+                <div class="text-xs text-surface-400">Avg duration</div>
+              </div>
+              <div v-if="signalIndAvgQuality !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold font-mono">{{ signalIndAvgQuality.toFixed(1) }}</div>
+                <div class="text-xs text-surface-400">Avg quality score</div>
+              </div>
+            </div>
+
+            <!-- Scatter chart -->
+            <div v-if="signalIndChartCoordinates.length > 0" class="space-y-2">
+              <div class="flex flex-wrap items-center gap-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-surface-400">X axis:</span>
+                  <select
+                    v-model="signalIndChartIndicator"
+                    class="text-xs bg-surface-800 border border-surface-600 rounded px-2 py-1 text-surface-200"
+                  >
+                    <option v-for="opt in signalIndIndicatorOptions" :key="opt.value" :value="opt.value">
+                      {{ opt.label }}
+                    </option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-surface-400">Y axis:</span>
+                  <select
+                    v-model="signalIndChartYAxis"
+                    class="text-xs bg-surface-800 border border-surface-600 rounded px-2 py-1 text-surface-200"
+                  >
+                    <option value="profit_pct">Profit %</option>
+                    <option value="quality_score">Quality score</option>
+                  </select>
+                </div>
+                <div class="flex items-center gap-3 text-xs text-surface-400">
+                  <span class="flex items-center gap-1">
+                    <span class="inline-block w-2 h-2 rounded-full bg-green-400"></span> Profit &gt; 0
+                  </span>
+                  <span class="flex items-center gap-1">
+                    <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span> Loss
+                  </span>
+                </div>
+              </div>
+              <svg viewBox="0 0 920 260" class="w-full h-64">
+                <!-- Y-axis grid + labels -->
+                <line
+                  v-for="(tick, idx) in signalIndChartYTicks"
+                  :key="`sigy-${idx}`"
+                  x1="46" :y1="tick.y" x2="900" :y2="tick.y"
+                  stroke="#334155" stroke-width="1" stroke-dasharray="4 4"
+                />
+                <text
+                  v-for="(tick, idx) in signalIndChartYTicks"
+                  :key="`sigty-${idx}`"
+                  :x="42" :y="tick.y + 4"
+                  text-anchor="end" fill="#94a3b8" font-size="10"
+                >{{ tick.label }}</text>
+                <!-- Zero line for profit mode -->
+                <line
+                  v-if="signalIndChartYAxis === 'profit_pct'"
+                  x1="46" :y1="signalIndChartZeroY" x2="900" :y2="signalIndChartZeroY"
+                  stroke="#64748b" stroke-width="1"
+                />
+                <!-- Axes -->
+                <line x1="46" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
+                <line x1="46" y1="14" x2="46" y2="230" stroke="#475569" stroke-width="1" />
+                <!-- X ticks -->
+                <text
+                  v-for="(tick, idx) in signalIndChartXTicks"
+                  :key="`sigtx-${idx}`"
+                  :x="tick.x" y="245"
+                  text-anchor="middle" fill="#94a3b8" font-size="10"
+                >{{ tick.label }}</text>
+                <!-- Dots -->
+                <circle
+                  v-for="(point, idx) in signalIndChartCoordinates"
+                  :key="`sigc-${idx}`"
+                  :cx="point.x" :cy="point.y" r="4"
+                  :fill="point.positive ? '#34d399' : '#f87171'"
+                  class="cursor-pointer"
+                  @mousemove="showChartTooltip($event, [
+                    `${point.pair} (${point.tag})`,
+                    `Profit: ${point.profit !== null ? point.profit.toFixed(2) + '%' : 'n/a'}`,
+                    `Duration: ${point.duration !== null ? point.duration.toFixed(1) + 'h' : 'n/a'}`,
+                    `DCA: ${point.dca} | Score: ${point.quality !== null ? point.quality.toFixed(1) : 'n/a'}`,
+                  ])"
+                  @mouseleave="hideChartTooltip"
+                >
+                  <title>{{ point.pair }} {{ point.tag }}</title>
+                </circle>
+              </svg>
+            </div>
+
+            <!-- Empty state -->
+            <div
+              v-if="signalIndLoaded && signalIndItems.length === 0"
+              class="text-sm text-surface-400 py-4 text-center"
+            >
+              No trades found for the selected filters.
+            </div>
+
+            <!-- Sortable table -->
+            <div v-if="signalIndItems.length > 0" class="overflow-x-auto w-full">
+              <table class="w-full text-sm border-collapse">
+                <thead>
+                  <tr class="border-b border-surface-600 text-left">
+                    <th class="py-2 pe-3">Bot</th>
+                    <th class="py-2 pe-3">Pair</th>
+                    <th class="py-2 pe-3">Tag</th>
+                    <th class="py-2 pe-3">Side</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'open_date' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('open_date')"
+                    >Open{{ signalIndSortArrow('open_date') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'close_date' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('close_date')"
+                    >Close{{ signalIndSortArrow('close_date') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'profit_pct' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('profit_pct')"
+                    >Profit %{{ signalIndSortArrow('profit_pct') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'duration_hours' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('duration_hours')"
+                    >Duration{{ signalIndSortArrow('duration_hours') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'dca_order_count' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('dca_order_count')"
+                    >DCA{{ signalIndSortArrow('dca_order_count') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'quality_score' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('quality_score')"
+                    >Score{{ signalIndSortArrow('quality_score') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'rsi' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('rsi')"
+                    >RSI{{ signalIndSortArrow('rsi') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'hv' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('hv')"
+                    >HV{{ signalIndSortArrow('hv') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'rocr_1h' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('rocr_1h')"
+                    >ROCR 1h{{ signalIndSortArrow('rocr_1h') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'rocr' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('rocr')"
+                    >ROCR{{ signalIndSortArrow('rocr') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'hh_48_diff' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('hh_48_diff')"
+                    >HH48{{ signalIndSortArrow('hh_48_diff') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'll_48_diff' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('ll_48_diff')"
+                    >LL48{{ signalIndSortArrow('ll_48_diff') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'chop' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('chop')"
+                    >Chop{{ signalIndSortArrow('chop') }}</th>
+                    <th class="py-2 pe-3">BB</th>
+                    <th class="py-2 pe-3">Exit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in signalIndItems"
+                    :key="row.trade_id"
+                    class="border-b border-surface-700/70"
+                    :class="[row.rsi === null ? 'opacity-40' : '', row.is_open ? 'bg-surface-800/50' : '']"
+                  >
+                    <td class="py-2 pe-3 text-xs whitespace-nowrap">
+                      <div class="font-medium">{{ row.vps_name ?? '-' }}</div>
+                      <div class="text-xs text-surface-400">{{ row.container_name ?? '-' }} · ID {{ row.bot_id }}</div>
+                    </td>
+                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.pair ?? '?' }}</td>
+                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.enter_tag ?? '?' }}</td>
+                    <td class="py-2 pe-3 text-xs whitespace-nowrap">
+                      <span
+                        class="px-1.5 py-0.5 rounded text-xs font-medium"
+                        :class="row.is_short ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'"
+                      >{{ row.is_short ? 'Short' : 'Long' }}</span>
+                    </td>
+                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.open_date ? formatDate(row.open_date) : '-' }}</td>
+                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.is_open ? 'Open' : row.close_date ? formatDate(row.close_date) : '-' }}</td>
+                    <td
+                      class="py-2 pe-3 text-right font-mono text-xs"
+                      :class="row.is_open ? 'text-surface-500 italic' : (row.profit_pct ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                    >{{ row.is_open ? 'Pending' : row.profit_pct !== null ? (row.profit_pct >= 0 ? '+' : '') + row.profit_pct.toFixed(2) + '%' : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs" :class="row.is_open ? 'text-surface-500 italic' : ''">{{ row.is_open ? 'Pending' : row.duration_hours !== null ? row.duration_hours.toFixed(1) + 'h' : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.dca_order_count }}</td>
+                    <td
+                      class="py-2 pe-3 text-right font-mono text-xs"
+                      :class="row.is_open ? 'text-surface-500 italic' : (row.quality_score ?? 99) <= (signalIndAvgQuality ?? 99) ? 'text-green-400' : ''"
+                    >{{ row.is_open ? 'Pending' : row.quality_score !== null ? row.quality_score.toFixed(1) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rsi !== null ? row.rsi.toFixed(1) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.hv !== null ? row.hv.toFixed(2) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rocr_1h !== null ? row.rocr_1h.toFixed(4) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rocr !== null ? row.rocr.toFixed(4) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.hh_48_diff !== null ? row.hh_48_diff.toFixed(2) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.ll_48_diff !== null ? row.ll_48_diff.toFixed(2) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.chop !== null ? row.chop.toFixed(1) : '-' }}</td>
+                    <td class="py-2 pe-3 font-mono text-xs">{{ row.bb_pos ?? '-' }}</td>
+                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.is_open ? 'Open' : row.exit_reason ?? '-' }}</td>
                   </tr>
                 </tbody>
               </table>

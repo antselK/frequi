@@ -483,6 +483,41 @@ export interface DwhDcaAnalysisList {
   items: DwhDcaStat[];
 }
 
+export interface DwhSignalIndicatorTradeRow {
+  trade_id: number;
+  bot_id: number;
+  source_trade_id: number;
+  vps_name: string | null;
+  container_name: string | null;
+  pair: string | null;
+  enter_tag: string | null;
+  exit_reason: string | null;
+  is_short: boolean | null;
+  is_open: boolean;
+  open_date: string | null;
+  close_date: string | null;
+  profit_pct: number | null;
+  profit_abs: number | null;
+  duration_hours: number | null;
+  dca_order_count: number;
+  rsi: number | null;
+  hv: number | null;
+  rocr_1h: number | null;
+  rocr: number | null;
+  hh_48_diff: number | null;
+  ll_48_diff: number | null;
+  chop: number | null;
+  bb_pos: string | null;
+  quality_score: number | null;
+}
+
+export interface DwhSignalIndicatorAnalysis {
+  total_trades: number;
+  matched_trades: number;
+  match_rate_pct: number;
+  items: DwhSignalIndicatorTradeRow[];
+}
+
 export interface DwhOrder {
   id: number;
   bot_id: number;
