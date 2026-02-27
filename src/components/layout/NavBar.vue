@@ -114,6 +114,12 @@ const navItems = ref([
     icon: 'i-mdi-view-dashboard',
   },
   {
+    label: 'Mobile',
+    to: '/mobile',
+    visible: computed(() => !botStore.canRunBacktest),
+    icon: 'i-mdi-cellphone',
+  },
+  {
     label: 'Console',
     to: '/console',
     visible: computed(() => !botStore.canRunBacktest),

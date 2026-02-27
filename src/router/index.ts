@@ -36,6 +36,11 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('@/views/DashboardView.vue'),
   },
   {
+    path: '/mobile',
+    name: 'Mobile',
+    component: () => import('@/views/MobileView.vue'),
+  },
+  {
     path: '/console',
     alias: ['/custom'],
     name: 'Console',
