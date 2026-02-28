@@ -263,6 +263,12 @@ export interface DwhRunAnomaly {
   occurrences: number;
 }
 
+export interface DwhPurgeExcludedResult {
+  rules_applied: number;
+  deleted_log_events: number;
+  deleted_anomaly_signatures: number;
+}
+
 export interface DwhRetentionRunResult {
   days: number;
   deleted_trades: number;

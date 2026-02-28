@@ -25,6 +25,7 @@ import type {
   DwhRollupCompactionRunResult,
   DwhLogCaptureRule,
   DwhSummary,
+  DwhPurgeExcludedResult,
 } from '@/types/vps';
 
 const summary = ref<DwhSummary | null>(null);
@@ -89,6 +90,9 @@ const auditLoading = ref(false);
 const auditHours = ref(24);
 const auditBotId = ref<number | null>(null);
 const auditRuleSaving = ref(false);
+const auditModeToggling = ref(false);
+const purging = ref(false);
+const purgeResult = ref<DwhPurgeExcludedResult | null>(null);
 const auditMessages = ref<DwhAuditMessage[]>([]);
 const auditMessagesTotal = ref(0);
 const auditMessagesLoading = ref(false);
@@ -360,6 +364,35 @@ async function deleteAuditRule(ruleId: number) {
     errorText.value = String(error);
   } finally {
     auditRuleSaving.value = false;
+  }
+}
+
+async function purgeExcludedLogs() {
+  if (!confirm('Delete all stored log events matching exclude rules? This frees DWH space but cannot be undone. Run ingestion afterwards to backfill new logs.')) return;
+  purging.value = true;
+  purgeResult.value = null;
+  errorText.value = '';
+  try {
+    purgeResult.value = await vpsApi.purgeExcludedDwhLogs();
+  } catch (error) {
+    errorText.value = String(error);
+  } finally {
+    purging.value = false;
+  }
+}
+
+async function toggleAuditMode() {
+  if (!auditMode.value) return;
+  const next = !auditMode.value.enabled;
+  if (next && !confirm('Enable full audit capture? All logs will be stored including excluded loggers. DWH will grow faster.')) return;
+  auditModeToggling.value = true;
+  errorText.value = '';
+  try {
+    auditMode.value = await vpsApi.setDwhAuditMode(next);
+  } catch (error) {
+    errorText.value = String(error);
+  } finally {
+    auditModeToggling.value = false;
   }
 }
 
@@ -950,10 +983,18 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="flex items-center gap-2 text-sm">
-          <span class="text-surface-300">Audit mode:</span>
-          <span class="px-2 py-0.5 rounded border border-surface-600" :class="auditMode?.enabled ? 'text-green-300' : 'text-yellow-300'">
-            {{ auditMode?.enabled ? 'ON (all logs)' : 'OFF (warn/error only)' }}
-          </span>
+          <span class="text-surface-300">Full audit capture:</span>
+          <button
+            class="px-2 py-0.5 rounded border text-xs disabled:opacity-50 transition-colors"
+            :class="auditMode?.enabled
+              ? 'border-orange-600 text-orange-300 hover:bg-orange-950/30'
+              : 'border-surface-600 text-surface-400 hover:bg-surface-800'"
+            :disabled="auditModeToggling || auditMode === null"
+            :title="auditMode?.enabled ? 'Full audit ON — all logs stored, exclude rules bypassed. Click to disable.' : 'Normal mode — exclude rules active. Click to enable full audit capture.'"
+            @click="toggleAuditMode"
+          >
+            {{ auditModeToggling ? '...' : auditMode?.enabled ? 'ON (override exclude rules)' : 'OFF (exclude rules active)' }}
+          </button>
         </div>
 
         <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
@@ -1060,6 +1101,26 @@ onBeforeUnmount(() => {
                 </tr>
               </tbody>
             </table>
+            <div v-if="auditRules.some((r) => r.rule_type === 'exclude')" class="mt-3 pt-3 border-t border-surface-700">
+              <p class="text-xs text-surface-400 mb-2">
+                Excluded logs are stored in DWH but hidden from reports. Purging removes them permanently to free space.
+                Future ingestions will skip them automatically.
+              </p>
+              <div class="flex flex-wrap items-center gap-3">
+                <button
+                  class="px-3 py-1 rounded border border-orange-700 text-orange-300 text-sm hover:bg-orange-950/30 disabled:opacity-50"
+                  :disabled="purging"
+                  @click="purgeExcludedLogs"
+                >
+                  {{ purging ? 'Purging...' : 'Purge Excluded Logs' }}
+                </button>
+                <span v-if="purgeResult" class="text-xs text-surface-300">
+                  Done — deleted {{ purgeResult.deleted_log_events.toLocaleString() }} log events,
+                  {{ purgeResult.deleted_anomaly_signatures.toLocaleString() }} anomaly signatures
+                  ({{ purgeResult.rules_applied }} rule{{ purgeResult.rules_applied !== 1 ? 's' : '' }} applied)
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 

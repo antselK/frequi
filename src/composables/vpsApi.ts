@@ -24,6 +24,7 @@ import type {
   DwhIngestionStatus,
   DwhRetentionConfig,
   DwhRetentionRunResult,
+  DwhPurgeExcludedResult,
   DwhRollupCompactionConfig,
   DwhRollupCompactionRunResult,
   DwhLogCaptureRule,
@@ -217,6 +218,12 @@ export const vpsApi = {
     const { data } = await vpsApiClient.get<DwhAuditMode>('/dwh/audit-mode');
     return data;
   },
+  async setDwhAuditMode(enabled: boolean): Promise<DwhAuditMode> {
+    const { data } = await vpsApiClient.post<DwhAuditMode>('/dwh/audit-mode', undefined, {
+      params: { enabled },
+    });
+    return data;
+  },
   async dwhAuditSummary(hours = 24, limit = 200, botId?: number): Promise<DwhAuditSummary> {
     const { data } = await vpsApiClient.get<DwhAuditSummary>('/dwh/audit/summary', {
       params: {
@@ -323,6 +330,12 @@ export const vpsApi = {
   async runDwhRetention(days = 180): Promise<DwhRetentionRunResult> {
     const { data } = await vpsApiClient.post<DwhRetentionRunResult>('/dwh/retention/run', undefined, {
       params: { days },
+      timeout: 120000,
+    });
+    return data;
+  },
+  async purgeExcludedDwhLogs(): Promise<DwhPurgeExcludedResult> {
+    const { data } = await vpsApiClient.post<DwhPurgeExcludedResult>('/dwh/ingestion/purge-excluded', undefined, {
       timeout: 120000,
     });
     return data;
