@@ -246,7 +246,8 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
     },
     {
       value: 'signal-indicator-analysis',
-      label: 'Signal indicator analysis',
+      label: 'Signal Indicator Analysis',
+      todo: 'Correlates each trade with its [SIGNAL_FLASH] indicator snapshot (captured at signal time, up to 20 min before entry). Use this to find which indicator ranges produce the best trade outcomes. Score = Duration (h) + (DCA orders − 1) × 4 h penalty. Lower is better — a fast single-order trade scores near 0. Indicators: RSI (momentum), HV (volatility %), ROCR 1h / ROCR (rate of change), HH48 / LL48 (48h high/low distance %), Chop (choppiness index), BB (Bollinger band position).',
     },
     {
       value: 'trade-duration',
@@ -4397,22 +4398,7 @@ onMounted(async () => {
           >
             <!-- Header + filters -->
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <div class="flex items-start gap-3">
-                <h5 class="font-semibold">Signal Indicator Analysis</h5>
-                <div class="text-xs text-surface-400 max-w-xl leading-relaxed pt-0.5">
-                  Correlates each trade with its <code class="bg-surface-700 px-1 rounded">[SIGNAL_FLASH]</code> indicator
-                  snapshot (captured at signal time, up to 20 min before entry).
-                  Use this to find which indicator ranges produce the best trade outcomes.
-                  <span class="block mt-1">
-                    <strong class="text-surface-300">Score</strong> = Duration (h) + (DCA orders − 1) × 4 h penalty.
-                    Lower is better — a fast single-order trade scores near 0.
-                  </span>
-                  <span class="block mt-0.5 text-surface-500">
-                    Indicators: RSI (momentum), HV (volatility %), ROCR 1h / ROCR (rate of change),
-                    HH48 / LL48 (48h high/low distance %), Chop (choppiness index), BB (Bollinger band position).
-                  </span>
-                </div>
-              </div>
+              <h5 class="font-semibold">Signal Indicator Analysis</h5>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="signalIndDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="signalIndDateTo" type="date" size="small" class="w-36" />
