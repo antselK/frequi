@@ -36,6 +36,7 @@ import type {
   DwhSignalIndicatorAnalysis,
   DwhOrder,
   DwhSummary,
+  ReportLayoutSettings,
   VpsActionResult,
   VpsContainer,
   VpsContainerAuthHint,
@@ -516,5 +517,16 @@ export const vpsApi = {
       },
     );
     return data;
+  },
+
+  async getReportLayout(): Promise<ReportLayoutSettings | null> {
+    const { data } = await vpsApiClient.get<{ key: string; value: ReportLayoutSettings | null }>(
+      '/settings/report-layout',
+    );
+    return data.value;
+  },
+
+  async saveReportLayout(layout: ReportLayoutSettings): Promise<void> {
+    await vpsApiClient.put('/settings/report-layout', { value: layout });
   },
 };

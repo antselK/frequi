@@ -3,6 +3,8 @@ import { computed, onMounted, ref, watch } from 'vue';
 
 import { timestampms, timestampShort } from '@/utils/formatters/timeformat';
 import { vpsApi } from '@/composables/vpsApi';
+import ReportsAdminDialog from '@/components/ReportsAdminDialog.vue';
+import type { ReportLayoutSettings } from '@/types/vps';
 import type {
   DwhAnomaly,
   DwhCheckpoint,
@@ -175,12 +177,12 @@ const MISSED_TRADE_REASON_LABELS: Record<MissedTradeReasonCode, string> = {
   other: 'Unclassified',
 };
 
-const categoryOptions: { value: ReportCategory; label: string }[] = [
+const _categoryDefs: { value: ReportCategory; label: string }[] = [
   { value: 'system', label: 'System' },
   { value: 'trades', label: 'Trades' },
 ];
 
-const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
+const _subcategoryDefs: Record<ReportCategory, ReportOption[]> = {
   system: [
     {
       value: 'system-errors',
@@ -218,6 +220,7 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
     {
       value: 'entry-tag-performance',
       label: 'Entry tag performance',
+      todo: 'Groups dwh_trades by enter_tag. Shows win rate, avg profit, avg duration, and total profit per tag.',
     },
     {
       value: 'exit-reason-distribution',
@@ -243,6 +246,7 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
     {
       value: 'dca-analysis',
       label: 'DCA / multi-order analysis',
+      todo: 'Joins dwh_trades and dwh_orders to group trades by buy-order count. Compares single-entry vs DCA: win rate, avg profit, avg duration.',
     },
     {
       value: 'signal-indicator-analysis',
@@ -282,6 +286,71 @@ const subCategoryOptionsByCategory: Record<ReportCategory, ReportOption[]> = {
     },
   ],
 };
+
+// ── Report layout (ordering + visibility, persisted in backend) ────────────
+const reportLayout = ref<ReportLayoutSettings | null>(null);
+const reportsAdminVisible = ref(false);
+
+const categoryOptions = computed(() => {
+  if (!reportLayout.value) return _categoryDefs;
+  const order = reportLayout.value.categoryOrder;
+  return [..._categoryDefs].sort((a, b) => {
+    const ai = order.indexOf(a.value);
+    const bi = order.indexOf(b.value);
+    if (ai === -1 && bi === -1) return 0;
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+});
+
+const subCategoryOptionsByCategory = computed((): Record<ReportCategory, ReportOption[]> => {
+  if (!reportLayout.value) return _subcategoryDefs;
+  const result = {} as Record<ReportCategory, ReportOption[]>;
+  for (const cat of _categoryDefs) {
+    const catKey = cat.value;
+    const catSettings = reportLayout.value.subcategories?.[catKey];
+    if (!catSettings) {
+      result[catKey] = _subcategoryDefs[catKey];
+      continue;
+    }
+    const order = catSettings.order;
+    const hidden = new Set(catSettings.hidden ?? []);
+    const sorted = [..._subcategoryDefs[catKey]].sort((a, b) => {
+      const ai = order.indexOf(a.value);
+      const bi = order.indexOf(b.value);
+      if (ai === -1 && bi === -1) return 0;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+    result[catKey] = sorted.filter((s) => !hidden.has(s.value));
+  }
+  return result;
+});
+
+async function loadReportLayout() {
+  try {
+    const layout = await vpsApi.getReportLayout();
+    reportLayout.value = layout;
+    // Re-validate selections after layout is applied
+    const available = subCategoryOptionsByCategory.value[selectedCategory.value];
+    if (available && !available.find((s) => s.value === selectedSubCategory.value)) {
+      selectedSubCategory.value = available[0]?.value ?? '';
+    }
+  } catch {
+    // Fail silently — defaults remain in effect
+  }
+}
+
+function handleLayoutSaved(layout: ReportLayoutSettings) {
+  reportLayout.value = layout;
+  const available = subCategoryOptionsByCategory.value[selectedCategory.value];
+  if (available && !available.find((s) => s.value === selectedSubCategory.value)) {
+    selectedSubCategory.value = available[0]?.value ?? '';
+  }
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 const systemErrorTimelinePoints = ref<TimelinePoint[]>([]);
 const dwhIngestTimeline = ref<IngestTimelinePoint[]>([]);
@@ -444,7 +513,7 @@ const chartTooltip = ref<ChartTooltipState>({
 const selectedCategory = ref<ReportCategory>('system');
 const selectedSubCategory = ref('system-errors');
 
-const availableSubCategories = computed(() => subCategoryOptionsByCategory[selectedCategory.value]);
+const availableSubCategories = computed(() => subCategoryOptionsByCategory.value[selectedCategory.value]);
 
 const selectedSubCategoryDefinition = computed(() => {
   return availableSubCategories.value.find((item) => item.value === selectedSubCategory.value);
@@ -3010,6 +3079,7 @@ watch(
 );
 
 onMounted(async () => {
+  await loadReportLayout();
   await ensureDataForSubcategory(selectedSubCategory.value);
 });
 </script>
@@ -3020,7 +3090,7 @@ onMounted(async () => {
       <template #title>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <span>Reports</span>
-          <Button label="Reports Admin" />
+          <Button label="Reports Admin" @click="reportsAdminVisible = true" />
         </div>
       </template>
       <template #content>
@@ -5582,5 +5652,12 @@ onMounted(async () => {
         </div>
       </template>
     </Card>
+
+    <ReportsAdminDialog
+      v-model:visible="reportsAdminVisible"
+      :category-defs="_categoryDefs"
+      :subcategory-defs="_subcategoryDefs"
+      @saved="handleLayoutSaved"
+    />
   </div>
 </template>

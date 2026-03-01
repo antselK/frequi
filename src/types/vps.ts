@@ -543,3 +543,14 @@ export interface DwhOrder {
   fee_base: number | null;
   order_tag: string | null;
 }
+
+// Report layout settings (stored in app_settings under key "report-layout")
+export interface ReportSubcategorySettings {
+  order: string[];
+  hidden: string[];
+}
+
+export interface ReportLayoutSettings {
+  categoryOrder: string[];
+  subcategories: Record<string, ReportSubcategorySettings>;
+}
