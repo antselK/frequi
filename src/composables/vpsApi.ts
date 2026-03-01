@@ -34,6 +34,9 @@ import type {
   DwhEntryTagPerformanceList,
   DwhDcaAnalysisList,
   DwhSignalIndicatorAnalysis,
+  DwhBotPerfRead,
+  DwhBotPerfHistoryRead,
+  DwhBotPerfRollingScoreRead,
   DwhOrder,
   DwhSummary,
   ReportLayoutSettings,
@@ -513,6 +516,54 @@ export const vpsApi = {
           bot_id: botId,
           pair: pair,
           enter_tag: enterTag,
+        },
+      },
+    );
+    return data;
+  },
+
+  async dwhBotPerformance(
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<DwhBotPerfRead> {
+    const { data } = await vpsApiClient.get<DwhBotPerfRead>(
+      '/dwh/reports/bot-performance',
+      {
+        params: {
+          date_from: dateFrom,
+          date_to: dateTo,
+        },
+      },
+    );
+    return data;
+  },
+
+  async dwhBotPerfHistory(
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<DwhBotPerfHistoryRead> {
+    const { data } = await vpsApiClient.get<DwhBotPerfHistoryRead>(
+      '/dwh/reports/bot-performance-history',
+      {
+        params: {
+          date_from: dateFrom,
+          date_to: dateTo,
+        },
+      },
+    );
+    return data;
+  },
+
+  async dwhBotPerfRollingScore(
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<DwhBotPerfRollingScoreRead> {
+    const { data } = await vpsApiClient.get<DwhBotPerfRollingScoreRead>(
+      '/dwh/reports/bot-performance-rolling-score',
+      {
+        params: {
+          date_from: dateFrom,
+          date_to: dateTo,
         },
       },
     );

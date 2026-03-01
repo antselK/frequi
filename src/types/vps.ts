@@ -544,6 +544,69 @@ export interface DwhOrder {
   order_tag: string | null;
 }
 
+export interface DwhBotPerfStat {
+  bot_id: number;
+  container_name: string | null;
+  vps_name: string | null;
+  exchange: string | null;
+  strategy: string | null;
+  total_closed_trades: number;
+  total_open_trades: number;
+  wins: number;
+  losses: number;
+  win_rate_pct: number;
+  avg_profit_pct: number;
+  total_profit_abs: number;
+  avg_duration_hours: number | null;
+  avg_dca_orders: number;
+  trades_per_day: number;
+  first_trade_date: string | null;
+  last_trade_date: string | null;
+  days_active: number | null;
+  best_pair: string | null;
+  best_pair_profit_abs: number | null;
+  daily_profit_usdt: number | null;
+  monthly_projected_usdt: number | null;
+  yearly_projected_usdt: number | null;
+  perf_score: number | null;
+}
+
+export interface DwhBotPerfRead {
+  total_bots: number;
+  items: DwhBotPerfStat[];
+}
+
+export interface DwhBotPerfHistoryPoint {
+  date: string;
+  bot_id: number;
+  container_name: string | null;
+  vps_name: string | null;
+  trades: number;
+  profit_abs: number;
+  cumulative_profit_abs: number;
+  avg_profit_pct: number;
+}
+
+export interface DwhBotPerfHistoryRead {
+  items: DwhBotPerfHistoryPoint[];
+}
+
+export interface DwhBotPerfRollingScorePoint {
+  date: string;
+  bot_id: number;
+  container_name: string | null;
+  vps_name: string | null;
+  score: number;
+  trade_count: number;
+  avg_profit_pct: number;
+  avg_duration_hours: number | null;
+  avg_dca_orders: number;
+}
+
+export interface DwhBotPerfRollingScoreRead {
+  items: DwhBotPerfRollingScorePoint[];
+}
+
 // Report layout settings (stored in app_settings under key "report-layout")
 export interface ReportSubcategorySettings {
   order: string[];
