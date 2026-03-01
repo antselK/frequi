@@ -259,7 +259,7 @@ const _subcategoryDefs: Record<ReportCategory, ReportOption[]> = {
     {
       value: 'signal-indicator-analysis',
       label: 'Signal Indicator Analysis',
-      todo: 'Correlates each trade with its [SIGNAL_FLASH] indicator snapshot (captured at signal time, up to 20 min before entry). Use this to find which indicator ranges produce the best trade outcomes. Score = Duration (h) + (DCA orders − 1) × 4 h penalty. Lower is better — a fast single-order trade scores near 0. Indicators: RSI (momentum), HV (volatility %), ROCR 1h / ROCR (rate of change), HH48 / LL48 (48h high/low distance %), Chop (choppiness index), BB (Bollinger band position).',
+      todo: 'Correlates each trade with its [SIGNAL_FLASH] indicator snapshot (captured at signal time, up to 20 min before entry). Trades tab: scatter chart (indicator vs profit/score) + sortable trade table. Analytics tab: per-bot indicator histograms showing good vs bad trade distributions — good = score ≤ avg. Use the Analytics tab to find indicator value ranges that produce faster, lower-DCA trades, then reconfigure Printer.py entry filters. Score = Duration (h) + (DCA orders − 1) × 4 h penalty. Lower is better. Indicators: RSI (momentum), HV (volatility %), ROCR 1h / ROCR (rate of change), HH48 / LL48 (48h high/low distance %), Chop (choppiness index), BB (Bollinger band position).',
     },
     {
       value: 'trade-duration',
@@ -497,6 +497,8 @@ const signalIndSortCol = ref<string>('quality_score');
 const signalIndSortAsc = ref(true);
 const signalIndChartIndicator = ref('rsi');
 const signalIndChartYAxis = ref<'profit_pct' | 'quality_score'>('profit_pct');
+const signalIndActiveTab = ref<'trades' | 'analytics'>('trades');
+const signalIndAnalyticsSide = ref<'all' | 'long' | 'short'>('all');
 
 // Bot Performance Analysis state
 const botPerf = ref<DwhBotPerfRead | null>(null);
@@ -1444,6 +1446,103 @@ function signalIndSortArrow(col: string): string {
   if (signalIndSortCol.value !== col) return '';
   return signalIndSortAsc.value ? ' \u2191' : ' \u2193';
 }
+
+// Analytics tab: combined indicator histograms (all bots pooled)
+interface _SigIndHistBin { lo: number; hi: number; good: number; bad: number }
+interface _SigIndHistBar { goodX: number; goodY: number; goodH: number; badX: number; badY: number; badH: number }
+interface _SigIndHistogram {
+  key: string; label: string; decimals: number;
+  bins: _SigIndHistBin[]; min: number; max: number; maxCount: number;
+  svgBars: _SigIndHistBar[];
+  svgXLabels: Array<{ x: number; val: string; stagger: boolean }>;
+}
+interface _SigIndBbCat { cat: string; good: number; bad: number; total: number }
+interface SigIndCombinedAnalytics {
+  tradeCount: number; goodCount: number;
+  histograms: _SigIndHistogram[];
+  bbCats: _SigIndBbCat[];
+  bbMaxTotal: number;
+}
+
+const _sigIndAnalyticsKeys: Array<{ key: keyof DwhSignalIndicatorTradeRow; label: string; decimals: number }> = [
+  { key: 'rsi', label: 'RSI', decimals: 1 },
+  { key: 'hv', label: 'HV', decimals: 2 },
+  { key: 'rocr_1h', label: 'ROCR 1h', decimals: 4 },
+  { key: 'rocr', label: 'ROCR', decimals: 4 },
+  { key: 'hh_48_diff', label: 'HH48 diff', decimals: 2 },
+  { key: 'll_48_diff', label: 'LL48 diff', decimals: 2 },
+  { key: 'chop', label: 'Chop', decimals: 1 },
+];
+
+const _SIG_BINS = 8;
+const _SIG_SVG = { x0: 6, yBot: 122, plotH: 102, plotW: 268, slotW: 268 / 8, barW: 13 };
+
+function _buildSigIndHistograms(
+  goodRows: DwhSignalIndicatorTradeRow[],
+  badRows: DwhSignalIndicatorTradeRow[],
+): _SigIndHistogram[] {
+  return _sigIndAnalyticsKeys.flatMap(({ key, label, decimals }) => {
+    const gv = goodRows.map(r => r[key] as number | null).filter((v): v is number => v !== null);
+    const bv = badRows.map(r => r[key] as number | null).filter((v): v is number => v !== null);
+    const all = [...gv, ...bv];
+    if (!all.length) return [];
+    const mn = Math.min(...all), mx = Math.max(...all);
+    const bs = (mx - mn) / _SIG_BINS || 1;
+    const bins: _SigIndHistBin[] = Array.from({ length: _SIG_BINS }, (_, i) => {
+      const lo = mn + i * bs;
+      const hi = i === _SIG_BINS - 1 ? mx + 0.001 : lo + bs;
+      return { lo, hi, good: gv.filter(v => v >= lo && v < hi).length, bad: bv.filter(v => v >= lo && v < hi).length };
+    });
+    const maxCount = Math.max(...bins.map(b => b.good + b.bad), 1);
+    const svgBars: _SigIndHistBar[] = bins.map((b, i) => {
+      const gH = (b.good / maxCount) * _SIG_SVG.plotH;
+      const bH = (b.bad / maxCount) * _SIG_SVG.plotH;
+      const sx = _SIG_SVG.x0 + i * _SIG_SVG.slotW;
+      return { goodX: sx + 1, goodY: _SIG_SVG.yBot - gH, goodH: gH, badX: sx + 1 + _SIG_SVG.barW + 1, badY: _SIG_SVG.yBot - bH, badH: bH };
+    });
+    const fmtDec = Math.min(decimals, 3);
+    // All 9 bin boundaries so the user can read exact ranges; stagger odd/even to avoid overlap
+    const svgXLabels = Array.from({ length: _SIG_BINS + 1 }, (_, i) => ({
+      x: _SIG_SVG.x0 + i * _SIG_SVG.slotW,
+      val: (mn + (i / _SIG_BINS) * (mx - mn)).toFixed(fmtDec),
+      stagger: i % 2 !== 0,
+    }));
+    return [{ key: key as string, label, decimals, bins, min: mn, max: mx, maxCount, svgBars, svgXLabels }];
+  });
+}
+
+const signalIndAnalyticsData = computed<SigIndCombinedAnalytics | null>(() => {
+  const allRows = signalIndMatchedItems.value;
+  const avgScore = signalIndAvgQuality.value;
+  if (!allRows.length || avgScore === null) return null;
+
+  const side = signalIndAnalyticsSide.value;
+  const rows = side === 'all' ? allRows
+    : side === 'long' ? allRows.filter(r => !r.is_short)
+    : allRows.filter(r => r.is_short);
+
+  if (!rows.length) return null;
+
+  const isGood = (r: (typeof rows)[0]) => (r.quality_score ?? Infinity) <= avgScore!;
+  const goodRows = rows.filter(isGood);
+  const badRows = rows.filter(r => !isGood(r));
+
+  const histograms = _buildSigIndHistograms(goodRows, badRows);
+
+  const bbMap = new Map<string, { good: number; bad: number }>();
+  for (const r of rows) {
+    if (!r.bb_pos) continue;
+    const e = bbMap.get(r.bb_pos) ?? { good: 0, bad: 0 };
+    if (isGood(r)) e.good++; else e.bad++;
+    bbMap.set(r.bb_pos, e);
+  }
+  const bbCats: _SigIndBbCat[] = Array.from(bbMap.entries())
+    .map(([cat, c]) => ({ cat, ...c, total: c.good + c.bad }))
+    .sort((a, b) => b.total - a.total);
+  const bbMaxTotal = Math.max(...bbCats.map(c => c.total), 1);
+
+  return { tradeCount: rows.length, goodCount: goodRows.length, histograms, bbCats, bbMaxTotal };
+});
 
 // ── End Signal Indicator Analysis computed ──────────────────────────────────
 
@@ -4872,6 +4971,22 @@ onMounted(async () => {
               </div>
             </div>
 
+            <!-- Tabs: Trades | Analytics -->
+            <div class="flex gap-0 border-b border-surface-600">
+              <button
+                v-for="tab in [{ key: 'trades', label: 'Trades' }, { key: 'analytics', label: 'Analytics' }]"
+                :key="tab.key"
+                class="px-4 py-2 text-sm border-b-2 transition-colors"
+                :class="signalIndActiveTab === tab.key
+                  ? 'border-primary-400 text-primary-400'
+                  : 'border-transparent text-surface-400 hover:text-surface-200'"
+                @click="signalIndActiveTab = tab.key as 'trades' | 'analytics'"
+              >{{ tab.label }}</button>
+            </div>
+
+            <!-- Trades tab -->
+            <div v-if="signalIndActiveTab === 'trades'" class="space-y-4">
+
             <!-- Scatter chart -->
             <div v-if="signalIndChartCoordinates.length > 0" class="space-y-2">
               <div class="flex flex-wrap items-center gap-3">
@@ -5085,6 +5200,120 @@ onMounted(async () => {
                 </tbody>
               </table>
             </div>
+
+            </div><!-- /Trades tab -->
+
+            <!-- Analytics tab -->
+            <div v-else class="space-y-4 pt-2">
+
+              <!-- Empty state -->
+              <div
+                v-if="signalIndAnalyticsData === null"
+                class="text-sm text-surface-400 py-4 text-center"
+              >
+                Load data to see analytics. Trades must have indicator snapshots (closed trades matched to [SIGNAL_FLASH] logs).
+              </div>
+
+              <template v-else>
+                <!-- Summary + legend row -->
+                <div class="flex flex-wrap items-center gap-4 text-xs text-surface-400">
+                  <span class="text-surface-200 font-medium">
+                    {{ signalIndAnalyticsData.tradeCount }} trades
+                    &mdash; threshold: score &le; <span class="font-mono">{{ signalIndAvgQuality !== null ? signalIndAvgQuality.toFixed(1) : '?' }}</span>
+                  </span>
+                  <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-green-400"></span> Good: {{ signalIndAnalyticsData.goodCount }}</span>
+                  <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-red-400"></span> Bad: {{ signalIndAnalyticsData.tradeCount - signalIndAnalyticsData.goodCount }}</span>
+                  <span class="text-surface-500">All bots combined &mdash; green = where good entries cluster</span>
+                  <!-- Side toggle -->
+                  <div class="ml-auto flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
+                    <button
+                      v-for="s in [{ key: 'all', label: 'All' }, { key: 'long', label: 'Long' }, { key: 'short', label: 'Short' }]"
+                      :key="s.key"
+                      class="px-3 py-1 transition-colors"
+                      :class="signalIndAnalyticsSide === s.key
+                        ? 'bg-primary-600 text-white'
+                        : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                      @click="signalIndAnalyticsSide = s.key as 'all' | 'long' | 'short'"
+                    >{{ s.label }}</button>
+                  </div>
+                </div>
+
+                <!-- Indicator histograms grid -->
+                <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
+
+                  <!-- Numeric indicator histogram -->
+                  <div
+                    v-for="hist in signalIndAnalyticsData.histograms"
+                    :key="hist.key"
+                    class="bg-surface-800/60 border border-surface-700/50 rounded p-2"
+                  >
+                    <div class="text-xs font-medium text-surface-200 mb-1">{{ hist.label }}</div>
+                    <svg viewBox="0 0 274 160" class="w-full">
+                      <!-- X axis line -->
+                      <line x1="6" y1="122" x2="268" y2="122" stroke="#475569" stroke-width="1"/>
+                      <!-- Bars -->
+                      <template v-for="(bar, i) in hist.svgBars" :key="i">
+                        <rect
+                          v-if="bar.goodH > 0.5"
+                          :x="bar.goodX" :y="bar.goodY" :width="13" :height="bar.goodH"
+                          fill="#34d399" rx="1"
+                        />
+                        <rect
+                          v-if="bar.badH > 0.5"
+                          :x="bar.badX" :y="bar.badY" :width="13" :height="bar.badH"
+                          fill="#f87171" rx="1"
+                        />
+                      </template>
+                      <!-- X boundary labels — staggered to avoid overlap -->
+                      <text
+                        v-for="(lbl, i) in hist.svgXLabels"
+                        :key="i"
+                        :x="lbl.x" :y="lbl.stagger ? 148 : 134"
+                        text-anchor="middle" fill="#94a3b8" font-size="8"
+                      >{{ lbl.val }}</text>
+                      <!-- Tick marks at each boundary -->
+                      <line
+                        v-for="(lbl, i) in hist.svgXLabels"
+                        :key="`t${i}`"
+                        :x1="lbl.x" y1="122" :x2="lbl.x" :y2="lbl.stagger ? 130 : 126"
+                        stroke="#475569" stroke-width="1"
+                      />
+                    </svg>
+                  </div>
+
+                  <!-- BB position categorical -->
+                  <div
+                    v-if="signalIndAnalyticsData.bbCats.length > 0"
+                    class="bg-surface-800/60 border border-surface-700/50 rounded p-2"
+                  >
+                    <div class="text-xs font-medium text-surface-200 mb-2">BB position</div>
+                    <div class="space-y-2">
+                      <div v-for="cat in signalIndAnalyticsData.bbCats" :key="cat.cat">
+                        <div class="flex items-center gap-1 text-xs mb-0.5">
+                          <span class="text-surface-300 w-24 truncate">{{ cat.cat }}</span>
+                          <span class="ml-auto text-surface-500">{{ cat.total }}</span>
+                        </div>
+                        <div class="flex h-2.5 gap-0.5">
+                          <div
+                            class="bg-green-400 rounded-sm h-full min-w-0"
+                            :style="{ width: (cat.good / signalIndAnalyticsData!.bbMaxTotal * 100) + '%' }"
+                            :title="`Good: ${cat.good}`"
+                          />
+                          <div
+                            class="bg-red-400 rounded-sm h-full min-w-0"
+                            :style="{ width: (cat.bad / signalIndAnalyticsData!.bbMaxTotal * 100) + '%' }"
+                            :title="`Bad: ${cat.bad}`"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </template>
+
+            </div><!-- /Analytics tab -->
+
           </div>
 
           <div v-if="selectedSubCategory === 'trade-duration'" class="border border-surface-400 rounded-sm p-4 space-y-4">
