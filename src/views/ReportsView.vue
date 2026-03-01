@@ -367,7 +367,9 @@ const signalOutcomesDateFrom = ref(daysAgoStr(1));
 const signalOutcomesDateTo = ref(todayStr());
 const signalOutcomesFilterBotId = ref<number | null>(null);
 const signalOutcomesFilterPair = ref('');
-const signalOutcomesFilterReason = ref('');
+const signalOutcomesFilterReason = ref('all');
+const signalOutcomesFilterStrategy = ref('all');
+const signalOutcomesFilterOutcome = ref('all');
 const signalOutcomesProfitThreshold = ref(2.0);
 const loadingSignalOutcomes = ref(false);
 const loadingParseMissedSignals = ref(false);
@@ -884,6 +886,56 @@ const signalOutcomesProfitablePct = computed(() => {
 });
 
 const signalOutcomesPendingCount = computed(() => signalOutcomes.value?.pending_outcomes ?? 0);
+
+const signalOutcomeStrategyOptions = [
+  { label: 'All strategies', value: 'all' },
+  { label: 'Printer_v5', value: 'Printer_v5' },
+  { label: 'Printer_v4', value: 'Printer_v4' },
+  { label: 'Printer_v2', value: 'Printer_v2' },
+  { label: 'Printer_v1', value: 'Printer_v1' },
+  { label: 'PrinterSafe_v2', value: 'PrinterSafe_v2' },
+];
+
+const signalOutcomeReasonOptions = [
+  { label: 'All reasons', value: 'all' },
+  { label: 'ETH volatility', value: 'eth_volatility' },
+  { label: 'DCA block', value: 'deep_dca_block' },
+  { label: 'Slippage', value: 'slippage' },
+  { label: 'Funding rate', value: 'funding_rate' },
+  { label: 'Price momentum', value: 'price_momentum' },
+  { label: 'Trailing entry', value: 'trailing_entry' },
+  { label: 'Time filter', value: 'time_filter' },
+  { label: 'Long disabled', value: 'long_disabled' },
+  { label: 'Trade rejected', value: 'trade_rejected' },
+  { label: 'Entry error', value: 'entry_error' },
+  { label: 'Insufficient data', value: 'insufficient_data' },
+  { label: 'Other', value: 'other' },
+];
+
+const signalOutcomeFilterOptions = [
+  { label: 'All outcomes', value: 'all' },
+  { label: 'Win', value: 'win' },
+  { label: 'No trigger', value: 'no_trigger' },
+  { label: 'Live', value: 'live' },
+  { label: 'Pending', value: 'pending' },
+  { label: 'Error', value: 'error' },
+];
+
+const signalOutcomesFiltered = computed<DwhMissedSignal[]>(() => {
+  const filter = signalOutcomesFilterOutcome.value;
+  if (filter === 'all') return signalOutcomeItems.value;
+  return signalOutcomeItems.value.filter((sig) => {
+    if (filter === 'error') return !!sig.fetch_error;
+    if (filter === 'pending') return sig.outcome_fetched_at === null && !sig.fetch_error;
+    if (sig.fetch_error || sig.outcome_fetched_at === null) return false;
+    const isWin = (sig.max_gain_pct ?? 0) >= signalOutcomesProfitThreshold.value;
+    if (filter === 'win') return isWin;
+    const partial = isPartialOutcome(sig);
+    if (filter === 'live') return !isWin && partial;
+    if (filter === 'no_trigger') return !isWin && !partial;
+    return true;
+  });
+});
 
 /** True when a signal has been fetched but its outcome window hasn't elapsed yet. */
 function isPartialOutcome(sig: DwhMissedSignal): boolean {
@@ -2605,7 +2657,8 @@ async function loadSignalOutcomes() {
       signalOutcomesDateTo.value || undefined,
       signalOutcomesFilterBotId.value ?? undefined,
       signalOutcomesFilterPair.value || undefined,
-      signalOutcomesFilterReason.value || undefined,
+      signalOutcomesFilterReason.value !== 'all' ? signalOutcomesFilterReason.value : undefined,
+      signalOutcomesFilterStrategy.value !== 'all' ? signalOutcomesFilterStrategy.value : undefined,
     );
     signalOutcomesLoaded.value = true;
   } catch (error) {
@@ -3726,11 +3779,29 @@ onMounted(async () => {
                   class="w-36"
                   placeholder="Pair"
                 />
-                <InputText
+                <Select
                   v-model="signalOutcomesFilterReason"
+                  :options="signalOutcomeReasonOptions"
+                  option-label="label"
+                  option-value="value"
                   size="small"
                   class="w-36"
-                  placeholder="Reason code"
+                />
+                <Select
+                  v-model="signalOutcomesFilterStrategy"
+                  :options="signalOutcomeStrategyOptions"
+                  option-label="label"
+                  option-value="value"
+                  size="small"
+                  class="w-40"
+                />
+                <Select
+                  v-model="signalOutcomesFilterOutcome"
+                  :options="signalOutcomeFilterOptions"
+                  option-label="label"
+                  option-value="value"
+                  size="small"
+                  class="w-36"
                 />
                 <InputNumber
                   v-model="signalOutcomesProfitThreshold"
@@ -3832,6 +3903,7 @@ onMounted(async () => {
                     <th class="py-2 pe-3">Bot</th>
                     <th class="py-2 pe-3">Pair</th>
                     <th class="py-2 pe-3">Reason</th>
+                    <th class="py-2 pe-3">Strategy</th>
                     <th class="py-2 pe-3">Side</th>
                     <th class="py-2 pe-3">Entry price</th>
                     <th class="py-2 pe-3 text-green-400">Max gain</th>
@@ -3841,7 +3913,7 @@ onMounted(async () => {
                 </thead>
                 <tbody>
                   <tr
-                    v-for="sig in signalOutcomeItems"
+                    v-for="sig in signalOutcomesFiltered"
                     :key="sig.id"
                     class="border-b border-surface-700/70 align-top"
                   >
@@ -3855,6 +3927,9 @@ onMounted(async () => {
                     <td class="py-2 pe-3 whitespace-nowrap font-mono">{{ sig.pair }}</td>
                     <td class="py-2 pe-3 whitespace-nowrap text-xs text-surface-300">
                       {{ sig.block_reason }}
+                    </td>
+                    <td class="py-2 pe-3 whitespace-nowrap text-xs text-surface-300">
+                      {{ sig.strategy ?? '—' }}
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap text-xs">
                       <span

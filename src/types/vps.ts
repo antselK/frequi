@@ -439,6 +439,7 @@ export interface DwhMissedSignal {
   // Enriched
   vps_name: string | null;
   container_name: string | null;
+  strategy: string | null;
 }
 
 export interface DwhMissedSignalList {
