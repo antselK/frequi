@@ -499,6 +499,7 @@ const signalIndChartIndicator = ref('rsi');
 const signalIndChartYAxis = ref<'profit_pct' | 'quality_score'>('profit_pct');
 const signalIndActiveTab = ref<'trades' | 'analytics'>('trades');
 const signalIndAnalyticsSide = ref<'all' | 'long' | 'short'>('all');
+const signalIndMatchFilter = ref<'all' | 'matched' | 'unmatched'>('all');
 
 // Bot Performance Analysis state
 const botPerf = ref<DwhBotPerfRead | null>(null);
@@ -1307,7 +1308,10 @@ const signalIndIndicatorOptions = [
 const _sigIndDateCols = new Set<string>(['open_date', 'close_date']);
 
 const signalIndItems = computed<DwhSignalIndicatorTradeRow[]>(() => {
-  const rows = signalIndData.value?.items ?? [];
+  let rows = signalIndData.value?.items ?? [];
+  const mf = signalIndMatchFilter.value;
+  if (mf === 'matched') rows = rows.filter((r) => r.rsi !== null);
+  else if (mf === 'unmatched') rows = rows.filter((r) => r.rsi === null);
   const col = signalIndSortCol.value as keyof DwhSignalIndicatorTradeRow;
   const asc = signalIndSortAsc.value;
   return [...rows].sort((a, b) => {
@@ -1542,6 +1546,57 @@ const signalIndAnalyticsData = computed<SigIndCombinedAnalytics | null>(() => {
   const bbMaxTotal = Math.max(...bbCats.map(c => c.total), 1);
 
   return { tradeCount: rows.length, goodCount: goodRows.length, histograms, bbCats, bbMaxTotal };
+});
+
+// Unmatched trade stats (closed trades with no indicator snapshot)
+const signalIndUnmatchedItems = computed(() =>
+  (signalIndData.value?.items ?? []).filter((r) => r.rsi === null && !r.is_open),
+);
+
+const signalIndUnmatchedAvgProfit = computed(() => {
+  const rows = signalIndUnmatchedItems.value.filter((r) => r.profit_pct !== null);
+  if (!rows.length) return null;
+  return rows.reduce((s, r) => s + (r.profit_pct ?? 0), 0) / rows.length;
+});
+
+const signalIndUnmatchedWinRate = computed(() => {
+  const rows = signalIndUnmatchedItems.value.filter((r) => r.profit_pct !== null);
+  if (!rows.length) return null;
+  return (rows.filter((r) => (r.profit_pct ?? 0) > 0).length / rows.length) * 100;
+});
+
+const signalIndUnmatchedAvgDuration = computed(() => {
+  const rows = signalIndUnmatchedItems.value.filter((r) => r.duration_hours !== null);
+  if (!rows.length) return null;
+  return rows.reduce((s, r) => s + (r.duration_hours ?? 0), 0) / rows.length;
+});
+
+const signalIndUnmatchedBreakdown = computed(() => {
+  const rows = signalIndData.value?.items ?? [];
+  if (!rows.length) return null;
+  const botMap = new Map<string, { total: number; matched: number }>();
+  const tagMap = new Map<string, { total: number; matched: number }>();
+  for (const r of rows) {
+    if (r.is_open) continue;
+    const botKey = `${r.vps_name ?? '?'} / ${r.container_name ?? '?'} (${r.bot_id})`;
+    const tagKey = r.enter_tag ?? '(none)';
+    const isMatched = r.rsi !== null;
+    const be = botMap.get(botKey) ?? { total: 0, matched: 0 };
+    be.total++;
+    if (isMatched) be.matched++;
+    botMap.set(botKey, be);
+    const te = tagMap.get(tagKey) ?? { total: 0, matched: 0 };
+    te.total++;
+    if (isMatched) te.matched++;
+    tagMap.set(tagKey, te);
+  }
+  const byBot = Array.from(botMap.entries())
+    .map(([label, c]) => ({ label, total: c.total, matched: c.matched, unmatched: c.total - c.matched, rate: Math.round((c.matched / c.total) * 100) }))
+    .sort((a, b) => b.unmatched - a.unmatched);
+  const byTag = Array.from(tagMap.entries())
+    .map(([tag, c]) => ({ tag, total: c.total, matched: c.matched, unmatched: c.total - c.matched, rate: Math.round((c.matched / c.total) * 100) }))
+    .sort((a, b) => b.unmatched - a.unmatched);
+  return { byBot, byTag };
 });
 
 // ── End Signal Indicator Analysis computed ──────────────────────────────────
@@ -4926,6 +4981,18 @@ onMounted(async () => {
                   class="w-40"
                   placeholder="Enter tag"
                 />
+                <!-- Match filter toggle -->
+                <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
+                  <button
+                    v-for="mf in [{ key: 'all', label: 'All' }, { key: 'matched', label: 'Matched' }, { key: 'unmatched', label: 'Unmatched' }]"
+                    :key="mf.key"
+                    class="px-2 py-1 transition-colors"
+                    :class="signalIndMatchFilter === mf.key
+                      ? 'bg-primary-600 text-white'
+                      : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                    @click="signalIndMatchFilter = mf.key as 'all' | 'matched' | 'unmatched'"
+                  >{{ mf.label }}</button>
+                </div>
                 <Button
                   label="Load"
                   size="small"
@@ -4947,27 +5014,56 @@ onMounted(async () => {
             </div>
 
             <!-- Summary cards -->
-            <div v-if="signalIndLoaded && signalIndData" class="flex flex-wrap gap-3 text-sm">
-              <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
-                <div class="text-lg font-bold">{{ signalIndData.matched_trades }}</div>
-                <div class="text-xs text-surface-400">Matched trades</div>
-              </div>
-              <div v-if="signalIndAvgProfit !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
-                <div
-                  class="text-lg font-bold font-mono"
-                  :class="signalIndAvgProfit >= 0 ? 'text-green-400' : 'text-red-400'"
-                >
-                  {{ signalIndAvgProfit >= 0 ? '+' : '' }}{{ signalIndAvgProfit.toFixed(2) }}%
+            <div v-if="signalIndLoaded && signalIndData" class="space-y-2">
+              <!-- Matched row -->
+              <div class="flex flex-wrap gap-3 text-sm items-center">
+                <span class="text-xs text-surface-500 w-20 shrink-0">Matched:</span>
+                <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                  <div class="text-lg font-bold">{{ signalIndData.matched_trades }}</div>
+                  <div class="text-xs text-surface-400">Matched trades</div>
                 </div>
-                <div class="text-xs text-surface-400">Avg profit</div>
+                <div v-if="signalIndAvgProfit !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                  <div
+                    class="text-lg font-bold font-mono"
+                    :class="signalIndAvgProfit >= 0 ? 'text-green-400' : 'text-red-400'"
+                  >
+                    {{ signalIndAvgProfit >= 0 ? '+' : '' }}{{ signalIndAvgProfit.toFixed(2) }}%
+                  </div>
+                  <div class="text-xs text-surface-400">Avg profit</div>
+                </div>
+                <div v-if="signalIndAvgDuration !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                  <div class="text-lg font-bold font-mono">{{ signalIndAvgDuration.toFixed(1) }}h</div>
+                  <div class="text-xs text-surface-400">Avg duration</div>
+                </div>
+                <div v-if="signalIndAvgQuality !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                  <div class="text-lg font-bold font-mono">{{ signalIndAvgQuality.toFixed(1) }}</div>
+                  <div class="text-xs text-surface-400">Avg quality score</div>
+                </div>
               </div>
-              <div v-if="signalIndAvgDuration !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
-                <div class="text-lg font-bold font-mono">{{ signalIndAvgDuration.toFixed(1) }}h</div>
-                <div class="text-xs text-surface-400">Avg duration</div>
-              </div>
-              <div v-if="signalIndAvgQuality !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
-                <div class="text-lg font-bold font-mono">{{ signalIndAvgQuality.toFixed(1) }}</div>
-                <div class="text-xs text-surface-400">Avg quality score</div>
+              <!-- Unmatched row -->
+              <div v-if="signalIndUnmatchedItems.length > 0" class="flex flex-wrap gap-3 text-sm items-center">
+                <span class="text-xs text-surface-500 w-20 shrink-0">Unmatched:</span>
+                <div class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center">
+                  <div class="text-lg font-bold text-surface-300">{{ signalIndUnmatchedItems.length }}</div>
+                  <div class="text-xs text-surface-500">No snapshot</div>
+                </div>
+                <div v-if="signalIndUnmatchedAvgProfit !== null" class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center">
+                  <div
+                    class="text-lg font-bold font-mono"
+                    :class="signalIndUnmatchedAvgProfit >= 0 ? 'text-green-400' : 'text-red-400'"
+                  >
+                    {{ signalIndUnmatchedAvgProfit >= 0 ? '+' : '' }}{{ signalIndUnmatchedAvgProfit.toFixed(2) }}%
+                  </div>
+                  <div class="text-xs text-surface-500">Avg profit</div>
+                </div>
+                <div v-if="signalIndUnmatchedWinRate !== null" class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center">
+                  <div class="text-lg font-bold font-mono text-surface-300">{{ signalIndUnmatchedWinRate.toFixed(0) }}%</div>
+                  <div class="text-xs text-surface-500">Win rate</div>
+                </div>
+                <div v-if="signalIndUnmatchedAvgDuration !== null" class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center">
+                  <div class="text-lg font-bold font-mono text-surface-300">{{ signalIndUnmatchedAvgDuration.toFixed(1) }}h</div>
+                  <div class="text-xs text-surface-500">Avg duration</div>
+                </div>
               </div>
             </div>
 
@@ -5161,7 +5257,7 @@ onMounted(async () => {
                     v-for="row in signalIndItems"
                     :key="row.trade_id"
                     class="border-b border-surface-700/70"
-                    :class="[row.rsi === null ? 'opacity-40' : '', row.is_open ? 'bg-surface-800/50' : '']"
+                    :class="[row.rsi === null && signalIndMatchFilter !== 'unmatched' ? 'opacity-40' : '', row.is_open ? 'bg-surface-800/50' : '']"
                   >
                     <td class="py-2 pe-3 text-xs whitespace-nowrap">
                       <div class="font-medium">{{ row.vps_name ?? '-' }}</div>
@@ -5310,6 +5406,70 @@ onMounted(async () => {
                   </div>
 
                 </div>
+
+                <!-- Unmatched breakdown section -->
+                <div v-if="signalIndUnmatchedBreakdown" class="space-y-3 pt-3 border-t border-surface-700/50">
+                  <div class="text-xs font-medium text-surface-300">Unmatched Trade Breakdown (closed trades without indicator snapshot)</div>
+                  <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <!-- By Bot -->
+                    <div>
+                      <div class="text-xs text-surface-500 mb-2">By Bot</div>
+                      <table class="w-full text-xs">
+                        <thead>
+                          <tr class="text-surface-500 border-b border-surface-700">
+                            <th class="text-left pb-1 font-normal">Bot</th>
+                            <th class="text-right pb-1 font-normal">Total</th>
+                            <th class="text-right pb-1 font-normal">Matched</th>
+                            <th class="text-right pb-1 font-normal">Unmatched</th>
+                            <th class="text-right pb-1 font-normal">Rate</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="brow in signalIndUnmatchedBreakdown.byBot"
+                            :key="brow.label"
+                            class="border-b border-surface-800 hover:bg-surface-800/40"
+                          >
+                            <td class="py-1 pr-2 text-surface-300 font-mono">{{ brow.label }}</td>
+                            <td class="py-1 text-right text-surface-400">{{ brow.total }}</td>
+                            <td class="py-1 text-right text-green-500">{{ brow.matched }}</td>
+                            <td class="py-1 text-right" :class="brow.unmatched > 0 ? 'text-yellow-400' : 'text-surface-500'">{{ brow.unmatched }}</td>
+                            <td class="py-1 text-right font-mono" :class="brow.rate >= 80 ? 'text-green-400' : brow.rate >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ brow.rate }}%</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <!-- By Enter Tag -->
+                    <div>
+                      <div class="text-xs text-surface-500 mb-2">By Enter Tag</div>
+                      <table class="w-full text-xs">
+                        <thead>
+                          <tr class="text-surface-500 border-b border-surface-700">
+                            <th class="text-left pb-1 font-normal">Tag</th>
+                            <th class="text-right pb-1 font-normal">Total</th>
+                            <th class="text-right pb-1 font-normal">Matched</th>
+                            <th class="text-right pb-1 font-normal">Unmatched</th>
+                            <th class="text-right pb-1 font-normal">Rate</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr
+                            v-for="trow in signalIndUnmatchedBreakdown.byTag"
+                            :key="trow.tag"
+                            class="border-b border-surface-800 hover:bg-surface-800/40"
+                          >
+                            <td class="py-1 pr-2 text-surface-300 font-mono">{{ trow.tag }}</td>
+                            <td class="py-1 text-right text-surface-400">{{ trow.total }}</td>
+                            <td class="py-1 text-right text-green-500">{{ trow.matched }}</td>
+                            <td class="py-1 text-right" :class="trow.unmatched > 0 ? 'text-yellow-400' : 'text-surface-500'">{{ trow.unmatched }}</td>
+                            <td class="py-1 text-right font-mono" :class="trow.rate >= 80 ? 'text-green-400' : trow.rate >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ trow.rate }}%</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
               </template>
 
             </div><!-- /Analytics tab -->
