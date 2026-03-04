@@ -569,6 +569,7 @@ export interface DwhBotPerfStat {
   monthly_projected_usdt: number | null;
   yearly_projected_usdt: number | null;
   perf_score: number | null;
+  estimated_capital_usdt: number | null;
 }
 
 export interface DwhBotPerfRead {

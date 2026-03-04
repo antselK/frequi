@@ -223,7 +223,7 @@ const _subcategoryDefs: Record<ReportCategory, ReportOption[]> = {
     {
       value: 'bot-performance',
       label: 'Bot Performance Analysis',
-      todo: 'Per-bot performance overview with composite score. Score = avg profit% × 2 − avg duration × 0.1 − (avg DCA orders − 1) × 1 (higher is better). Covers closed trade count, win rate, avg profit, total PnL, avg duration, DCA frequency, trades/day, best pair. Projections tab shows linear daily/monthly/yearly USDT estimates.',
+      todo: 'Per-bot performance overview with composite score. Score = avg profit% × 2 − avg duration × 0.1 − (avg DCA orders − 1) × 1 (higher is better). Covers closed trade count, win rate, avg profit, total PnL, avg duration, DCA frequency, trades/day, best pair. Projections tab shows daily/monthly/yearly estimates in USDT or % (toggle) — % mode uses avg trade profit% × trades/day, comparable across bots regardless of capital.',
     },
     {
       value: 'entry-tag-performance',
@@ -513,6 +513,7 @@ const botPerfActiveTab = ref<'performance' | 'projections' | 'history'>('perform
 const botPerfHistory = ref<DwhBotPerfHistoryRead | null>(null);
 const botPerfRollingScore = ref<DwhBotPerfRollingScoreRead | null>(null);
 const botHistChartMode = ref<'equity' | 'score'>('equity');
+const botPerfProjectionMode = ref<'usdt' | 'pct' | 'compounded'>('usdt');
 const botHistEnabledBots = ref<Set<number>>(new Set());
 const botHistHoverDate = ref<string | null>(null);
 
@@ -6516,20 +6517,54 @@ onMounted(async () => {
 
               <!-- Projections tab -->
               <div v-if="botPerfActiveTab === 'projections'" class="space-y-3">
-                <p class="text-xs text-surface-400 italic">
-                  Linear extrapolation from closed trade history within the selected date range.
-                  Based on total PnL ÷ days active. Past performance does not predict future results.
-                </p>
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                  <p class="text-xs text-surface-400 italic">
+                    <template v-if="botPerfProjectionMode === 'usdt'">
+                      Linear extrapolation from closed trade history within the selected date range.
+                      Based on total PnL ÷ days active. Past performance does not predict future results.
+                    </template>
+                    <template v-else-if="botPerfProjectionMode === 'pct'">
+                      Avg profit% per trade ÷ days active. Trade quality normalized by time — frequency-independent. Linear extrapolation. Past performance does not predict future results.
+                    </template>
+                    <template v-else>
+                      Compounded daily rate: (1 + daily%)^N − 1. Assumes profits are reinvested and stake grows with wallet. Past performance does not predict future results.
+                    </template>
+                  </p>
+                  <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs shrink-0">
+                    <button
+                      class="px-3 py-1 transition-colors"
+                      :class="botPerfProjectionMode === 'usdt' ? 'bg-surface-600 text-white' : 'text-surface-400 hover:text-surface-200'"
+                      @click="botPerfProjectionMode = 'usdt'"
+                    >USDT</button>
+                    <button
+                      class="px-3 py-1 transition-colors"
+                      :class="botPerfProjectionMode === 'pct' ? 'bg-surface-600 text-white' : 'text-surface-400 hover:text-surface-200'"
+                      @click="botPerfProjectionMode = 'pct'"
+                    >%</button>
+                    <button
+                      class="px-3 py-1 transition-colors"
+                      :class="botPerfProjectionMode === 'compounded' ? 'bg-surface-600 text-white' : 'text-surface-400 hover:text-surface-200'"
+                      @click="botPerfProjectionMode = 'compounded'"
+                    >Compounded</button>
+                  </div>
+                </div>
                 <div class="overflow-x-auto w-full">
                   <table class="w-full text-sm border-collapse">
                     <thead>
                       <tr class="border-b border-surface-600 text-left text-surface-300">
                         <th class="py-2 pe-3 whitespace-nowrap">Bot</th>
+                        <th class="py-2 pe-3 whitespace-nowrap">Strategy</th>
                         <th class="py-2 pe-3 whitespace-nowrap text-right">Days active</th>
                         <th class="py-2 pe-3 whitespace-nowrap text-right">Trades/day</th>
-                        <th class="py-2 pe-3 whitespace-nowrap text-right">Daily est. USDT</th>
-                        <th class="py-2 pe-3 whitespace-nowrap text-right">Monthly est. USDT</th>
-                        <th class="py-2 pe-3 whitespace-nowrap text-right">Yearly est. USDT</th>
+                        <th class="py-2 pe-3 whitespace-nowrap text-right">
+                          {{ botPerfProjectionMode === 'usdt' ? 'Daily est. USDT' : 'Daily est. %' }}
+                        </th>
+                        <th class="py-2 pe-3 whitespace-nowrap text-right">
+                          {{ botPerfProjectionMode === 'usdt' ? 'Monthly est. USDT' : 'Monthly est. %' }}
+                        </th>
+                        <th class="py-2 pe-3 whitespace-nowrap text-right">
+                          {{ botPerfProjectionMode === 'usdt' ? 'Yearly est. USDT' : 'Yearly est. %' }}
+                        </th>
                         <th class="py-2 pe-3 whitespace-nowrap text-right">First trade</th>
                         <th class="py-2 pe-3 whitespace-nowrap text-right">Last trade</th>
                       </tr>
@@ -6546,28 +6581,74 @@ onMounted(async () => {
                           </div>
                           <div class="text-xs text-surface-500">{{ row.vps_name }}</div>
                         </td>
+                        <td class="py-2 pe-3 text-xs text-surface-300">{{ row.strategy ?? '—' }}</td>
                         <td class="py-2 pe-3 text-right font-mono text-xs">
                           {{ row.days_active !== null ? `${row.days_active.toFixed(1)}d` : '—' }}
                         </td>
                         <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.trades_per_day.toFixed(1) }}</td>
-                        <td
-                          class="py-2 pe-3 text-right font-mono text-xs"
-                          :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
-                        >
-                          {{ row.daily_profit_usdt !== null ? `${row.daily_profit_usdt >= 0 ? '+' : ''}${row.daily_profit_usdt.toFixed(2)}` : '—' }}
-                        </td>
-                        <td
-                          class="py-2 pe-3 text-right font-mono text-xs font-semibold"
-                          :class="(row.monthly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
-                        >
-                          {{ row.monthly_projected_usdt !== null ? `${row.monthly_projected_usdt >= 0 ? '+' : ''}${row.monthly_projected_usdt.toFixed(2)}` : '—' }}
-                        </td>
-                        <td
-                          class="py-2 pe-3 text-right font-mono text-xs"
-                          :class="(row.yearly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
-                        >
-                          {{ row.yearly_projected_usdt !== null ? `${row.yearly_projected_usdt >= 0 ? '+' : ''}${row.yearly_projected_usdt.toFixed(2)}` : '—' }}
-                        </td>
+                        <!-- USDT columns -->
+                        <template v-if="botPerfProjectionMode === 'usdt'">
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs"
+                            :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ row.daily_profit_usdt !== null ? `${row.daily_profit_usdt >= 0 ? '+' : ''}${row.daily_profit_usdt.toFixed(2)}` : '—' }}
+                          </td>
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs font-semibold"
+                            :class="(row.monthly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ row.monthly_projected_usdt !== null ? `${row.monthly_projected_usdt >= 0 ? '+' : ''}${row.monthly_projected_usdt.toFixed(2)}` : '—' }}
+                          </td>
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs"
+                            :class="(row.yearly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ row.yearly_projected_usdt !== null ? `${row.yearly_projected_usdt >= 0 ? '+' : ''}${row.yearly_projected_usdt.toFixed(2)}` : '—' }}
+                          </td>
+                        </template>
+                        <!-- % columns: avg_profit_pct / days_active → daily trade quality rate -->
+                        <template v-else-if="botPerfProjectionMode === 'pct'">
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs"
+                            :class="(row.days_active && row.avg_profit_pct / row.days_active >= 0) ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ row.days_active ? (() => { const v = row.avg_profit_pct / row.days_active; return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; })() : '—' }}
+                          </td>
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs font-semibold"
+                            :class="(row.days_active && row.avg_profit_pct / row.days_active * 30 >= 0) ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ row.days_active ? (() => { const v = row.avg_profit_pct / row.days_active * 30; return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; })() : '—' }}
+                          </td>
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs"
+                            :class="(row.days_active && row.avg_profit_pct / row.days_active * 365 >= 0) ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ row.days_active ? (() => { const v = row.avg_profit_pct / row.days_active * 365; return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`; })() : '—' }}
+                          </td>
+                        </template>
+                        <!-- Compounded columns: (1 + daily_rate)^N - 1 -->
+                        <template v-else>
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs"
+                            :class="(row.days_active && row.avg_profit_pct / row.days_active >= 0) ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ row.days_active ? (() => { const v = row.avg_profit_pct / row.days_active; return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; })() : '—' }}
+                          </td>
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs font-semibold"
+                            :class="(row.days_active && row.avg_profit_pct / row.days_active >= 0) ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ row.days_active ? (() => { const d = row.avg_profit_pct / row.days_active / 100; const v = (Math.pow(1 + d, 30) - 1) * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; })() : '—' }}
+                          </td>
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs"
+                            :class="(row.days_active && row.avg_profit_pct / row.days_active >= 0) ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ row.days_active ? (() => { const d = row.avg_profit_pct / row.days_active / 100; const v = (Math.pow(1 + d, 365) - 1) * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`; })() : '—' }}
+                          </td>
+                        </template>
                         <td class="py-2 pe-3 text-right font-mono text-xs text-surface-400">
                           {{ row.first_trade_date ? row.first_trade_date.slice(0, 10) : '—' }}
                         </td>
@@ -6578,28 +6659,36 @@ onMounted(async () => {
                       <!-- Totals row -->
                       <tr class="border-t-2 border-surface-500 bg-surface-800/30 font-semibold">
                         <td class="py-2 pe-3 text-xs">All bots combined</td>
+                        <td class="py-2 pe-3 text-xs"></td>
                         <td class="py-2 pe-3 text-right text-xs">—</td>
                         <td class="py-2 pe-3 text-right font-mono text-xs">
                           {{ botPerfItems.reduce((s, r) => s + r.trades_per_day, 0).toFixed(1) }}
                         </td>
-                        <td
-                          class="py-2 pe-3 text-right font-mono text-xs"
-                          :class="botPerfItems.reduce((s, r) => s + (r.daily_profit_usdt ?? 0), 0) >= 0 ? 'text-green-400' : 'text-red-400'"
-                        >
-                          {{ (() => { const v = botPerfItems.reduce((s, r) => s + (r.daily_profit_usdt ?? 0), 0); return `${v >= 0 ? '+' : ''}${v.toFixed(2)}`; })() }}
-                        </td>
-                        <td
-                          class="py-2 pe-3 text-right font-mono text-xs"
-                          :class="botPerfItems.reduce((s, r) => s + (r.monthly_projected_usdt ?? 0), 0) >= 0 ? 'text-green-400' : 'text-red-400'"
-                        >
-                          {{ (() => { const v = botPerfItems.reduce((s, r) => s + (r.monthly_projected_usdt ?? 0), 0); return `${v >= 0 ? '+' : ''}${v.toFixed(2)}`; })() }}
-                        </td>
-                        <td
-                          class="py-2 pe-3 text-right font-mono text-xs"
-                          :class="botPerfItems.reduce((s, r) => s + (r.yearly_projected_usdt ?? 0), 0) >= 0 ? 'text-green-400' : 'text-red-400'"
-                        >
-                          {{ (() => { const v = botPerfItems.reduce((s, r) => s + (r.yearly_projected_usdt ?? 0), 0); return `${v >= 0 ? '+' : ''}${v.toFixed(2)}`; })() }}
-                        </td>
+                        <template v-if="botPerfProjectionMode === 'usdt'">
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs"
+                            :class="botPerfItems.reduce((s, r) => s + (r.daily_profit_usdt ?? 0), 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ (() => { const v = botPerfItems.reduce((s, r) => s + (r.daily_profit_usdt ?? 0), 0); return `${v >= 0 ? '+' : ''}${v.toFixed(2)}`; })() }}
+                          </td>
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs"
+                            :class="botPerfItems.reduce((s, r) => s + (r.monthly_projected_usdt ?? 0), 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ (() => { const v = botPerfItems.reduce((s, r) => s + (r.monthly_projected_usdt ?? 0), 0); return `${v >= 0 ? '+' : ''}${v.toFixed(2)}`; })() }}
+                          </td>
+                          <td
+                            class="py-2 pe-3 text-right font-mono text-xs"
+                            :class="botPerfItems.reduce((s, r) => s + (r.yearly_projected_usdt ?? 0), 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                          >
+                            {{ (() => { const v = botPerfItems.reduce((s, r) => s + (r.yearly_projected_usdt ?? 0), 0); return `${v >= 0 ? '+' : ''}${v.toFixed(2)}`; })() }}
+                          </td>
+                        </template>
+                        <template v-else>
+                          <td class="py-2 pe-3 text-right font-mono text-xs text-surface-500">—</td>
+                          <td class="py-2 pe-3 text-right font-mono text-xs text-surface-500">—</td>
+                          <td class="py-2 pe-3 text-right font-mono text-xs text-surface-500">—</td>
+                        </template>
                         <td class="py-2 pe-3" colspan="2"></td>
                       </tr>
                     </tbody>
