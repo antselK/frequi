@@ -62,9 +62,7 @@ watch(
   (newVisible) => {
     if (newVisible) {
       resetForm();
-      return;
     }
-    resetForm();
   },
 );
 </script>
