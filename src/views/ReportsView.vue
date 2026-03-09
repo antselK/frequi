@@ -1304,6 +1304,11 @@ const signalIndIndicatorOptions = [
   { label: 'HH 48 diff', value: 'hh_48_diff' },
   { label: 'LL 48 diff', value: 'll_48_diff' },
   { label: 'Chop', value: 'chop' },
+  { label: 'BB Delta', value: 'bbdelta' },
+  { label: 'Close Delta', value: 'closedelta' },
+  { label: 'Tail', value: 'tail' },
+  { label: 'Volume', value: 'volume' },
+  { label: 'Fisher', value: 'fisher' },
 ];
 
 const _sigIndDateCols = new Set<string>(['open_date', 'close_date']);
@@ -1477,6 +1482,11 @@ const _sigIndAnalyticsKeys: Array<{ key: keyof DwhSignalIndicatorTradeRow; label
   { key: 'hh_48_diff', label: 'HH48 diff', decimals: 2 },
   { key: 'll_48_diff', label: 'LL48 diff', decimals: 2 },
   { key: 'chop', label: 'Chop', decimals: 1 },
+  { key: 'bbdelta', label: 'BB Delta', decimals: 4 },
+  { key: 'closedelta', label: 'Close Delta', decimals: 4 },
+  { key: 'tail', label: 'Tail', decimals: 4 },
+  { key: 'volume', label: 'Volume', decimals: 0 },
+  { key: 'fisher', label: 'Fisher', decimals: 4 },
 ];
 
 const _SIG_BINS = 8;
@@ -5250,6 +5260,31 @@ onMounted(async () => {
                       @click="toggleSignalIndSort('chop')"
                     >Chop{{ signalIndSortArrow('chop') }}</th>
                     <th class="py-2 pe-3">BB</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'bbdelta' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('bbdelta')"
+                    >BBΔ{{ signalIndSortArrow('bbdelta') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'closedelta' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('closedelta')"
+                    >CloseΔ{{ signalIndSortArrow('closedelta') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'tail' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('tail')"
+                    >Tail{{ signalIndSortArrow('tail') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'volume' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('volume')"
+                    >Vol{{ signalIndSortArrow('volume') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'fisher' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('fisher')"
+                    >Fisher{{ signalIndSortArrow('fisher') }}</th>
                     <th class="py-2 pe-3">Exit</th>
                   </tr>
                 </thead>
@@ -5292,6 +5327,11 @@ onMounted(async () => {
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.ll_48_diff !== null ? row.ll_48_diff.toFixed(2) : '-' }}</td>
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.chop !== null ? row.chop.toFixed(1) : '-' }}</td>
                     <td class="py-2 pe-3 font-mono text-xs">{{ row.bb_pos ?? '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.bbdelta !== null ? row.bbdelta.toFixed(4) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.closedelta !== null ? row.closedelta.toFixed(4) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.tail !== null ? row.tail.toFixed(4) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.volume !== null ? row.volume.toFixed(0) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.fisher !== null ? row.fisher.toFixed(4) : '-' }}</td>
                     <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.is_open ? 'Open' : row.exit_reason ?? '-' }}</td>
                   </tr>
                 </tbody>

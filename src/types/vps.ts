@@ -515,6 +515,11 @@ export interface DwhSignalIndicatorTradeRow {
   ll_48_diff: number | null;
   chop: number | null;
   bb_pos: string | null;
+  bbdelta: number | null;
+  closedelta: number | null;
+  tail: number | null;
+  volume: number | null;
+  fisher: number | null;
   quality_score: number | null;
 }
 
