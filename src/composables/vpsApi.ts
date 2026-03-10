@@ -25,6 +25,7 @@ import type {
   DwhIngestionStatus,
   DwhRetentionConfig,
   DwhRetentionRunResult,
+  DwhBotPurgeResult,
   DwhPurgeExcludedResult,
   DwhRollupCompactionConfig,
   DwhRollupCompactionRunResult,
@@ -201,6 +202,12 @@ export const vpsApi = {
   async containerAuthHint(vpsId: number, containerName: string): Promise<VpsContainerAuthHint> {
     const { data } = await vpsApiClient.get<VpsContainerAuthHint>(
       `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/auth-hint`,
+    );
+    return data;
+  },
+  async purgeContainerDwhData(vpsId: number, containerName: string): Promise<DwhBotPurgeResult> {
+    const { data } = await vpsApiClient.delete<DwhBotPurgeResult>(
+      `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/dwh-data`,
     );
     return data;
   },

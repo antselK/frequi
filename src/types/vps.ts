@@ -263,6 +263,21 @@ export interface DwhRunAnomaly {
   occurrences: number;
 }
 
+export interface DwhBotPurgeResult {
+  container_name: string;
+  bot_id: number;
+  deleted_trades: number;
+  deleted_orders: number;
+  deleted_log_events: number;
+  deleted_anomaly_signatures: number;
+  deleted_anomaly_hourly_rollups: number;
+  deleted_bot_heartbeats: number;
+  deleted_entry_confirmations: number;
+  deleted_signal_flashes: number;
+  deleted_missed_signals: number;
+  deleted_ingestion_checkpoints: number;
+}
+
 export interface DwhPurgeExcludedResult {
   rules_applied: number;
   deleted_log_events: number;

@@ -458,6 +458,28 @@ async function handleStop(containerName: string) {
   }
 }
 
+async function handlePurgeDwh(containerName: string, enabled: boolean) {
+  if (!selectedVpsId.value) {
+    return;
+  }
+  const warning = enabled
+    ? `⚠️ WARNING: "${containerName}" is still enabled.\n\nPurge ALL DWH data for this container? This cannot be undone.`
+    : `Purge ALL DWH data for "${containerName}"? This cannot be undone.`;
+  if (!window.confirm(warning)) {
+    return;
+  }
+  try {
+    const result = await vpsApi.purgeContainerDwhData(selectedVpsId.value, containerName);
+    handleActionToast(
+      `Purge DWH — ${containerName}`,
+      `Deleted: ${result.deleted_trades} trades, ${result.deleted_orders} orders, ${result.deleted_log_events} log events`,
+      true,
+    );
+  } catch (error) {
+    handleActionToast(`Purge DWH — ${containerName}`, String(error), false);
+  }
+}
+
 async function handleToggleEnabled(containerName: string, currentEnabled: boolean) {
   if (!selectedVpsId.value) {
     return;
@@ -739,6 +761,15 @@ onBeforeUnmount(() => {
                   outlined
                   :title="slotProps.data.enabled ? 'Exclude from DWH ingestion and Console' : 'Include in DWH ingestion and Console'"
                   @click="handleToggleEnabled(slotProps.data.container_name, slotProps.data.enabled)"
+                />
+                <Button
+                  v-if="slotProps.data.is_freqtrade"
+                  label="Purge DWH"
+                  size="small"
+                  severity="danger"
+                  outlined
+                  title="Delete all DWH data for this container (trades, logs, signals, heartbeats)"
+                  @click="handlePurgeDwh(slotProps.data.container_name, slotProps.data.enabled)"
                 />
               </div>
             </template>
