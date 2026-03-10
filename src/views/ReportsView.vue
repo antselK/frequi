@@ -212,7 +212,75 @@ const _subcategoryDefs: Record<ReportCategory, ReportOption[]> = {
     {
       value: 'trailing-benefit',
       label: 'Trailing entries benefit',
-      todo: 'Trailing trigger events with profit/duration summaries from DWH anomaly samples.',
+      todo: 'Analyzes trailing entry quality across all _trail trades. Each row shows one closed trade with the trailing profit % at entry (how far price pulled back from peak), offset %, duration, and price levels (Start / Lowlimit / Uplimit). Use this to tune Printer.py trailing parameters: max_short/max_long (max allowed negative profit at entry), max_stop (abort threshold, must stay above max_long/short), default_offset (pullback depth to trigger entry), and trailing_expire_seconds (max trailing window before force-entry).',
+      analysisQuery: `# Run this in a terminal to get full trailing entry analysis for Printer.py tuning:
+
+docker exec -w /app control-plane-api-1 python3 << 'PYEOF'
+import re
+from collections import defaultdict, Counter
+from sqlalchemy import text
+from app.db.session import SessionLocal
+db = SessionLocal()
+trades = db.execute(text("SELECT t.source_trade_id, t.bot_id, t.pair, t.is_short, t.enter_tag, t.exit_reason, (t.profit_ratio*100)::float, t.profit_abs::float, (EXTRACT(EPOCH FROM (t.close_date-t.open_date))/60)::float, t.open_date FROM dwh_trades t WHERE t.enter_tag ILIKE :tag AND t.is_open=false AND t.close_date IS NOT NULL AND t.profit_ratio IS NOT NULL ORDER BY t.open_date DESC"), {'tag': '%_trail%'}).fetchall()
+po_msgs = db.execute(text("SELECT bot_id, event_ts, message FROM dwh_log_events WHERE message ILIKE '%Price OK for %' ORDER BY event_ts")).fetchall()
+db.close()
+pct_re = re.compile(r'\\((-?[0-9]+\\.[0-9]+)\\s*%\\)')
+po_by_bot = defaultdict(list)
+for row in po_msgs:
+    m = pct_re.search(row[2])
+    if m: po_by_bot[row[0]].append((row[1], row[2], float(m.group(1))))
+def find_trail(bot_id, pair, open_date):
+    best, bd = None, 999
+    for ts, msg, pct in po_by_bot.get(bot_id, []):
+        if pair.lower() not in msg.lower(): continue
+        d = abs((ts - open_date).total_seconds())
+        if d <= 35 and d < bd: bd, best = d, pct
+    return best
+data = [{'id':t[0],'bot':t[1],'pair':t[2],'short':t[3],'tag':t[4],'exit':t[5],'pp':t[6] or 0,'pa':t[7] or 0,'dur':t[8] or 0,'tp':find_trail(t[1],t[2],t[9])} for t in trades]
+def stats(g):
+    n=len(g); ap=sum(e['pp'] for e in g)/n; tu=sum(e['pa'] for e in g); w=sum(1 for e in g if e['pp']>0); ad=sum(e['dur'] for e in g)/n
+    return n,ap,tu,w,n-w,w/n*100,ad
+print(f"Trades: {len(data)}  Matched: {sum(1 for d in data if d['tp'] is not None)}")
+print()
+print('TRAIL ENTRY BUCKET               N   AvgP%   TotalUSDT    W    L    WR%  Dur')
+print('-'*80)
+for lbl,fn in [('<= -0.25%',lambda p:p is not None and p<=-0.25),('-0.25 to -0.15%',lambda p:p is not None and -0.25<p<=-0.15),('-0.15 to -0.05%',lambda p:p is not None and -0.15<p<=-0.05),('-0.05 to 0.00%',lambda p:p is not None and -0.05<p<=0.00),('0.00 to 0.10%',lambda p:p is not None and 0.00<p<=0.10),('>0.10% (force/exp)',lambda p:p is not None and p>0.10),('no data',lambda p:p is None)]:
+    g=[e for e in data if fn(e['tp'])]
+    if not g: continue
+    n,ap,tu,w,l,wr,ad=stats(g)
+    print(f'{lbl:<32} {n:>4} {ap:>7.3f} {tu:>11.2f} {w:>4} {l:>4} {wr:>6.1f} {ad:>5.1f}')
+print()
+print('SIDE       N    WR%  AvgP%  TotalUSDT  AvgTrailEntry')
+for side,s in [('LONG',False),('SHORT',True)]:
+    g=[e for e in data if e['short']==s]
+    if not g: continue
+    n,ap,tu,w,l,wr,ad=stats(g); m=[e for e in g if e['tp'] is not None]; at=sum(e['tp'] for e in m)/len(m) if m else 0
+    print(f'{side:<10}{n:>4} {wr:>6.1f} {ap:>6.3f} {tu:>10.2f}  {at:>12.4f}%')
+print()
+print('DURATION                   N   AvgP%  TotalUSDT    WR%')
+for lbl,fn in [('<1 min',lambda d:d<1),('1-5 min',lambda d:1<=d<5),('5-14 min',lambda d:5<=d<14),('>=14 min (expired)',lambda d:d>=14)]:
+    g=[e for e in data if fn(e['dur'])]
+    if not g: continue
+    n,ap,tu,w,l,wr,ad=stats(g)
+    print(f'{lbl:<26} {n:>4} {ap:>6.3f} {tu:>10.2f} {wr:>6.1f}')
+print()
+print('EXIT REASON                          N   AvgP%  TotalUSDT    WR%')
+for ex,_ in Counter(e['exit'] for e in data).most_common():
+    g=[e for e in data if e['exit']==ex]; n,ap,tu,w,l,wr,ad=stats(g)
+    print(f'{str(ex):<36} {n:>4} {ap:>6.3f} {tu:>10.2f} {wr:>6.1f}')
+print()
+print('TRAIL ENTRY PERCENTILES:')
+tv=sorted(e['tp'] for e in data if e['tp'] is not None); n=len(tv)
+for p in [0,5,10,25,50,75,90,95,100]:
+    print(f'  p{p:3d}: {tv[min(int(n*p/100),n-1)]:.4f}%')
+PYEOF
+
+# HOW TO INTERPRET:
+# Entry bucket WR%/AvgP%: deeper (more negative) = stronger entries. Near-0% losers → increase default_offset.
+# Duration: >=14 min dominating (>80%) → reduce expire_seconds. Current expire: trailing_expire_seconds / trailing_short_expire_seconds.
+# Exit reasons: roi underperforming → ROI table too loose. trailing_stop_loss dominating → healthy.
+# Long vs Short AvgTrailEntry: longs at higher trail% than shorts → longs need tighter offset or shorter expiry.
+# Params in Printer.py lines ~347-366. After changes bump _VERSION to DD.MM.YYYY - Printer, commit+push in /home/ubuntu/ft_userdata.`,
     },
     {
       value: 'signal-outcomes',
@@ -530,6 +598,7 @@ const loadingLogsCumulative = ref(false);
 const loadingLogsSpikeSummary = ref(false);
 const loadingMissedTrades = ref(false);
 const loadingTrailingBenefit = ref(false);
+const showTrailingAnalysisQuery = ref(false);
 const loadingDrilldown = ref(false);
 const reportsError = ref('');
 const systemLoaded = ref(false);
@@ -1718,7 +1787,7 @@ const trailingMatchSourceCounts = computed(() => {
 // ── Trailing Benefit Chart ─────────────────────────────────────────────────
 
 const trailingChartMetricOptions: { label: string; value: TrailingChartMetric }[] = [
-  { label: 'Snapshot Profit %', value: 'profit' },
+  { label: 'Trailing profit %', value: 'profit' },
   { label: 'Duration (min)', value: 'duration' },
 ];
 
@@ -1745,7 +1814,7 @@ const trailingChartPoints = computed<TrailingChartPoint[]>(() => {
 
 const trailingChartSeriesLabel = computed(() => {
   return trailingChartMetric.value === 'profit'
-    ? 'Snapshot Profit % (per trade, by open date)'
+    ? 'Trailing profit % (per trade, by open date)'
     : 'Duration min (per trade, by open date)';
 });
 
@@ -2389,6 +2458,14 @@ function parseLabeledNumber(message: string, label: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+// Extracts the trailing profit % from "Price OK for PAIR (X.XX %), ..." messages.
+function parsePriceOkProfit(message: string): number | null {
+  const match = message.match(/price ok for [^\(]+\(\s*(-?\d+(?:\.\d+)?)\s*%\s*\)/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function parseDurationMinutes(message: string): number | null {
   const durationMatch = message.match(/duration\s*[:=]\s*(-?\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)?/i);
   if (!durationMatch) {
@@ -2709,13 +2786,18 @@ function parseTrailingTriggerEvent(sample: {
   logger: string;
   message: string;
 }): TrailingTriggerEvent {
+  // "Price OK" messages embed profit as "(X.XX %)" inline; prefer that over the generic label parser.
+  const isPriceOk = /price ok for /i.test(sample.message);
+  const profitPct = isPriceOk
+    ? parsePriceOkProfit(sample.message)
+    : parseLabeledNumber(sample.message, 'Profit');
   return {
     eventTs: sample.event_ts,
     at: formatDate(sample.event_ts),
     botId: sample.bot_id,
     pair: extractPairFlexible(sample.message),
     side: extractTrailingSide(sample.message),
-    profitPct: parseLabeledNumber(sample.message, 'Profit'),
+    profitPct,
     offsetPct: parseLabeledNumber(sample.message, 'Offset'),
     durationMinutes: parseDurationMinutes(sample.message),
     startValue: parseLabeledNumber(sample.message, 'Start'),
@@ -2780,21 +2862,42 @@ function pickSnapshotLog(
   if (!logs.length) {
     return null;
   }
-  if (!tradeOpenDate) {
-    return logs[logs.length - 1] ?? null;
-  }
-  const openTime = new Date(tradeOpenDate).getTime();
-  if (!Number.isFinite(openTime)) {
-    return logs[logs.length - 1] ?? null;
-  }
-  let best: TrailingTriggerEvent | null = null;
-  for (const log of logs) {
-    const logTime = new Date(log.eventTs).getTime();
-    if (Number.isFinite(logTime) && logTime <= openTime) {
-      best = log;
+
+  // Use the last "Price OK" message for trailing profit % — it has the definitive final value.
+  // Among multiple (e.g. failed attempts before the real entry), take the chronologically last one.
+  const priceOkLogs = logs.filter((l) => /price ok for /i.test(l.message));
+  const priceOkProfit = priceOkLogs.length > 0
+    ? (priceOkLogs[priceOkLogs.length - 1]?.profitPct ?? null)
+    : null;
+
+  // Pick the best structural log (has Start/Current/Lowlimit/Duration/Offset) using timestamp logic:
+  // last "Trailing short/long for" log at or before trade open time.
+  const structuralLogs = logs.filter((l) => !/price ok for /i.test(l.message));
+
+  let structuralBest: TrailingTriggerEvent | null = null;
+  if (tradeOpenDate) {
+    const openTime = new Date(tradeOpenDate).getTime();
+    if (Number.isFinite(openTime)) {
+      // Walk the (already-sorted ascending) logs, keep the last one that is <= openTime + 2s buffer
+      // (2s buffer handles the case where the log fires milliseconds after the trade opens)
+      for (const log of structuralLogs) {
+        const logTime = new Date(log.eventTs).getTime();
+        if (Number.isFinite(logTime) && logTime <= openTime + 2000) {
+          structuralBest = log;
+        }
+      }
     }
   }
-  return best ?? logs[0] ?? null;
+  if (!structuralBest) {
+    structuralBest = structuralLogs[structuralLogs.length - 1] ?? logs[logs.length - 1] ?? null;
+  }
+
+  if (!structuralBest) {
+    return priceOkLogs[priceOkLogs.length - 1] ?? null;
+  }
+
+  // Merge: structural fields from best "Trailing" log, profitPct from "Price OK" if available.
+  return priceOkProfit !== null ? { ...structuralBest, profitPct: priceOkProfit } : structuralBest;
 }
 
 function determineBestMatchSource(
@@ -3338,7 +3441,20 @@ async function loadTrailingBenefitReport() {
       }
     }
     for (const bucket of logsByTradeKey.values()) {
-      bucket.sort((a, b) => new Date(a.eventTs).getTime() - new Date(b.eventTs).getTime());
+      const msgOrder = (msg: string): number => {
+        if (/^start trailing/i.test(msg)) return 0;
+        if (/^price ok for /i.test(msg)) return 2;
+        return 1;
+      };
+      bucket.sort((a, b) => {
+        // Primary: sort by whole second (timestamps within the same second are treated as tied).
+        const aTs = Math.floor(new Date(a.eventTs).getTime() / 1000);
+        const bTs = Math.floor(new Date(b.eventTs).getTime() / 1000);
+        const secDiff = aTs - bTs;
+        if (secDiff !== 0) return secDiff;
+        // Tie-break within same second: "Start trailing" first, "Price OK" last.
+        return msgOrder(a.message) - msgOrder(b.message);
+      });
     }
 
     // Step 5: Build TrailingTradeRow[] from closed _trail trades
@@ -3552,6 +3668,13 @@ onMounted(async () => {
             <p class="text-surface-600 dark:text-surface-300">
               {{ selectedSubCategoryDefinition?.todo || 'TODO: Report section placeholder.' }}
             </p>
+            <div v-if="selectedSubCategoryDefinition?.analysisQuery">
+              <button
+                class="text-xs text-surface-400 hover:text-surface-200 underline"
+                @click="showTrailingAnalysisQuery = !showTrailingAnalysisQuery"
+              >{{ showTrailingAnalysisQuery ? '▲ Hide analysis query' : '▼ Show analysis query' }}</button>
+              <pre v-if="showTrailingAnalysisQuery" class="mt-2 text-xs bg-surface-900 border border-surface-700 rounded p-3 overflow-x-auto whitespace-pre-wrap select-all">{{ selectedSubCategoryDefinition.analysisQuery }}</pre>
+            </div>
             <p v-if="reportsError" class="text-sm text-red-400">{{ reportsError }}</p>
           </div>
 
@@ -6085,7 +6208,7 @@ onMounted(async () => {
             <div class="flex flex-wrap gap-2">
               <Tag :value="`Trades: ${trailingTradeCount}`" severity="contrast" />
               <Tag :value="`Log entries: ${trailingTotalLogCount}`" severity="contrast" />
-              <Tag :value="`Avg snapshot profit: ${trailingAvgProfitPct}`" severity="warn" />
+              <Tag :value="`Avg trailing profit: ${trailingAvgProfitPct}`" severity="warn" />
               <Tag :value="`Positive profit share: ${trailingPositiveShare}`" severity="warn" />
               <Tag :value="`Avg trailing duration: ${trailingAvgDurationMinutes}`" severity="warn" />
               <Tag
@@ -6235,7 +6358,7 @@ onMounted(async () => {
                     <th class="py-2 pe-2">Side</th>
                     <th class="py-2 pe-2">Enter tag</th>
                     <th class="py-2 pe-2">Open date</th>
-                    <th class="py-2 pe-2">Snapshot Profit %</th>
+                    <th class="py-2 pe-2">Trailing profit %</th>
                     <th class="py-2 pe-2">Offset %</th>
                     <th class="py-2 pe-2">Duration (min)</th>
                     <th class="py-2 pe-2">Start</th>
