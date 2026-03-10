@@ -355,9 +355,11 @@ async function runContainerActionForVps(
       return;
     }
 
+    const RESTART_DELAY_MS = 120_000;
     let okCount = 0;
     let failCount = 0;
-    for (const container of containers) {
+    for (let i = 0; i < containers.length; i++) {
+      const container = containers[i];
       try {
         if (action === 'start') {
           await vpsStore.startContainer(item.id, container.container_name);
@@ -369,6 +371,10 @@ async function runContainerActionForVps(
         okCount += 1;
       } catch {
         failCount += 1;
+      }
+      // Stagger restarts to avoid simultaneous boot-up causing exchange rate limits
+      if (action === 'restart' && i < containers.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, RESTART_DELAY_MS));
       }
     }
 
