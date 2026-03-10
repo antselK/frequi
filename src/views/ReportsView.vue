@@ -327,7 +327,7 @@ PYEOF
     {
       value: 'signal-indicator-analysis',
       label: 'Signal Indicator Analysis',
-      todo: 'Correlates each trade with its [SIGNAL_FLASH] indicator snapshot (captured at signal time, up to 20 min before entry). Trades tab: scatter chart (indicator vs profit/score) + sortable trade table. Analytics tab: per-bot indicator histograms showing good vs bad trade distributions — good = score ≤ avg. Use the Analytics tab to find indicator value ranges that produce faster, lower-DCA trades, then reconfigure Printer.py entry filters. Score = Duration (h) + (DCA orders − 1) × 4 h penalty. Lower is better. Indicators: RSI (momentum), HV (volatility %), ROCR 1h / ROCR (rate of change), HH48 / LL48 (48h high/low distance %), Chop (choppiness index), BB (Bollinger band position).',
+      todo: 'Correlates each trade with its [SIGNAL_FLASH] indicator snapshot (captured at signal time, up to 20 min before entry). Trades tab: scatter chart (indicator vs profit/score) + sortable trade table. Analytics tab: per-bot indicator histograms showing good vs bad trade distributions — good = score ≥ avg. Use the Analytics tab to find indicator value ranges that produce more profitable, faster, lower-DCA trades, then reconfigure Printer.py entry filters. Score = profit% × 2 − duration (h) × 0.1 − (DCA orders − 1) × 1. Higher is better. Mirrors the Bot Performance score formula. Indicators: RSI (momentum), HV (volatility %), ROCR 1h / ROCR (rate of change), HH48 / LL48 (48h high/low distance %), Chop (choppiness index), BB (Bollinger band position).',
     },
     {
       value: 'trade-duration',
@@ -561,13 +561,14 @@ const signalIndDateTo = ref(todayStr());
 const signalIndFilterBotId = ref<number | null>(null);
 const signalIndFilterPair = ref('');
 const signalIndFilterTag = ref('');
-const signalIndSortCol = ref<string>('quality_score');
-const signalIndSortAsc = ref(true);
+const signalIndSortCol = ref<string>('close_date');
+const signalIndSortAsc = ref(false);
 const signalIndChartIndicator = ref('rsi');
 const signalIndChartYAxis = ref<'profit_pct' | 'quality_score'>('profit_pct');
 const signalIndActiveTab = ref<'trades' | 'analytics'>('trades');
 const signalIndAnalyticsSide = ref<'all' | 'long' | 'short'>('all');
 const signalIndMatchFilter = ref<'all' | 'matched' | 'unmatched'>('all');
+const signalIndSideFilter = ref<'both' | 'long' | 'short'>('both');
 
 // Bot Performance Analysis state
 const botPerf = ref<DwhBotPerfRead | null>(null);
@@ -1387,13 +1388,16 @@ const signalIndItems = computed<DwhSignalIndicatorTradeRow[]>(() => {
   const mf = signalIndMatchFilter.value;
   if (mf === 'matched') rows = rows.filter((r) => r.rsi !== null);
   else if (mf === 'unmatched') rows = rows.filter((r) => r.rsi === null);
+  const sf = signalIndSideFilter.value;
+  if (sf === 'long') rows = rows.filter((r) => r.is_short === false);
+  else if (sf === 'short') rows = rows.filter((r) => r.is_short === true);
   const col = signalIndSortCol.value as keyof DwhSignalIndicatorTradeRow;
   const asc = signalIndSortAsc.value;
   return [...rows].sort((a, b) => {
     if (_sigIndDateCols.has(col)) {
-      // ISO date strings sort lexicographically; nulls (open trades) sort last
-      const av = (a[col] as string | null) ?? (asc ? '\uFFFF' : '');
-      const bv = (b[col] as string | null) ?? (asc ? '\uFFFF' : '');
+      // ISO date strings sort lexicographically; nulls (open trades) sort last when asc, first when desc
+      const av = (a[col] as string | null) ?? '\uFFFF';
+      const bv = (b[col] as string | null) ?? '\uFFFF';
       return asc ? av.localeCompare(bv) : bv.localeCompare(av);
     }
     const av = (a[col] as number | null) ?? (asc ? Infinity : -Infinity);
@@ -1517,7 +1521,7 @@ function toggleSignalIndSort(col: string) {
     signalIndSortAsc.value = !signalIndSortAsc.value;
   } else {
     signalIndSortCol.value = col;
-    signalIndSortAsc.value = col === 'quality_score' || col === 'duration_hours' || col === 'dca_order_count';
+    signalIndSortAsc.value = col === 'duration_hours' || col === 'dca_order_count' || col === 'rsi' || col === 'open_date';
   }
 }
 
@@ -1607,7 +1611,7 @@ const signalIndAnalyticsData = computed<SigIndCombinedAnalytics | null>(() => {
 
   if (!rows.length) return null;
 
-  const isGood = (r: (typeof rows)[0]) => (r.quality_score ?? Infinity) <= avgScore!;
+  const isGood = (r: (typeof rows)[0]) => (r.quality_score ?? -Infinity) >= avgScore!;
   const goodRows = rows.filter(isGood);
   const badRows = rows.filter(r => !isGood(r));
 
@@ -5127,6 +5131,18 @@ onMounted(async () => {
                     @click="signalIndMatchFilter = mf.key as 'all' | 'matched' | 'unmatched'"
                   >{{ mf.label }}</button>
                 </div>
+                <!-- Side filter toggle -->
+                <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
+                  <button
+                    v-for="sf in [{ key: 'both', label: 'Both' }, { key: 'long', label: 'Long' }, { key: 'short', label: 'Short' }]"
+                    :key="sf.key"
+                    class="px-2 py-1 transition-colors"
+                    :class="signalIndSideFilter === sf.key
+                      ? 'bg-primary-600 text-white'
+                      : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                    @click="signalIndSideFilter = sf.key as 'both' | 'long' | 'short'"
+                  >{{ sf.label }}</button>
+                </div>
                 <Button
                   label="Load"
                   size="small"
@@ -5440,7 +5456,7 @@ onMounted(async () => {
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.dca_order_count }}</td>
                     <td
                       class="py-2 pe-3 text-right font-mono text-xs"
-                      :class="row.is_open ? 'text-surface-500 italic' : (row.quality_score ?? 99) <= (signalIndAvgQuality ?? 99) ? 'text-green-400' : ''"
+                      :class="row.is_open ? 'text-surface-500 italic' : (row.quality_score ?? -99) >= (signalIndAvgQuality ?? -99) ? 'text-green-400' : ''"
                     >{{ row.is_open ? 'Pending' : row.quality_score !== null ? row.quality_score.toFixed(1) : '-' }}</td>
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rsi !== null ? row.rsi.toFixed(1) : '-' }}</td>
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.hv !== null ? row.hv.toFixed(2) : '-' }}</td>
