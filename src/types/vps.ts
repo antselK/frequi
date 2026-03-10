@@ -369,6 +369,11 @@ export interface DwhAnomalySample {
   message: string;
 }
 
+export interface DwhMissedTradeList {
+  total: number;
+  items: DwhAnomalySample[];
+}
+
 export interface DwhRollupCompactionRunResult {
   rollup_days: number;
   compact_log_days: number;

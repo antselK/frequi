@@ -11,6 +11,7 @@ import type {
   DwhLogCumulativePoint,
   DwhAnomaly,
   DwhAnomalySample,
+  DwhMissedTradeList,
   DwhAnomalyTrendPoint,
   DwhIngestionAsyncStart,
   DwhIngestionRun,
@@ -384,12 +385,19 @@ export const vpsApi = {
     });
     return data;
   },
-  async dwhMissedTrades(dateFrom: string, dateTo: string, limit = 500, botId?: number): Promise<DwhAnomalySample[]> {
-    const { data } = await vpsApiClient.get<DwhAnomalySample[]>('/dwh/missed-trades', {
+  async dwhMissedTrades(
+    dateFrom: string,
+    dateTo: string,
+    limit = 500,
+    offset = 0,
+    botId?: number,
+  ): Promise<DwhMissedTradeList> {
+    const { data } = await vpsApiClient.get<DwhMissedTradeList>('/dwh/missed-trades', {
       params: {
         date_from: dateFrom,
         date_to: dateTo,
         limit,
+        offset,
         bot_id: botId,
       },
     });

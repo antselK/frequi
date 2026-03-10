@@ -432,6 +432,9 @@ const systemErrorTimelinePoints = ref<TimelinePoint[]>([]);
 const dwhIngestTimeline = ref<IngestTimelinePoint[]>([]);
 const logsCumulativeChartPoints = ref<LogsCumulativeChartPoint[]>([]);
 const missedTradeEvents = ref<ParsedLogEvent[]>([]);
+const missedTotal = ref(0);
+const missedOffset = ref(0);
+const missedPageSize = 500;
 const botDisplayById = ref<Map<number, BotDisplayMeta>>(new Map());
 const systemSpikeSummary = ref<DwhLogCauseSummary | null>(null);
 const logsSpikeSummary = ref<DwhLogCauseSummary | null>(null);
@@ -485,6 +488,7 @@ const missedDateTo = ref(todayStr());
 const missedFilterBotId = ref<number | null>(null);
 const missedFilterPair = ref('');
 const missedFilterVps = ref('');
+const missedFilterSide = ref<'both' | 'long' | 'short'>('both');
 const selectedReasonFilters = ref<MissedTradeReasonCode[]>([]);
 const trailingDateFrom = ref(todayStr());
 const trailingDateTo = ref(todayStr());
@@ -978,11 +982,13 @@ const filteredMissedTradeEventsByBotPair = computed(() => {
   const botFilter = Number(missedFilterBotId.value);
   const botFilterEnabled = Number.isFinite(botFilter) && botFilter > 0;
 
+  const sideFilter = missedFilterSide.value;
   return missedTradeEvents.value.filter((event) => {
     const botMatches = !botFilterEnabled || event.botId === botFilter;
     const pairMatches = !pairNeedle || event.pair.toLowerCase().includes(pairNeedle);
     const vpsMatches = !vpsNeedle || getBotVpsName(event.botId).toLowerCase().includes(vpsNeedle);
-    return botMatches && pairMatches && vpsMatches;
+    const sideMatches = sideFilter === 'both' || event.side === sideFilter;
+    return botMatches && pairMatches && vpsMatches && sideMatches;
   });
 });
 
@@ -2984,6 +2990,7 @@ function clearMissedTradeFilters() {
   missedFilterBotId.value = null;
   missedFilterPair.value = '';
   missedFilterVps.value = '';
+  missedFilterSide.value = 'both';
   selectedReasonFilters.value = [];
 }
 
@@ -3173,38 +3180,61 @@ function isMissedTradeSignature(item: DwhAnomaly): boolean {
   return isMissedTradeMessage(text);
 }
 
-async function loadMissedTradesReport() {
+function parseMissedTradeSamples(
+  samples: import('@/types/vps').DwhAnomalySample[],
+  existing: Map<string, ParsedLogEvent>,
+): Map<string, ParsedLogEvent> {
+  for (const sample of samples) {
+    const loweredMessage = sample.message.toLowerCase();
+    if (isStrategyUserDenyMessage(loweredMessage)) {
+      continue;
+    }
+    const event: ParsedLogEvent = {
+      eventTs: sample.event_ts,
+      at: formatDate(sample.event_ts),
+      level: sample.level,
+      logger: sample.logger,
+      message: formatMissedTradeMessage(sample.message),
+      botId: sample.bot_id,
+      pair: extractPairFlexible(sample.message),
+      side: extractMissedTradeSide(sample.message),
+      ...classifyMissedTradeReason(sample.message),
+      details: extractDecisionDetails(sample.message),
+    };
+    existing.set(`${sample.event_ts}|${sample.logger}|${sample.message}`, event);
+  }
+  return existing;
+}
+
+async function loadMissedTradesReport(append = false) {
   loadingMissedTrades.value = true;
-  missedExpandedGroupKey.value = null;
+  if (!append) {
+    missedExpandedGroupKey.value = null;
+    missedOffset.value = 0;
+    missedTradeEvents.value = [];
+    missedTotal.value = 0;
+  }
   reportsError.value = '';
   try {
     await ensureBotDisplayMapLoaded();
     if (!missedDateFrom.value) missedDateFrom.value = todayStr();
     if (!missedDateTo.value) missedDateTo.value = todayStr();
 
-    const samples = await vpsApi.dwhMissedTrades(missedDateFrom.value, missedDateTo.value, 2000);
+    const result = await vpsApi.dwhMissedTrades(
+      missedDateFrom.value,
+      missedDateTo.value,
+      missedPageSize,
+      missedOffset.value,
+      missedFilterBotId.value ?? undefined,
+    );
 
-    const dedupe = new Map<string, ParsedLogEvent>();
-    for (const sample of samples) {
-      const loweredMessage = sample.message.toLowerCase();
-      if (isStrategyUserDenyMessage(loweredMessage)) {
-        continue;
-      }
+    missedTotal.value = result.total;
+    missedOffset.value += result.items.length;
 
-      const event: ParsedLogEvent = {
-        eventTs: sample.event_ts,
-        at: formatDate(sample.event_ts),
-        level: sample.level,
-        logger: sample.logger,
-        message: formatMissedTradeMessage(sample.message),
-        botId: sample.bot_id,
-        pair: extractPairFlexible(sample.message),
-        side: extractMissedTradeSide(sample.message),
-        ...classifyMissedTradeReason(sample.message),
-        details: extractDecisionDetails(sample.message),
-      };
-      dedupe.set(`${sample.event_ts}|${sample.logger}|${sample.message}`, event);
-    }
+    const dedupe = new Map<string, ParsedLogEvent>(
+      append ? missedTradeEvents.value.map((e) => [`${e.eventTs}|${e.logger}|${e.message}`, e]) : [],
+    );
+    parseMissedTradeSamples(result.items, dedupe);
 
     missedTradeEvents.value = Array.from(dedupe.values()).sort(
       (a, b) => new Date(b.eventTs).getTime() - new Date(a.eventTs).getTime(),
@@ -3215,7 +3245,7 @@ async function loadMissedTradesReport() {
     missedLoaded.value = true;
   } catch (error) {
     reportsError.value = String(error);
-    missedTradeEvents.value = [];
+    if (!append) missedTradeEvents.value = [];
   } finally {
     loadingMissedTrades.value = false;
   }
@@ -4143,6 +4173,17 @@ onMounted(async () => {
                 />
                 <InputText v-model="missedFilterPair" size="small" class="w-40" placeholder="Pair (e.g. JTO/USDT)" />
                 <InputText v-model="missedFilterVps" size="small" class="w-32" placeholder="VPS" />
+                <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
+                  <button
+                    v-for="sf in [{ key: 'both', label: 'Both' }, { key: 'long', label: 'Long' }, { key: 'short', label: 'Short' }]"
+                    :key="sf.key"
+                    class="px-2 py-1 transition-colors"
+                    :class="missedFilterSide === sf.key
+                      ? 'bg-primary-600 text-white'
+                      : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                    @click="missedFilterSide = sf.key as 'both' | 'long' | 'short'"
+                  >{{ sf.label }}</button>
+                </div>
                 <Button
                   label="Clear"
                   size="small"
@@ -4163,7 +4204,7 @@ onMounted(async () => {
 
             <div class="flex flex-wrap gap-2">
               <Button
-                :label="`Total events: ${parsedMissedTradeEvents.length}`"
+                :label="`Total events: ${missedTotal}`"
                 size="small"
                 severity="contrast"
                 outlined
@@ -4276,6 +4317,10 @@ onMounted(async () => {
               </svg>
             </div>
 
+            <div v-if="missedTradeEvents.length" class="text-xs text-surface-400">
+              Showing {{ missedTradeEvents.length }} of {{ missedTotal }} events
+            </div>
+
             <div v-if="!groupedMissedTradeEvents.length" class="text-sm text-surface-400">
               {{ loadingMissedTrades ? 'Loading missed trades...' : 'No missed trade events found.' }}
             </div>
@@ -4373,6 +4418,18 @@ onMounted(async () => {
                   </template>
                 </tbody>
               </table>
+            </div>
+
+            <!-- Load more -->
+            <div v-if="missedTradeEvents.length && missedTradeEvents.length < missedTotal" class="flex items-center gap-3">
+              <Button
+                :label="`Load more (${missedTotal - missedTradeEvents.length} remaining)`"
+                size="small"
+                severity="secondary"
+                outlined
+                :loading="loadingMissedTrades"
+                @click="loadMissedTradesReport(true)"
+              />
             </div>
           </div>
 
