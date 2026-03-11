@@ -177,18 +177,24 @@ export const vpsApi = {
   async startContainer(vpsId: number, containerName: string): Promise<VpsActionResult> {
     const { data } = await vpsApiClient.post<VpsActionResult>(
       `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/start`,
+      undefined,
+      { timeout: 90_000 },
     );
     return data;
   },
   async restartContainer(vpsId: number, containerName: string): Promise<VpsActionResult> {
     const { data } = await vpsApiClient.post<VpsActionResult>(
       `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/restart`,
+      undefined,
+      { timeout: 90_000 },
     );
     return data;
   },
   async stopContainer(vpsId: number, containerName: string): Promise<VpsActionResult> {
     const { data } = await vpsApiClient.post<VpsActionResult>(
       `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/stop`,
+      undefined,
+      { timeout: 90_000 },
     );
     return data;
   },
