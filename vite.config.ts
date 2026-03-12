@@ -52,7 +52,7 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 700, // Default is 500
-    sourcemap: true,
+    sourcemap: false,
   },
   server: {
     proxy: {
