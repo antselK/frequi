@@ -2476,6 +2476,13 @@ function parsePriceOkProfit(message: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parsePeakDrawdownProfit(message: string): number | null {
+  const match = message.match(/current\s+(-?\d+(?:\.\d+)?)\s*%/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function parseDurationMinutes(message: string): number | null {
   const durationMatch = message.match(/duration\s*[:=]\s*(-?\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)?/i);
   if (!durationMatch) {
@@ -2685,7 +2692,7 @@ function pickClosestTradeByTime(eventTs: string, trades: DwhTrade[]): DwhTrade |
         return false;
       }
       const deltaMs = tradeTime - eventTime;
-      return deltaMs >= 0 && deltaMs <= 12 * 60 * 60 * 1000;
+      return deltaMs >= 0 && deltaMs <= 15 * 60 * 1000;
     })
     .sort((a, b) => {
       const aTs = a.open_date ? new Date(a.open_date).getTime() : Number.POSITIVE_INFINITY;
@@ -2786,7 +2793,8 @@ function isTrailingTriggerMessage(loweredMessage: string): boolean {
     loweredMessage.includes('trailing long for ') ||
     loweredMessage.includes('triggering long') ||
     loweredMessage.includes('triggering short') ||
-    loweredMessage.includes('price ok for ')
+    loweredMessage.includes('price ok for ') ||
+    loweredMessage.includes('peak drawdown entry for ')
   );
 }
 
@@ -2796,11 +2804,14 @@ function parseTrailingTriggerEvent(sample: {
   logger: string;
   message: string;
 }): TrailingTriggerEvent {
-  // "Price OK" messages embed profit as "(X.XX %)" inline; prefer that over the generic label parser.
+  // "Price OK" and "Peak drawdown entry" messages embed profit inline; prefer over generic label parser.
   const isPriceOk = /price ok for /i.test(sample.message);
+  const isPeakDrawdown = /peak drawdown entry for /i.test(sample.message);
   const profitPct = isPriceOk
     ? parsePriceOkProfit(sample.message)
-    : parseLabeledNumber(sample.message, 'Profit');
+    : isPeakDrawdown
+      ? parsePeakDrawdownProfit(sample.message)
+      : parseLabeledNumber(sample.message, 'Profit');
   return {
     eventTs: sample.event_ts,
     at: formatDate(sample.event_ts),
@@ -2827,7 +2838,7 @@ async function fetchTrailingAuditLogs(
   botIds: number[],
   hours: number,
 ): Promise<Array<{ event_ts: string; bot_id: number; logger: string; message: string }>> {
-  const keywords = ['trailing', 'triggering', 'Price OK'];
+  const keywords = ['trailing', 'triggering', 'Price OK', 'Peak drawdown'];
   const pageLimit = 500;
 
   async function fetchPages(botId: number, keyword: string) {
@@ -2873,16 +2884,18 @@ function pickSnapshotLog(
     return null;
   }
 
-  // Use the last "Price OK" message for trailing profit % — it has the definitive final value.
-  // Among multiple (e.g. failed attempts before the real entry), take the chronologically last one.
-  const priceOkLogs = logs.filter((l) => /price ok for /i.test(l.message));
-  const priceOkProfit = priceOkLogs.length > 0
-    ? (priceOkLogs[priceOkLogs.length - 1]?.profitPct ?? null)
+  // Use the last trigger log for profit % — either "Price OK" or "Peak drawdown entry".
+  // Both embed the definitive entry profit inline. Take the chronologically last one.
+  const isTriggerLog = (l: TrailingTriggerEvent) =>
+    /price ok for /i.test(l.message) || /peak drawdown entry for /i.test(l.message);
+  const triggerLogs = logs.filter(isTriggerLog);
+  const triggerProfit = triggerLogs.length > 0
+    ? (triggerLogs[triggerLogs.length - 1]?.profitPct ?? null)
     : null;
 
   // Pick the best structural log (has Start/Current/Lowlimit/Duration/Offset) using timestamp logic:
   // last "Trailing short/long for" log at or before trade open time.
-  const structuralLogs = logs.filter((l) => !/price ok for /i.test(l.message));
+  const structuralLogs = logs.filter((l) => !isTriggerLog(l));
 
   let structuralBest: TrailingTriggerEvent | null = null;
   if (tradeOpenDate) {
@@ -2903,11 +2916,11 @@ function pickSnapshotLog(
   }
 
   if (!structuralBest) {
-    return priceOkLogs[priceOkLogs.length - 1] ?? null;
+    return triggerLogs[triggerLogs.length - 1] ?? null;
   }
 
-  // Merge: structural fields from best "Trailing" log, profitPct from "Price OK" if available.
-  return priceOkProfit !== null ? { ...structuralBest, profitPct: priceOkProfit } : structuralBest;
+  // Merge: structural fields from best "Trailing" log, profitPct from trigger log if available.
+  return triggerProfit !== null ? { ...structuralBest, profitPct: triggerProfit } : structuralBest;
 }
 
 function determineBestMatchSource(
@@ -3477,7 +3490,7 @@ async function loadTrailingBenefitReport() {
     for (const bucket of logsByTradeKey.values()) {
       const msgOrder = (msg: string): number => {
         if (/^start trailing/i.test(msg)) return 0;
-        if (/^price ok for /i.test(msg)) return 2;
+        if (/^price ok for /i.test(msg) || /^peak drawdown entry for /i.test(msg)) return 2;
         return 1;
       };
       bucket.sort((a, b) => {
