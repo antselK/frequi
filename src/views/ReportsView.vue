@@ -592,6 +592,17 @@ const signalIndActiveTab = ref<'trades' | 'analytics'>('trades');
 const signalIndAnalyticsSide = ref<'all' | 'long' | 'short'>('all');
 const signalIndMatchFilter = ref<'all' | 'matched' | 'unmatched'>('all');
 const signalIndSideFilter = ref<'both' | 'long' | 'short'>('both');
+const signalIndTagOptions = [
+  { label: 'All tags', value: '' },
+  { label: 'long_bb_reversal', value: 'long_bb_reversal' },
+  { label: 'long_bb_reversal_trail', value: 'long_bb_reversal_trail' },
+  { label: 'long_bb_capped', value: 'long_bb_capped' },
+  { label: 'long_bb_capped_trail', value: 'long_bb_capped_trail' },
+  { label: 'short_bb_breakout', value: 'short_bb_breakout' },
+  { label: 'short_bb_breakout_trail', value: 'short_bb_breakout_trail' },
+  { label: 'short_chop_vol', value: 'short_chop_vol' },
+  { label: 'short_chop_vol_trail', value: 'short_chop_vol_trail' },
+];
 
 // Bot Performance Analysis state
 const botPerf = ref<DwhBotPerfRead | null>(null);
@@ -5492,11 +5503,14 @@ onMounted(async () => {
                   class="w-36"
                   placeholder="Pair"
                 />
-                <InputText
+                <Select
                   v-model="signalIndFilterTag"
+                  :options="signalIndTagOptions"
+                  option-label="label"
+                  option-value="value"
                   size="small"
-                  class="w-40"
-                  placeholder="Enter tag"
+                  class="w-52"
+                  placeholder="All tags"
                 />
                 <!-- Match filter toggle -->
                 <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
