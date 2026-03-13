@@ -3458,14 +3458,30 @@ async function loadSignalOutcomes() {
   loadingSignalOutcomes.value = true;
   reportsError.value = '';
   try {
-    signalOutcomes.value = await vpsApi.dwhMissedSignals(
-      signalOutcomesDateFrom.value || undefined,
-      signalOutcomesDateTo.value || undefined,
-      signalOutcomesFilterBotId.value ?? undefined,
-      undefined,
-      undefined,
-      undefined,
-    );
+    // Fetch all pages — client-side filtering requires the full dataset
+    const pageSize = 2000;
+    let offset = 0;
+    let total = Infinity;
+    let pendingOutcomes = 0;
+    const allItems: import('../types/vps').DwhMissedSignal[] = [];
+    while (offset < total) {
+      const page = await vpsApi.dwhMissedSignals(
+        signalOutcomesDateFrom.value || undefined,
+        signalOutcomesDateTo.value || undefined,
+        signalOutcomesFilterBotId.value ?? undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        pageSize,
+        offset,
+      );
+      total = page.total;
+      pendingOutcomes = page.pending_outcomes;
+      allItems.push(...page.items);
+      offset += pageSize;
+    }
+    signalOutcomes.value = { total, pending_outcomes: pendingOutcomes, items: allItems };
     signalOutcomesLoaded.value = true;
   } catch (error) {
     reportsError.value = String(error);
