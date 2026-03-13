@@ -112,19 +112,6 @@ export const useVpsStore = defineStore('vpsStore', {
         this.actionLoading = false;
       }
     },
-    async reorderServers(orderedIds: number[]) {
-      this.actionLoading = true;
-      this.lastError = '';
-      try {
-        await vpsApi.reorderVps(orderedIds);
-        await this.loadServers();
-      } catch (error) {
-        this.setError(error);
-        throw error;
-      } finally {
-        this.actionLoading = false;
-      }
-    },
     async testServer(vpsId: number): Promise<VpsActionResult> {
       this.actionLoading = true;
       this.lastError = '';
@@ -185,7 +172,6 @@ export const useVpsStore = defineStore('vpsStore', {
       try {
         const result = await vpsApi.startContainer(vpsId, containerName);
         await this.loadContainers(vpsId);
-        await this.loadServers();
         return result;
       } catch (error) {
         this.setError(error);
@@ -200,7 +186,6 @@ export const useVpsStore = defineStore('vpsStore', {
       try {
         const result = await vpsApi.restartContainer(vpsId, containerName);
         await this.loadContainers(vpsId);
-        await this.loadServers();
         return result;
       } catch (error) {
         this.setError(error);
@@ -215,7 +200,6 @@ export const useVpsStore = defineStore('vpsStore', {
       try {
         const result = await vpsApi.stopContainer(vpsId, containerName);
         await this.loadContainers(vpsId);
-        await this.loadServers();
         return result;
       } catch (error) {
         this.setError(error);

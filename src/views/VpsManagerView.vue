@@ -36,6 +36,7 @@ const selectedActor = ref(getControlPlaneActor());
 const actorPermissionBadges = computed(() => getControlPlaneActorPermissions(selectedActor.value));
 let statusEventSource: EventSource | null = null;
 let pollTimer: number | null = null;
+let isStreaming = false;
 
 function permissionSeverity(permission: string) {
   if (permission.endsWith(':admin')) {
@@ -48,7 +49,6 @@ function permissionSeverity(permission: string) {
 }
 
 const selectedVps = computed(() => vpsStore.servers.find((item) => item.id === selectedVpsId.value));
-const orderedServers = computed<VpsServer[]>(() => vpsStore.servers);
 const vpsNameById = computed<Map<string, string>>(
   () => new Map(vpsStore.servers.map((server) => [String(server.id), server.name])),
 );
@@ -205,14 +205,16 @@ async function loadAudit() {
 }
 
 function startPollingFallback() {
-  if (pollTimer) {
+  if (pollTimer || isStreaming) {
     return;
   }
   pollTimer = window.setInterval(() => {
     loadServers();
     loadAudit();
     if (selectedVpsId.value) {
-      vpsStore.loadContainers(selectedVpsId.value).catch(() => undefined);
+      vpsStore.loadContainers(selectedVpsId.value).catch((err) => {
+        console.warn('Polling: failed to load containers', err);
+      });
     }
   }, 20000);
 }
@@ -229,6 +231,7 @@ function connectStatusStream() {
     statusEventSource.close();
     statusEventSource = null;
   }
+  isStreaming = false;
 
   const streamUrl = getVpsStatusStreamUrl();
   const eventSource = new EventSource(streamUrl);
@@ -238,15 +241,18 @@ function connectStatusStream() {
     try {
       const payload = JSON.parse(event.data) as VpsStatusStreamPayload;
       vpsStore.applyStatusSnapshot(payload);
+      isStreaming = true;
       streamConnected.value = true;
       stopPollingFallback();
     } catch {
+      isStreaming = false;
       streamConnected.value = false;
       startPollingFallback();
     }
   });
 
   eventSource.onerror = () => {
+    isStreaming = false;
     streamConnected.value = false;
     startPollingFallback();
   };
@@ -266,7 +272,9 @@ async function handleActorChange(newActorValue: string) {
 
   await Promise.all([loadServers(), loadAudit()]);
   if (selectedVpsId.value) {
-    await vpsStore.loadContainers(selectedVpsId.value).catch(() => undefined);
+    await vpsStore.loadContainers(selectedVpsId.value).catch((err) => {
+      console.warn('Actor change: failed to load containers', err);
+    });
   }
 
   handleActionToast('Actor Changed', `Using ${selectedActor.value}`);
@@ -514,7 +522,7 @@ async function refreshLogs() {
     const result = await vpsStore.loadContainerLogs(selectedVpsId.value, selectedContainerName.value, 200);
     logsText.value = result.logs;
   } catch (error) {
-    logsText.value = String(error);
+    logsText.value = '[Error] Failed to fetch logs. Check VPS connectivity.';
   } finally {
     logsLoading.value = false;
   }
@@ -582,7 +590,7 @@ onBeforeUnmount(() => {
       </template>
       <template #content>
         <VpsTable
-          :items="orderedServers"
+          :items="vpsStore.servers"
           :loading="vpsStore.loadingServers || vpsStore.actionLoading"
           @test="handleTest"
           @check-docker="handleCheckDocker"
