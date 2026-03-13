@@ -473,7 +473,7 @@ export const vpsApi = {
     const { data } = await vpsApiClient.post<DwhMissedSignalParseResult>(
       '/dwh/missed-signals/parse',
       null,
-      { params: fullRescan ? { full_rescan: true } : {} },
+      { params: fullRescan ? { full_rescan: true } : {}, timeout: 300000 },
     );
     return data;
   },
