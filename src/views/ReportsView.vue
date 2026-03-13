@@ -3409,35 +3409,36 @@ function parseMissedTradeSamples(
   return existing;
 }
 
-async function loadMissedTradesReport(append = false) {
+async function loadMissedTradesReport() {
   loadingMissedTrades.value = true;
-  if (!append) {
-    missedExpandedGroupKey.value = null;
-    missedOffset.value = 0;
-    missedTradeEvents.value = [];
-    missedTotal.value = 0;
-  }
+  missedExpandedGroupKey.value = null;
+  missedTradeEvents.value = [];
+  missedTotal.value = 0;
   reportsError.value = '';
   try {
     await ensureBotDisplayMapLoaded();
     if (!missedDateFrom.value) missedDateFrom.value = todayStr();
     if (!missedDateTo.value) missedDateTo.value = todayStr();
 
-    const result = await vpsApi.dwhMissedTrades(
-      missedDateFrom.value,
-      missedDateTo.value,
-      missedPageSize,
-      missedOffset.value,
-      missedFilterBotId.value ?? undefined,
-    );
-
-    missedTotal.value = result.total;
-    missedOffset.value += result.items.length;
-
-    const dedupe = new Map<string, ParsedLogEvent>(
-      append ? missedTradeEvents.value.map((e) => [`${e.eventTs}|${e.logger}|${e.message}`, e]) : [],
-    );
-    parseMissedTradeSamples(result.items, dedupe);
+    // Fetch all pages so client-side filtering works on the complete dataset
+    const pageSize = 2000;
+    let offset = 0;
+    let total = Infinity;
+    const dedupe = new Map<string, ParsedLogEvent>();
+    while (offset < total) {
+      const result = await vpsApi.dwhMissedTrades(
+        missedDateFrom.value,
+        missedDateTo.value,
+        pageSize,
+        offset,
+        missedFilterBotId.value ?? undefined,
+      );
+      total = result.total;
+      parseMissedTradeSamples(result.items, dedupe);
+      offset += result.items.length;
+      if (result.items.length === 0) break;
+    }
+    missedTotal.value = total;
 
     missedTradeEvents.value = Array.from(dedupe.values()).sort(
       (a, b) => new Date(b.eventTs).getTime() - new Date(a.eventTs).getTime(),
@@ -3448,7 +3449,7 @@ async function loadMissedTradesReport(append = false) {
     missedLoaded.value = true;
   } catch (error) {
     reportsError.value = String(error);
-    if (!append) missedTradeEvents.value = [];
+    missedTradeEvents.value = [];
   } finally {
     loadingMissedTrades.value = false;
   }
@@ -4647,17 +4648,6 @@ onMounted(async () => {
               </table>
             </div>
 
-            <!-- Load more -->
-            <div v-if="missedTradeEvents.length && missedTradeEvents.length < missedTotal" class="flex items-center gap-3">
-              <Button
-                :label="`Load more (${missedTotal - missedTradeEvents.length} remaining)`"
-                size="small"
-                severity="secondary"
-                outlined
-                :loading="loadingMissedTrades"
-                @click="loadMissedTradesReport(true)"
-              />
-            </div>
           </div>
 
           <!-- ============================================================ -->
