@@ -42,6 +42,7 @@ type MissedTradeReasonCode =
   | 'insufficient_data'
   | 'entry_error'
   | 'trade_rejected'
+  | 'trail_triggered'
   | 'other';
 
 interface ReportOption {
@@ -177,7 +178,23 @@ const MISSED_TRADE_REASON_LABELS: Record<MissedTradeReasonCode, string> = {
   insufficient_data: 'Insufficient data',
   entry_error: 'Entry error',
   trade_rejected: 'Trade rejected',
+  trail_triggered: 'Trail triggered (entry taken)',
   other: 'Unclassified',
+};
+
+const SIGNAL_OUTCOME_REASON_LABELS: Record<string, string> = {
+  trailing_entry: 'Trailing entry',
+  eth_volatility: 'ETH volatility',
+  funding_rate: 'Funding rate',
+  price_momentum: 'Price momentum',
+  slippage: 'Slippage',
+  time_filter: 'Time filter',
+  long_disabled: 'Long disabled',
+  deep_dca_block: 'Deep DCA block',
+  trade_rejected: 'Trade rejected',
+  entry_error: 'Entry error',
+  insufficient_data: 'Insufficient data',
+  other: 'Other',
 };
 
 const _categoryDefs: { value: ReportCategory; label: string }[] = [
@@ -526,10 +543,12 @@ const signalOutcomesDateFrom = ref(daysAgoStr(1));
 const signalOutcomesDateTo = ref(todayStr());
 const signalOutcomesFilterBotId = ref<number | null>(null);
 const signalOutcomesFilterPair = ref('');
-const signalOutcomesFilterReason = ref('all');
-const signalOutcomesFilterStrategy = ref('all');
+const signalOutcomesFilterVps = ref('');
+const signalOutcomesFilterSide = ref<'both' | 'long' | 'short'>('both');
 const signalOutcomesFilterOutcome = ref('all');
 const signalOutcomesProfitThreshold = ref(2.0);
+const selectedSignalOutcomeReasons = ref<string[]>([]);
+const signalOutcomesChartMode = ref<MissedChartMode>('cumulative');
 const loadingSignalOutcomes = ref(false);
 const loadingParseMissedSignals = ref(false);
 const loadingFetchOutcomes = ref(false);
@@ -998,7 +1017,9 @@ const parsedMissedTradeEvents = computed(() => {
   }
 
   const selected = new Set(selectedReasonFilters.value);
-  return filteredMissedTradeEventsByBotPair.value.filter((event) => selected.has(event.reasonCode));
+  return filteredMissedTradeEventsByBotPair.value.filter(
+    (event) => event.reasonCode === 'trail_triggered' || selected.has(event.reasonCode),
+  );
 });
 
 interface MissedTradeGroup {
@@ -1015,17 +1036,40 @@ const groupedMissedTradeEvents = computed<MissedTradeGroup[]>(() => {
     if (!groups.has(key)) groups.set(key, { key, bucketMs: bucket, representative: event, events: [] });
     groups.get(key)!.events.push(event);
   }
-  return Array.from(groups.values()).sort((a, b) => b.bucketMs - a.bucketMs);
+  return Array.from(groups.values())
+    .filter((g) => !g.events.some((e) => e.reasonCode === 'trail_triggered'))
+    .sort((a, b) => b.bucketMs - a.bucketMs)
+    .map((g) => ({
+      ...g,
+      events: g.events
+        .filter((e) => e.reasonCode !== 'trail_triggered')
+        .sort((a, b) => new Date(a.eventTs).getTime() - new Date(b.eventTs).getTime()),
+    }));
+});
+
+const allMissedGroupStats = computed<{ reasonCounts: Map<MissedTradeReasonCode, number>; total: number }>(() => {
+  const groupReasons = new Map<string, Set<MissedTradeReasonCode>>();
+  for (const event of filteredMissedTradeEventsByBotPair.value) {
+    const bucket = candleBucketMs(event.eventTs);
+    const key = `${event.botId}|${event.pair}|${bucket}`;
+    if (!groupReasons.has(key)) groupReasons.set(key, new Set());
+    groupReasons.get(key)!.add(event.reasonCode);
+  }
+  const reasonCounts = new Map<MissedTradeReasonCode, number>();
+  let total = 0;
+  for (const reasons of groupReasons.values()) {
+    if (reasons.has('trail_triggered')) continue;
+    total++;
+    for (const code of reasons) {
+      if (code === 'trail_triggered') continue;
+      reasonCounts.set(code, (reasonCounts.get(code) ?? 0) + 1);
+    }
+  }
+  return { reasonCounts, total };
 });
 
 const missedTradeSummaryByReason = computed<ReasonSummaryItem[]>(() => {
-  const grouped = new Map<MissedTradeReasonCode, number>();
-
-  for (const event of filteredMissedTradeEventsByBotPair.value) {
-    grouped.set(event.reasonCode, (grouped.get(event.reasonCode) ?? 0) + 1);
-  }
-
-  return Array.from(grouped.entries()).map(([reasonCode, count]) => ({
+  return Array.from(allMissedGroupStats.value.reasonCounts.entries()).map(([reasonCode, count]) => ({
     reasonCode,
     reason: MISSED_TRADE_REASON_LABELS[reasonCode],
     count,
@@ -1036,23 +1080,51 @@ const missedTradeReasonButtons = computed<ReasonSummaryItem[]>(() => {
   return missedTradeSummaryByReason.value.filter((item) => item.reasonCode !== 'trailing_entry');
 });
 
-const trailingEntryMissCount = computed(() => {
-  return filteredMissedTradeEventsByBotPair.value.filter((event) => event.reasonCode === 'trailing_entry').length;
-});
+const trailingEntryMissCount = computed(() => allMissedGroupStats.value.reasonCounts.get('trailing_entry') ?? 0);
 
 const trailingEntryMissPct = computed(() => {
-  const total = filteredMissedTradeEventsByBotPair.value.length;
-  if (!total) {
-    return '0.0';
-  }
+  const total = allMissedGroupStats.value.total;
+  if (!total) return '0.0';
   return ((trailingEntryMissCount.value / total) * 100).toFixed(1);
 });
 
 // Signal Outcomes computed stats
 const signalOutcomeItems = computed<DwhMissedSignal[]>(() => signalOutcomes.value?.items ?? []);
 
+const signalOutcomesFilteredByFields = computed<DwhMissedSignal[]>(() => {
+  const pairNeedle = signalOutcomesFilterPair.value.trim().toLowerCase();
+  const vpsNeedle = signalOutcomesFilterVps.value.trim().toLowerCase();
+  return signalOutcomeItems.value.filter((s) => {
+    if (pairNeedle && !s.pair.toLowerCase().includes(pairNeedle)) return false;
+    if (vpsNeedle && !(s.vps_name ?? '').toLowerCase().includes(vpsNeedle)) return false;
+    if (signalOutcomesFilterSide.value !== 'both') {
+      if (!s.direction || s.direction !== signalOutcomesFilterSide.value) return false;
+    }
+    return true;
+  });
+});
+
+const signalOutcomeReasonStats = computed<{ reasonCounts: Map<string, number>; total: number }>(() => {
+  const reasonCounts = new Map<string, number>();
+  for (const s of signalOutcomesFilteredByFields.value) {
+    const code = s.block_reason ?? 'other';
+    reasonCounts.set(code, (reasonCounts.get(code) ?? 0) + 1);
+  }
+  return { reasonCounts, total: signalOutcomesFilteredByFields.value.length };
+});
+
+const signalOutcomeTrailingCount = computed(() =>
+  signalOutcomeReasonStats.value.reasonCounts.get('trailing_entry') ?? 0,
+);
+
+function signalOutcomeReasonSharePct(count: number): string {
+  const total = signalOutcomeReasonStats.value.total;
+  if (!total) return '0.0';
+  return ((count / total) * 100).toFixed(1);
+}
+
 const signalOutcomesEvaluated = computed(() =>
-  signalOutcomeItems.value.filter((s) => s.outcome_fetched_at !== null && s.fetch_error === null),
+  signalOutcomesFiltered.value.filter((s) => s.outcome_fetched_at !== null && s.fetch_error === null),
 );
 
 const signalOutcomesProfitable = computed(() =>
@@ -1104,9 +1176,14 @@ const signalOutcomeFilterOptions = [
 ];
 
 const signalOutcomesFiltered = computed<DwhMissedSignal[]>(() => {
+  let items = signalOutcomesFilteredByFields.value;
+  if (selectedSignalOutcomeReasons.value.length) {
+    const sel = new Set(selectedSignalOutcomeReasons.value);
+    items = items.filter((s) => sel.has(s.block_reason ?? 'other'));
+  }
   const filter = signalOutcomesFilterOutcome.value;
-  if (filter === 'all') return signalOutcomeItems.value;
-  return signalOutcomeItems.value.filter((sig) => {
+  if (filter === 'all') return items;
+  return items.filter((sig) => {
     if (filter === 'error') return !!sig.fetch_error;
     if (filter === 'pending') return sig.outcome_fetched_at === null && !sig.fetch_error;
     if (sig.fetch_error || sig.outcome_fetched_at === null) return false;
@@ -1126,6 +1203,97 @@ function isPartialOutcome(sig: DwhMissedSignal): boolean {
     new Date(sig.signal_ts).getTime() + sig.outcome_window_hours * 3_600_000;
   return Date.now() < windowEndMs;
 }
+
+// ── Signal Outcomes Chart ────────────────────────────────────────────────
+
+const signalOutcomesChartPoints = computed<MissedChartPoint[]>(() => {
+  const items = signalOutcomesFiltered.value;
+  if (!items.length) return [];
+  const bucketMap = new Map<string, number>();
+  for (const s of items) {
+    const key = s.signal_ts.slice(0, 13);
+    bucketMap.set(key, (bucketMap.get(key) ?? 0) + 1);
+  }
+  const sorted = Array.from(bucketMap.entries()).sort(([a], [b]) => a.localeCompare(b));
+  let cumulative = 0;
+  return sorted.map(([key, count]) => {
+    cumulative += count;
+    const date = new Date(key + ':00:00');
+    const at = Number.isNaN(date.getTime()) ? key : timestampShort(date);
+    return { hourKey: key, at, count, cumulative };
+  });
+});
+
+const maxSignalOutcomesChartCount = computed(() => {
+  if (!signalOutcomesChartPoints.value.length) return 1;
+  if (signalOutcomesChartMode.value === 'hourly')
+    return Math.max(...signalOutcomesChartPoints.value.map((p) => p.count), 1);
+  return Math.max(...signalOutcomesChartPoints.value.map((p) => p.cumulative), 1);
+});
+
+const signalOutcomesChartPolyline = computed(() => {
+  const pts = signalOutcomesChartPoints.value;
+  if (!pts.length) return '';
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(pts.length - 1, 1);
+  const maxY = maxSignalOutcomesChartCount.value;
+  return pts.map((pt, idx) => {
+    const x = leftPad + (idx / denominator) * plotWidth;
+    const val = signalOutcomesChartMode.value === 'hourly' ? pt.count : pt.cumulative;
+    const y = topPad + (1 - val / maxY) * plotHeight;
+    return `${x},${y}`;
+  }).join(' ');
+});
+
+const signalOutcomesChartAreaPolyline = computed(() => {
+  const line = signalOutcomesChartPolyline.value;
+  if (!line) return '';
+  const first = line.split(' ')[0];
+  const last = line.split(' ').slice(-1)[0];
+  if (!first || !last) return '';
+  return `${first} ${line} ${last.split(',')[0]},230 ${first.split(',')[0]},230`;
+});
+
+const signalOutcomesChartCoordinates = computed(() => {
+  const pts = signalOutcomesChartPoints.value;
+  if (!pts.length) return [] as { x: number; y: number; at: string; count: number; cumulative: number }[];
+  const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
+  const plotWidth = width - leftPad - rightPad;
+  const plotHeight = height - topPad - bottomPad;
+  const denominator = Math.max(pts.length - 1, 1);
+  const maxY = maxSignalOutcomesChartCount.value;
+  return pts.map((pt, idx) => {
+    const x = leftPad + (idx / denominator) * plotWidth;
+    const val = signalOutcomesChartMode.value === 'hourly' ? pt.count : pt.cumulative;
+    const y = topPad + (1 - val / maxY) * plotHeight;
+    return { x, y, at: pt.at, count: pt.count, cumulative: pt.cumulative };
+  });
+});
+
+const signalOutcomesChartYTicks = computed(() => {
+  const ticks = 5;
+  const maxY = maxSignalOutcomesChartCount.value;
+  const { topPad, height, bottomPad } = logsChartLayout;
+  const plotHeight = height - topPad - bottomPad;
+  return Array.from({ length: ticks + 1 }, (_, i) => {
+    const ratio = i / ticks;
+    const value = Math.round((1 - ratio) * maxY);
+    const y = topPad + ratio * plotHeight;
+    return { y, value };
+  });
+});
+
+const signalOutcomesChartXTicks = computed(() => {
+  const coords = signalOutcomesChartCoordinates.value;
+  if (!coords.length) return [] as { x: number; label: string }[];
+  const indexes = new Set<number>([0, Math.floor((coords.length - 1) / 2), coords.length - 1]);
+  return Array.from(indexes).sort((a, b) => a - b)
+    .map((index) => ({ x: coords[index]?.x ?? 0, label: coords[index]?.at ?? '' }));
+});
+
+// ── End Signal Outcomes Chart ─────────────────────────────────────────────
 
 // Entry Tag Performance computed
 // Bot Performance computed
@@ -2026,10 +2194,8 @@ const drillChartXTicks = computed(() => {
 // ── End Trade Drill-down Chart ─────────────────────────────────────────────
 
 function reasonSharePct(count: number): string {
-  const total = filteredMissedTradeEventsByBotPair.value.length;
-  if (!total) {
-    return '0.0';
-  }
+  const total = allMissedGroupStats.value.total;
+  if (!total) return '0.0';
   return ((count / total) * 100).toFixed(1);
 }
 
@@ -2255,6 +2421,9 @@ function classifyMissedTradeReason(message: string): {
       reason: MISSED_TRADE_REASON_LABELS.slippage,
     };
   }
+  if (loweredMessage.includes('[trail_result]') && loweredMessage.includes('result=triggered')) {
+    return { reasonCode: 'trail_triggered', reason: MISSED_TRADE_REASON_LABELS.trail_triggered };
+  }
   if (
     loweredMessage.includes('start trailing long') ||
     loweredMessage.includes('start trailing short') ||
@@ -2411,8 +2580,18 @@ function extractDecisionDetails(message: string): string | null {
   }
   if (loweredMessage.includes('trailing long for') || loweredMessage.includes('trailing short for')) {
     const side = loweredMessage.includes('trailing long') ? 'long' : 'short';
-    const profitMatch = message.match(/Profit:\s*(-?\d+(?:\.\d+)?)%/i);
-    return profitMatch ? `Trailing ${side} status (${profitMatch[1]}%)` : `Trailing ${side} status`;
+    const current = message.match(/Current:\s*([\d.]+)/i)?.[1];
+    const lowlimit = message.match(/Lowlimit:\s*([\d.]+)/i)?.[1];
+    const profit = message.match(/Profit:\s*(-?[\d.]+)%/i)?.[1];
+    const bestProfit = message.match(/BestProfit:\s*(-?[\d.]+)%/i)?.[1];
+    const offset = message.match(/Offset:\s*([\d.]+)%/i)?.[1];
+    const parts: string[] = [];
+    if (current) parts.push(`Cur: ${current}`);
+    if (lowlimit) parts.push(`Lim: ${lowlimit}`);
+    if (profit) parts.push(`P: ${profit}%`);
+    if (bestProfit) parts.push(`Best: ${bestProfit}%`);
+    if (offset) parts.push(`Off: ${offset}%`);
+    return parts.length > 0 ? `Trailing ${side} | ${parts.join(' | ')}` : `Trailing ${side} status`;
   }
   if (loweredMessage.includes('price too high') || loweredMessage.includes('price too low')) {
     return 'Trailing: price outside entry range';
@@ -3272,9 +3451,9 @@ async function loadSignalOutcomes() {
       signalOutcomesDateFrom.value || undefined,
       signalOutcomesDateTo.value || undefined,
       signalOutcomesFilterBotId.value ?? undefined,
-      signalOutcomesFilterPair.value || undefined,
-      signalOutcomesFilterReason.value !== 'all' ? signalOutcomesFilterReason.value : undefined,
-      signalOutcomesFilterStrategy.value !== 'all' ? signalOutcomesFilterStrategy.value : undefined,
+      undefined,
+      undefined,
+      undefined,
     );
     signalOutcomesLoaded.value = true;
   } catch (error) {
@@ -3283,6 +3462,14 @@ async function loadSignalOutcomes() {
   } finally {
     loadingSignalOutcomes.value = false;
   }
+}
+
+function clearSignalOutcomeFilters() {
+  signalOutcomesFilterPair.value = '';
+  signalOutcomesFilterVps.value = '';
+  signalOutcomesFilterSide.value = 'both';
+  selectedSignalOutcomeReasons.value = [];
+  signalOutcomesFilterOutcome.value = 'all';
 }
 
 async function runParseMissedSignals(fullRescan = false) {
@@ -4217,7 +4404,7 @@ onMounted(async () => {
 
             <div class="flex flex-wrap gap-2">
               <Button
-                :label="`Total events: ${missedTotal}`"
+                :label="`Missed trades: ${allMissedGroupStats.total}`"
                 size="small"
                 severity="contrast"
                 outlined
@@ -4469,32 +4656,32 @@ onMounted(async () => {
                 <InputText
                   v-model="signalOutcomesFilterPair"
                   size="small"
-                  class="w-36"
+                  class="w-40"
                   placeholder="Pair"
                 />
-                <Select
-                  v-model="signalOutcomesFilterReason"
-                  :options="signalOutcomeReasonOptions"
-                  option-label="label"
-                  option-value="value"
+                <InputText
+                  v-model="signalOutcomesFilterVps"
                   size="small"
-                  class="w-36"
+                  class="w-32"
+                  placeholder="VPS"
                 />
-                <Select
-                  v-model="signalOutcomesFilterStrategy"
-                  :options="signalOutcomeStrategyOptions"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
-                  class="w-40"
-                />
+                <!-- Side toggle -->
+                <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
+                  <button
+                    v-for="sf in [{ key: 'both', label: 'Both' }, { key: 'long', label: 'Long' }, { key: 'short', label: 'Short' }]"
+                    :key="sf.key"
+                    class="px-2 py-1 transition-colors"
+                    :class="signalOutcomesFilterSide === sf.key ? 'bg-primary-600 text-white' : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                    @click="signalOutcomesFilterSide = sf.key as 'both' | 'long' | 'short'"
+                  >{{ sf.label }}</button>
+                </div>
                 <Select
                   v-model="signalOutcomesFilterOutcome"
                   :options="signalOutcomeFilterOptions"
                   option-label="label"
                   option-value="value"
                   size="small"
-                  class="w-36"
+                  class="w-32"
                 />
                 <InputNumber
                   v-model="signalOutcomesProfitThreshold"
@@ -4504,9 +4691,16 @@ onMounted(async () => {
                   :min-fraction-digits="1"
                   :max-fraction-digits="1"
                   size="small"
-                  input-class="w-16"
+                  input-class="w-14"
                   suffix="%"
-                  title="Win threshold: min max_gain_pct to count as Win"
+                  title="Win threshold"
+                />
+                <Button
+                  label="Clear"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  @click="clearSignalOutcomeFilters"
                 />
                 <Button
                   label="Load"
@@ -4517,6 +4711,121 @@ onMounted(async () => {
                   @click="loadSignalOutcomes"
                 />
               </div>
+            </div>
+
+            <!-- Reason buttons -->
+            <div v-if="signalOutcomesLoaded" class="flex flex-wrap gap-2">
+              <Button
+                :label="`Signals: ${signalOutcomeReasonStats.total}`"
+                size="small"
+                severity="contrast"
+                outlined
+                @click="selectedSignalOutcomeReasons = []"
+              />
+              <Button
+                v-for="[code, count] in [...signalOutcomeReasonStats.reasonCounts.entries()].filter(([c]) => c !== 'trailing_entry')"
+                :key="code"
+                :label="`${SIGNAL_OUTCOME_REASON_LABELS[code] ?? code}: ${count} (${signalOutcomeReasonSharePct(count)}%)`"
+                size="small"
+                severity="warn"
+                :outlined="!selectedSignalOutcomeReasons.includes(code)"
+                @click="selectedSignalOutcomeReasons.includes(code) ? (selectedSignalOutcomeReasons = selectedSignalOutcomeReasons.filter((r) => r !== code)) : selectedSignalOutcomeReasons.push(code)"
+              />
+              <Button
+                :label="`Trailing-entry misses: ${signalOutcomeTrailingCount} (${signalOutcomeReasonSharePct(signalOutcomeTrailingCount)}%)`"
+                size="small"
+                severity="warn"
+                :outlined="!selectedSignalOutcomeReasons.includes('trailing_entry')"
+                @click="selectedSignalOutcomeReasons.includes('trailing_entry') ? (selectedSignalOutcomeReasons = selectedSignalOutcomeReasons.filter((r) => r !== 'trailing_entry')) : selectedSignalOutcomeReasons.push('trailing_entry')"
+              />
+            </div>
+
+            <!-- Signal Outcomes Chart -->
+            <div v-if="signalOutcomesChartPoints.length" class="space-y-1">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-3 text-xs text-surface-400">
+                  <span>{{ signalOutcomesChartMode === 'hourly' ? 'Signals (Count per hour)' : 'Signals (Cumulative)' }}</span>
+                </div>
+                <Select
+                  v-model="signalOutcomesChartMode"
+                  :options="missedChartModeOptions"
+                  option-label="label"
+                  option-value="value"
+                  size="small"
+                  class="w-36"
+                />
+              </div>
+              <svg viewBox="0 0 920 260" class="w-full h-64">
+                <defs>
+                  <linearGradient id="signalOutcomesAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.35" />
+                    <stop offset="100%" stop-color="#60a5fa" stop-opacity="0.03" />
+                  </linearGradient>
+                </defs>
+                <!-- Y-axis grid lines and labels -->
+                <g>
+                  <line
+                    v-for="(tick, idx) in signalOutcomesChartYTicks"
+                    :key="`sogy-${idx}`"
+                    x1="40"
+                    :y1="tick.y"
+                    x2="900"
+                    :y2="tick.y"
+                    stroke="#334155"
+                    stroke-width="1"
+                    stroke-dasharray="4 4"
+                  />
+                  <text
+                    v-for="(tick, idx) in signalOutcomesChartYTicks"
+                    :key="`soty-${idx}`"
+                    :x="36"
+                    :y="tick.y + 4"
+                    text-anchor="end"
+                    fill="#94a3b8"
+                    font-size="10"
+                  >{{ tick.value }}</text>
+                </g>
+                <!-- Axes -->
+                <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
+                <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
+                <!-- Axis labels -->
+                <text x="8" y="24" fill="#94a3b8" font-size="11">Count</text>
+                <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Date / Time</text>
+                <!-- X-axis tick labels -->
+                <text
+                  v-for="(tick, idx) in signalOutcomesChartXTicks"
+                  :key="`sotx-${idx}`"
+                  :x="tick.x"
+                  y="245"
+                  text-anchor="middle"
+                  fill="#94a3b8"
+                  font-size="10"
+                >{{ tick.label }}</text>
+                <!-- Area fill -->
+                <polygon :points="signalOutcomesChartAreaPolyline" fill="url(#signalOutcomesAreaGradient)" />
+                <!-- Line -->
+                <polyline
+                  :points="signalOutcomesChartPolyline"
+                  fill="none"
+                  stroke="#60a5fa"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                />
+                <!-- Interactive hover points -->
+                <circle
+                  v-for="(point, idx) in signalOutcomesChartCoordinates"
+                  :key="`soc-${idx}`"
+                  :cx="point.x"
+                  :cy="point.y"
+                  r="4"
+                  fill="#cbd5e1"
+                  class="cursor-pointer"
+                  @mousemove="showChartTooltip($event, [point.at, signalOutcomesChartMode === 'hourly' ? `Signals: ${point.count}` : `Cumulative signals: ${point.cumulative}`])"
+                  @mouseleave="hideChartTooltip"
+                >
+                  <title>{{ signalOutcomesChartMode === 'hourly' ? `Signals: ${point.count}` : `Cumulative signals: ${point.cumulative}` }}</title>
+                </circle>
+              </svg>
             </div>
 
             <!-- Admin actions -->
