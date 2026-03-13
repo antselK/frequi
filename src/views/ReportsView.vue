@@ -4937,7 +4937,7 @@ onMounted(async () => {
                     class="border-b border-surface-700/70 align-top"
                   >
                     <td class="py-2 pe-3 whitespace-nowrap">
-                      {{ timestampShort(sig.signal_ts) }}
+                      {{ formatDate(sig.signal_ts) }}
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap">
                       <div class="font-medium">{{ sig.vps_name ?? `Bot ${sig.bot_id}` }}</div>
