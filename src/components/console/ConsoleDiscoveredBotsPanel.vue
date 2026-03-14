@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ensureBotLoginInfo } from '@/composables/loginInfo';
+import { ensureBotLoginInfo, useLoginInfo } from '@/composables/loginInfo';
 import { vpsApi } from '@/composables/vpsApi';
 import type { VpsContainer, VpsServer } from '@/types/vps';
 
@@ -226,7 +226,8 @@ async function importSelected() {
         continue;
       }
 
-      const sortId = Object.keys(botStore.availableBots).length + added + 1;
+      const existingSortIds = Object.values(botStore.availableBots).map((b) => b.sortId ?? 0);
+      const sortId = (existingSortIds.length > 0 ? Math.max(...existingSortIds) : 0) + added + 1;
       const botName = `${row.vpsName}:${row.containerName}`;
 
       let resolvedUrl = row.suggestedUrl;
@@ -249,6 +250,7 @@ async function importSelected() {
 
       if (hintUsername && hintPassword) {
         try {
+          // useLoginInfo is a factory (not lifecycle-bound) — safe to call per-bot
           const { login } = useLoginInfo(botId);
           await login({
             botName,
@@ -313,6 +315,13 @@ async function loadData() {
         vpsStore.loadContainers(server.id).catch(() => undefined),
       ),
     );
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Failed to load VPS data',
+      detail: String(err),
+      life: 5000,
+    });
   } finally {
     loading.value = false;
   }
@@ -322,14 +331,22 @@ async function discoverAll() {
   loading.value = true;
   try {
     await vpsStore.loadServers();
-    for (const server of vpsStore.servers) {
-      await vpsStore.discover(server.id).catch(() => undefined);
-    }
     await Promise.all(
-      vpsStore.servers.map((server) =>
+      vpsStore.servers.map((server) => vpsApi.discover(server.id).catch(() => undefined)),
+    );
+    await Promise.all([
+      vpsStore.loadServers(),
+      ...vpsStore.servers.map((server) =>
         vpsStore.loadContainers(server.id).catch(() => undefined),
       ),
-    );
+    ]);
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Discovery failed',
+      detail: String(err),
+      life: 5000,
+    });
   } finally {
     loading.value = false;
   }
