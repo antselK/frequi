@@ -79,6 +79,16 @@ export interface VpsLogsResult {
   logs: string;
 }
 
+export interface BotSummary {
+  id: number;
+  container_name: string;
+  vps_name: string;
+  strategy: string | null;
+  exchange: string | null;
+  enabled: boolean;
+  status: string;
+}
+
 export interface VpsContainerAuthHint {
   found: boolean;
   config_path: string;

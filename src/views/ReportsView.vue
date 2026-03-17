@@ -4,7 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { timestampms, timestampShort } from '@/utils/formatters/timeformat';
 import { vpsApi } from '@/composables/vpsApi';
 import ReportsAdminDialog from '@/components/ReportsAdminDialog.vue';
-import type { ReportLayoutSettings } from '@/types/vps';
+import type { BotSummary, ReportLayoutSettings } from '@/types/vps';
 import type {
   DwhAnomaly,
   DwhCheckpoint,
@@ -383,6 +383,31 @@ PYEOF
 // ── Report layout (ordering + visibility, persisted in backend) ────────────
 const reportLayout = ref<ReportLayoutSettings | null>(null);
 const reportsAdminVisible = ref(false);
+
+// ── Global bot filter ─────────────────────────────────────────────────────
+const allManagedBots = ref<BotSummary[]>([]);
+const activeBotIds = ref<Set<number>>(new Set());
+
+const botFilterActive = computed(
+  () => allManagedBots.value.length > 0 && activeBotIds.value.size < allManagedBots.value.length,
+);
+
+function toggleBot(id: number) {
+  const s = new Set(activeBotIds.value);
+  if (s.has(id)) s.delete(id);
+  else s.add(id);
+  activeBotIds.value = s;
+}
+function selectAllBots() {
+  activeBotIds.value = new Set(allManagedBots.value.map((b) => b.id));
+}
+function clearAllBots() {
+  activeBotIds.value = new Set();
+}
+
+function isBotActive(botId: number): boolean {
+  return activeBotIds.value.size === 0 || activeBotIds.value.has(botId);
+}
 
 const categoryOptions = computed(() => {
   if (!reportLayout.value) return _categoryDefs;
@@ -1018,7 +1043,8 @@ const filteredMissedTradeEventsByBotPair = computed(() => {
     const pairMatches = !pairNeedle || event.pair.toLowerCase().includes(pairNeedle);
     const vpsMatches = !vpsNeedle || getBotVpsName(event.botId).toLowerCase().includes(vpsNeedle);
     const sideMatches = sideFilter === 'both' || event.side === sideFilter;
-    return botMatches && pairMatches && vpsMatches && sideMatches;
+    const globalBotMatches = isBotActive(event.botId);
+    return globalBotMatches && botMatches && pairMatches && vpsMatches && sideMatches;
   });
 });
 
@@ -1100,7 +1126,7 @@ const trailingEntryMissPct = computed(() => {
 });
 
 // Signal Outcomes computed stats
-const signalOutcomeItems = computed<DwhMissedSignal[]>(() => signalOutcomes.value?.items ?? []);
+const signalOutcomeItems = computed<DwhMissedSignal[]>(() => (signalOutcomes.value?.items ?? []).filter((s) => isBotActive(s.bot_id)));
 
 const signalOutcomesFilteredByFields = computed<DwhMissedSignal[]>(() => {
   const pairNeedle = signalOutcomesFilterPair.value.trim().toLowerCase();
@@ -1308,8 +1334,9 @@ const signalOutcomesChartXTicks = computed(() => {
 
 // Entry Tag Performance computed
 // Bot Performance computed
+const botPerfItemsFiltered = computed(() => (botPerf.value?.items ?? []).filter((r) => isBotActive(r.bot_id)));
 const botPerfItems = computed<DwhBotPerfRead['items']>(() => {
-  const rows = botPerf.value?.items ?? [];
+  const rows = botPerfItemsFiltered.value;
   const col = botPerfSortCol.value;
   const asc = botPerfSortAsc.value;
   return [...rows].sort((a, b) => {
@@ -1318,11 +1345,11 @@ const botPerfItems = computed<DwhBotPerfRead['items']>(() => {
     return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
   });
 });
-const botPerfTotalClosed = computed(() => botPerf.value?.items.reduce((s, r) => s + r.total_closed_trades, 0) ?? 0);
-const botPerfTotalOpen = computed(() => botPerf.value?.items.reduce((s, r) => s + r.total_open_trades, 0) ?? 0);
-const botPerfTotalPnl = computed(() => botPerf.value?.items.reduce((s, r) => s + r.total_profit_abs, 0) ?? 0);
+const botPerfTotalClosed = computed(() => botPerfItemsFiltered.value.reduce((s, r) => s + r.total_closed_trades, 0));
+const botPerfTotalOpen = computed(() => botPerfItemsFiltered.value.reduce((s, r) => s + r.total_open_trades, 0));
+const botPerfTotalPnl = computed(() => botPerfItemsFiltered.value.reduce((s, r) => s + r.total_profit_abs, 0));
 const botPerfBestBot = computed(() => {
-  const rows = botPerf.value?.items ?? [];
+  const rows = botPerfItemsFiltered.value;
   if (!rows.length) return null;
   return rows.reduce((best, r) => {
     if (r.perf_score === null) return best;
@@ -1357,8 +1384,9 @@ const botHistChartData = computed(() => {
     }));
   }
 
-  // Filter to enabled bots
-  const filtered = enabled.size > 0 ? rawItems.filter(i => enabled.has(i.bot_id)) : rawItems;
+  // Filter to enabled bots (legend toggle) AND global bot filter
+  const globalFiltered = rawItems.filter(i => isBotActive(i.bot_id));
+  const filtered = enabled.size > 0 ? globalFiltered.filter(i => enabled.has(i.bot_id)) : globalFiltered;
   if (!filtered.length) return null;
 
   const plotW = BH_W - BH_ML - BH_MR;
@@ -1477,8 +1505,8 @@ function botHistOnMouseLeave() {
 
 // All bots across both data sources — used for the legend so bots show even when de-selected
 const botHistAllBots = computed(() => {
-  const equityItems = botPerfHistory.value?.items ?? [];
-  const scoreItems = botPerfRollingScore.value?.items ?? [];
+  const equityItems = (botPerfHistory.value?.items ?? []).filter(i => isBotActive(i.bot_id));
+  const scoreItems = (botPerfRollingScore.value?.items ?? []).filter(i => isBotActive(i.bot_id));
   const seen = new Set<number>();
   const bots: { botId: number; name: string; vpsName: string; color: string }[] = [];
   const allIds = [...new Set([...equityItems, ...scoreItems].map(i => i.bot_id))].sort((a, b) => a - b);
@@ -1569,7 +1597,7 @@ const signalIndIndicatorOptions = [
 const _sigIndDateCols = new Set<string>(['open_date', 'close_date']);
 
 const signalIndItems = computed<DwhSignalIndicatorTradeRow[]>(() => {
-  let rows = signalIndData.value?.items ?? [];
+  let rows = (signalIndData.value?.items ?? []).filter((r) => isBotActive(r.bot_id));
   const mf = signalIndMatchFilter.value;
   if (mf === 'matched') rows = rows.filter((r) => r.rsi !== null);
   else if (mf === 'unmatched') rows = rows.filter((r) => r.rsi === null);
@@ -1891,7 +1919,8 @@ const filteredTrailingTradeRows = computed(() => {
     const containerMatches = !containerNeedle || containerName.includes(containerNeedle);
     const sideMatches = sideFilter === 'all' || row.side === sideFilter;
     const matchSourceMatches = matchSourceFilter === 'all' || row.matchSource === matchSourceFilter;
-    return botMatches && tradeMatches && pairMatches && vpsMatches && containerMatches && sideMatches && matchSourceMatches;
+    const globalBotMatches = isBotActive(row.botId);
+    return globalBotMatches && botMatches && tradeMatches && pairMatches && vpsMatches && containerMatches && sideMatches && matchSourceMatches;
   });
 });
 
@@ -2111,8 +2140,10 @@ const drillChartSeriesLabel = computed(() => {
   return 'Duration min (per trade, by close date)';
 });
 
+const drillTradesFiltered = computed(() => drillTrades.value.filter((t) => isBotActive(t.bot_id)));
+
 const drillChartDateRangeLabel = computed(() => {
-  const trades = drillTrades.value;
+  const trades = drillTradesFiltered.value;
   if (!trades.length) return 'Date / Time: n/a';
   const sorted = [...trades].sort((a, b) => (a.close_date ?? a.open_date ?? '').localeCompare(b.close_date ?? b.open_date ?? ''));
   const fmt = (s: string | null) => {
@@ -2124,7 +2155,7 @@ const drillChartDateRangeLabel = computed(() => {
 });
 
 const drillChartYRange = computed(() => {
-  const trades = drillTrades.value;
+  const trades = drillTradesFiltered.value;
   if (!trades.length) return { min: 0, max: 1 };
   const values = trades
     .map((t) => {
@@ -2169,7 +2200,7 @@ const drillChartZeroY = computed(() => {
 });
 
 const drillChartCoordinates = computed(() => {
-  const trades = drillTrades.value;
+  const trades = drillTradesFiltered.value;
   if (!trades.length) return [] as { x: number; y: number; at: string; tradeId: number; pair: string; value: number | null; positive: boolean }[];
   const sorted = [...trades].sort((a, b) => (a.close_date ?? a.open_date ?? '').localeCompare(b.close_date ?? b.open_date ?? ''));
   const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
@@ -3896,6 +3927,12 @@ watch(
 );
 
 onMounted(async () => {
+  try {
+    allManagedBots.value = await vpsApi.allBots();
+    selectAllBots();
+  } catch {
+    /* non-critical — filter strip stays hidden */
+  }
   await loadReportLayout();
   await ensureDataForSubcategory(selectedSubCategory.value);
 });
@@ -3934,6 +3971,27 @@ onMounted(async () => {
                 size="small"
               />
             </div>
+          </div>
+
+          <!-- Global Bot Filter Strip -->
+          <div v-if="allManagedBots.length > 0" class="flex flex-wrap items-center gap-2 py-2 border-b border-surface-700/60">
+            <span class="text-surface-400 text-xs shrink-0">Bots:</span>
+            <button
+              v-for="bot in allManagedBots"
+              :key="bot.id"
+              class="px-2 py-0.5 rounded border text-xs transition-colors whitespace-nowrap"
+              :class="activeBotIds.has(bot.id)
+                ? 'bg-primary-600/20 border-primary-500/60 text-primary-300'
+                : 'border-surface-700 text-surface-600 line-through opacity-50'"
+              :title="`#${bot.id} · ${bot.container_name} · ${bot.exchange ?? ''}`"
+              @click="toggleBot(bot.id)"
+            >
+              {{ bot.vps_name }} ({{ bot.container_name }} · {{ bot.strategy ?? '?' }})
+            </button>
+            <button class="text-xs text-surface-400 hover:text-surface-200 px-1" @click="selectAllBots">All</button>
+            <span class="text-surface-700">|</span>
+            <button class="text-xs text-surface-400 hover:text-surface-200 px-1" @click="clearAllBots">None</button>
+            <span v-if="botFilterActive" class="text-xs text-yellow-400/70 ml-1">● filtered</span>
           </div>
 
           <div class="border border-surface-400 rounded-sm p-4 space-y-2">
@@ -6326,24 +6384,24 @@ onMounted(async () => {
             </div>
 
             <!-- Summary tags -->
-            <div v-if="drillTrades.length" class="flex flex-wrap gap-2">
-              <Tag :value="`Showing: ${drillTrades.length} / ${drillTotal}`" severity="contrast" />
+            <div v-if="drillTradesFiltered.length" class="flex flex-wrap gap-2">
+              <Tag :value="`Showing: ${drillTradesFiltered.length} / ${drillTotal}${botFilterActive ? ' (bot filter active)' : ''}`" severity="contrast" />
               <Tag
-                :value="`Avg profit: ${drillTrades.filter((t) => t.profit_ratio !== null).length ? (drillTrades.reduce((s, t) => s + (t.profit_ratio ?? 0), 0) / drillTrades.filter((t) => t.profit_ratio !== null).length * 100).toFixed(2) + '%' : 'n/a'}`"
+                :value="`Avg profit: ${drillTradesFiltered.filter((t) => t.profit_ratio !== null).length ? (drillTradesFiltered.reduce((s, t) => s + (t.profit_ratio ?? 0), 0) / drillTradesFiltered.filter((t) => t.profit_ratio !== null).length * 100).toFixed(2) + '%' : 'n/a'}`"
                 severity="warn"
               />
               <Tag
-                :value="`Profitable: ${drillTrades.filter((t) => (t.profit_ratio ?? 0) > 0).length} / ${drillTrades.filter((t) => t.profit_ratio !== null).length}`"
+                :value="`Profitable: ${drillTradesFiltered.filter((t) => (t.profit_ratio ?? 0) > 0).length} / ${drillTradesFiltered.filter((t) => t.profit_ratio !== null).length}`"
                 severity="warn"
               />
               <Tag
-                :value="`Total profit: ${drillTrades.reduce((s, t) => s + (t.profit_abs ?? 0), 0).toFixed(2)} USDT`"
+                :value="`Total profit: ${drillTradesFiltered.reduce((s, t) => s + (t.profit_abs ?? 0), 0).toFixed(2)} USDT`"
                 severity="warn"
               />
             </div>
 
             <!-- Chart -->
-            <div v-if="drillTrades.length" class="space-y-1">
+            <div v-if="drillTradesFiltered.length" class="space-y-1">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-3 text-xs text-surface-400">
                   <span>{{ drillChartSeriesLabel }}</span>
@@ -6450,7 +6508,7 @@ onMounted(async () => {
                 </thead>
                 <tbody>
                   <template
-                    v-for="trade in drillTrades"
+                    v-for="trade in drillTradesFiltered"
                     :key="`${trade.bot_id}-${trade.source_trade_id}`"
                   >
                     <tr class="border-b border-surface-700/70 align-top">

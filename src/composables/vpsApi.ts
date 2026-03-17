@@ -47,6 +47,7 @@ import type {
   VpsContainer,
   VpsContainerAuthHint,
   VpsCreatePayload,
+  BotSummary,
   VpsUpdatePayload,
   VpsDiscoverResult,
   VpsDockerCheckResult,
@@ -165,6 +166,10 @@ export const vpsApi = {
   },
   async discover(vpsId: number): Promise<VpsDiscoverResult> {
     const { data } = await vpsApiClient.post<VpsDiscoverResult>(`/vps/${vpsId}/discover`);
+    return data;
+  },
+  async allBots(): Promise<BotSummary[]> {
+    const { data } = await vpsApiClient.get<BotSummary[]>('/vps/bots');
     return data;
   },
   async containers(vpsId: number): Promise<VpsContainer[]> {
