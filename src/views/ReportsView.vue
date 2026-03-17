@@ -3500,10 +3500,23 @@ function clearSignalOutcomeFilters() {
   signalOutcomesFilterOutcome.value = 'all';
 }
 
-async function runParseMissedSignals(fullRescan = false) {
+async function runParseMissedSignals(fullRescan = false, gapFill = false) {
   loadingParseMissedSignals.value = true;
   try {
-    await vpsApi.parseMissedSignals(fullRescan);
+    const res = await vpsApi.parseMissedSignals(fullRescan, gapFill);
+    if (!res.accepted) {
+      reportsError.value = 'Parse already running';
+      return;
+    }
+    // Poll until background worker finishes
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const status = await vpsApi.getMissedSignalsParseStatus();
+      if (!status.running) {
+        if (status.error) reportsError.value = `Parse failed: ${status.error}`;
+        break;
+      }
+    }
     await loadSignalOutcomes();
   } catch (error) {
     reportsError.value = String(error);
@@ -4862,8 +4875,8 @@ onMounted(async () => {
                 severity="secondary"
                 outlined
                 :loading="loadingParseMissedSignals"
-                title="Reset parse cursor and re-process all historical log events (recovers previously skipped pairs)"
-                @click="runParseMissedSignals(true)"
+                title="Find and process log events not yet captured as missed signals (skips already-analyzed events)"
+                @click="runParseMissedSignals(false, true)"
               />
               <Button
                 label="Fetch outcomes"

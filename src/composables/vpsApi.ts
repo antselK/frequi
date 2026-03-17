@@ -33,6 +33,7 @@ import type {
   DwhMissedSignalList,
   DwhMissedSignalOutcomeFetchResult,
   DwhMissedSignalParseResult,
+  DwhMissedSignalParseStatus,
   DwhEntryTagPerformanceList,
   DwhDcaAnalysisList,
   DwhSignalIndicatorAnalysis,
@@ -469,11 +470,23 @@ export const vpsApi = {
     });
     return data;
   },
-  async parseMissedSignals(fullRescan = false): Promise<DwhMissedSignalParseResult> {
-    const { data } = await vpsApiClient.post<DwhMissedSignalParseResult>(
+  async parseMissedSignals(
+    fullRescan = false,
+    gapFill = false,
+  ): Promise<{ accepted: boolean; running: boolean }> {
+    const params: Record<string, boolean> = {};
+    if (fullRescan) params.full_rescan = true;
+    if (gapFill) params.gap_fill = true;
+    const { data } = await vpsApiClient.post<{ accepted: boolean; running: boolean }>(
       '/dwh/missed-signals/parse',
       null,
-      { params: fullRescan ? { full_rescan: true } : {}, timeout: 300000 },
+      { params },
+    );
+    return data;
+  },
+  async getMissedSignalsParseStatus(): Promise<DwhMissedSignalParseStatus> {
+    const { data } = await vpsApiClient.get<DwhMissedSignalParseStatus>(
+      '/dwh/missed-signals/parse-status',
     );
     return data;
   },

@@ -473,6 +473,14 @@ export interface DwhMissedSignalParseResult {
   skipped_no_pair: number;
 }
 
+export interface DwhMissedSignalParseStatus {
+  running: boolean;
+  parsed: number;
+  skipped_no_pair: number;
+  error: string | null;
+  finished_at: string | null;
+}
+
 export interface DwhMissedSignalOutcomeFetchResult {
   fetched: number;
   errors: number;
