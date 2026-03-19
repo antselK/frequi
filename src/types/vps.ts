@@ -558,6 +558,10 @@ export interface DwhSignalIndicatorTradeRow {
   tail: number | null;
   volume: number | null;
   fisher: number | null;
+  regime_score: number | null;
+  btc_trend: number | null;
+  eth_trend: number | null;
+  rel_str: number | null;
   quality_score: number | null;
 }
 

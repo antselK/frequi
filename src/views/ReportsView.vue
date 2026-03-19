@@ -1593,6 +1593,10 @@ const signalIndIndicatorOptions = [
   { label: 'Tail', value: 'tail' },
   { label: 'Volume', value: 'volume' },
   { label: 'Fisher', value: 'fisher' },
+  { label: 'Regime', value: 'regime_score' },
+  { label: 'BTC Trend', value: 'btc_trend' },
+  { label: 'ETH Trend', value: 'eth_trend' },
+  { label: 'Rel Str', value: 'rel_str' },
 ];
 
 const _sigIndDateCols = new Set<string>(['open_date', 'close_date']);
@@ -1774,6 +1778,10 @@ const _sigIndAnalyticsKeys: Array<{ key: keyof DwhSignalIndicatorTradeRow; label
   { key: 'tail', label: 'Tail', decimals: 4 },
   { key: 'volume', label: 'Volume', decimals: 0 },
   { key: 'fisher', label: 'Fisher', decimals: 4 },
+  { key: 'regime_score', label: 'Regime', decimals: 1 },
+  { key: 'btc_trend', label: 'BTC Trend', decimals: 1 },
+  { key: 'eth_trend', label: 'ETH Trend', decimals: 1 },
+  { key: 'rel_str', label: 'Rel Str', decimals: 1 },
 ];
 
 const _SIG_BINS = 8;
@@ -5895,6 +5903,26 @@ onMounted(async () => {
                       :class="signalIndSortCol === 'fisher' ? 'text-primary-400' : ''"
                       @click="toggleSignalIndSort('fisher')"
                     >Fisher{{ signalIndSortArrow('fisher') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'regime_score' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('regime_score')"
+                    >Regime{{ signalIndSortArrow('regime_score') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'btc_trend' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('btc_trend')"
+                    >BTC{{ signalIndSortArrow('btc_trend') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'eth_trend' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('eth_trend')"
+                    >ETH{{ signalIndSortArrow('eth_trend') }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="signalIndSortCol === 'rel_str' ? 'text-primary-400' : ''"
+                      @click="toggleSignalIndSort('rel_str')"
+                    >RelStr{{ signalIndSortArrow('rel_str') }}</th>
                     <th class="py-2 pe-3">Exit</th>
                   </tr>
                 </thead>
@@ -5942,6 +5970,10 @@ onMounted(async () => {
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.tail !== null ? row.tail.toFixed(4) : '-' }}</td>
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.volume !== null ? row.volume.toFixed(0) : '-' }}</td>
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.fisher !== null ? row.fisher.toFixed(4) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.regime_score !== null ? row.regime_score.toFixed(1) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.btc_trend !== null ? row.btc_trend.toFixed(1) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.eth_trend !== null ? row.eth_trend.toFixed(1) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rel_str !== null ? row.rel_str.toFixed(1) : '-' }}</td>
                     <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.is_open ? 'Open' : row.exit_reason ?? '-' }}</td>
                   </tr>
                 </tbody>
