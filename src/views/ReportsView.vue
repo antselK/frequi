@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 
 import { timestampms, timestampShort } from '@/utils/formatters/timeformat';
 import { vpsApi } from '@/composables/vpsApi';
+import { useTableSort } from '@/composables/useTableSort';
 import ReportsAdminDialog from '@/components/ReportsAdminDialog.vue';
 import type { BotSummary, ReportLayoutSettings } from '@/types/vps';
 import type {
@@ -642,7 +643,8 @@ const botPerfHistory = ref<DwhBotPerfHistoryRead | null>(null);
 const botPerfRollingScore = ref<DwhBotPerfRollingScoreRead | null>(null);
 const botHistChartMode = ref<'equity' | 'score'>('equity');
 const botPerfProjectionMode = ref<'usdt' | 'pct' | 'compounded'>('usdt');
-const botPerfCapital = ref<number>(1000);
+const botPerfCapital = ref<number>(Number(localStorage.getItem('botPerfCapital')) || 1000);
+watch(botPerfCapital, (v) => localStorage.setItem('botPerfCapital', String(v)));
 const botHistEnabledBots = ref<Set<number>>(new Set());
 const botHistHoverDate = ref<string | null>(null);
 
@@ -1336,16 +1338,7 @@ const signalOutcomesChartXTicks = computed(() => {
 // Entry Tag Performance computed
 // Bot Performance computed
 const botPerfItemsFiltered = computed(() => (botPerf.value?.items ?? []).filter((r) => isBotActive(r.bot_id)));
-const botPerfItems = computed<DwhBotPerfRead['items']>(() => {
-  const rows = botPerfItemsFiltered.value;
-  const col = botPerfSortCol.value;
-  const asc = botPerfSortAsc.value;
-  return [...rows].sort((a, b) => {
-    const av = (a[col] as number | null) ?? -Infinity;
-    const bv = (b[col] as number | null) ?? -Infinity;
-    return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
-  });
-});
+const botPerfItems = useTableSort(botPerfItemsFiltered, botPerfSortCol, botPerfSortAsc);
 const botPerfTotalClosed = computed(() => botPerfItemsFiltered.value.reduce((s, r) => s + r.total_closed_trades, 0));
 const botPerfTotalOpen = computed(() => botPerfItemsFiltered.value.reduce((s, r) => s + r.total_open_trades, 0));
 const botPerfTotalPnl = computed(() => botPerfItemsFiltered.value.reduce((s, r) => s + r.total_profit_abs, 0));
@@ -1535,16 +1528,8 @@ function botHistToggleBot(botId: number) {
   botHistEnabledBots.value = s;
 }
 
-const entryTagItems = computed<DwhEntryTagStat[]>(() => {
-  const rows = entryTagPerformance.value?.items ?? [];
-  const col = entryTagSortCol.value;
-  const asc = entryTagSortAsc.value;
-  return [...rows].sort((a, b) => {
-    const av = a[col] ?? -Infinity;
-    const bv = b[col] ?? -Infinity;
-    return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
-  });
-});
+const entryTagRawItems = computed(() => entryTagPerformance.value?.items ?? []);
+const entryTagItems = useTableSort(entryTagRawItems, entryTagSortCol, entryTagSortAsc);
 const entryTagBestWinRate = computed(() => {
   const rows = entryTagPerformance.value?.items ?? [];
   if (!rows.length) return null;
@@ -1557,16 +1542,8 @@ const entryTagBestAvgProfit = computed(() => {
 });
 
 // DCA Analysis computed
-const dcaItems = computed<DwhDcaStat[]>(() => {
-  const rows = dcaAnalysis.value?.items ?? [];
-  const col = dcaSortCol.value;
-  const asc = dcaSortAsc.value;
-  return [...rows].sort((a, b) => {
-    const av = a[col] ?? -Infinity;
-    const bv = b[col] ?? -Infinity;
-    return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
-  });
-});
+const dcaRawItems = computed(() => dcaAnalysis.value?.items ?? []);
+const dcaItems = useTableSort(dcaRawItems, dcaSortCol, dcaSortAsc);
 const dcaSingleEntry = computed(() => dcaAnalysis.value?.items.find(r => r.order_count === 1) ?? null);
 const dcaMultiEntry = computed(() => {
   const rows = dcaAnalysis.value?.items.filter(r => r.order_count > 1) ?? [];
@@ -3548,13 +3525,17 @@ async function runParseMissedSignals(fullRescan = false, gapFill = false) {
       reportsError.value = 'Parse already running';
       return;
     }
-    // Poll until background worker finishes
-    for (;;) {
+    // Poll until background worker finishes (max 2 minutes)
+    const MAX_POLLS = 60;
+    for (let i = 0; i < MAX_POLLS; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       const status = await vpsApi.getMissedSignalsParseStatus();
       if (!status.running) {
         if (status.error) reportsError.value = `Parse failed: ${status.error}`;
         break;
+      }
+      if (i === MAX_POLLS - 1) {
+        reportsError.value = 'Parse timed out after 2 minutes — check status manually';
       }
     }
     await loadSignalOutcomes();
@@ -3930,6 +3911,7 @@ watch(selectedCategory, () => {
 watch(
   selectedSubCategory,
   async (next) => {
+    reportsError.value = '';
     await ensureDataForSubcategory(next);
   },
   { immediate: true },
@@ -7367,19 +7349,19 @@ onMounted(async () => {
                             class="py-2 pe-3 text-right font-mono text-xs"
                             :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
                           >
-                            {{ row.daily_profit_usdt !== null ? (() => { const v = row.daily_profit_usdt / botPerfCapital * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; })() : '—' }}
+                            {{ row.daily_profit_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const v = row.daily_profit_usdt / c * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; })() : '—' }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs font-semibold"
                             :class="(row.monthly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
                           >
-                            {{ row.monthly_projected_usdt !== null ? (() => { const v = row.monthly_projected_usdt / botPerfCapital * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; })() : '—' }}
+                            {{ row.monthly_projected_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const v = row.monthly_projected_usdt / c * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; })() : '—' }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs"
                             :class="(row.yearly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
                           >
-                            {{ row.yearly_projected_usdt !== null ? (() => { const v = row.yearly_projected_usdt / botPerfCapital * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`; })() : '—' }}
+                            {{ row.yearly_projected_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const v = row.yearly_projected_usdt / c * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`; })() : '—' }}
                           </td>
                         </template>
                         <!-- Compounded columns: (1 + daily_rate)^N - 1 -->
@@ -7388,19 +7370,19 @@ onMounted(async () => {
                             class="py-2 pe-3 text-right font-mono text-xs"
                             :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
                           >
-                            {{ row.daily_profit_usdt !== null ? (() => { const v = row.daily_profit_usdt / botPerfCapital * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; })() : '—' }}
+                            {{ row.daily_profit_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const v = row.daily_profit_usdt / c * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; })() : '—' }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs font-semibold"
                             :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
                           >
-                            {{ row.daily_profit_usdt !== null ? (() => { const d = row.daily_profit_usdt / botPerfCapital; const v = (Math.pow(1 + d, 30) - 1) * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; })() : '—' }}
+                            {{ row.daily_profit_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const d = row.daily_profit_usdt / c; const v = (Math.pow(1 + d, 30) - 1) * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; })() : '—' }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs"
                             :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
                           >
-                            {{ row.daily_profit_usdt !== null ? (() => { const d = row.daily_profit_usdt / botPerfCapital; const v = (Math.pow(1 + d, 365) - 1) * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`; })() : '—' }}
+                            {{ row.daily_profit_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const d = row.daily_profit_usdt / c; const v = (Math.pow(1 + d, 365) - 1) * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`; })() : '—' }}
                           </td>
                         </template>
                       </tr>

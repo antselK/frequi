@@ -137,6 +137,21 @@ vpsApiClient.interceptors.request.use((config) => {
   return config;
 });
 
+vpsApiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      if (status === 401 || status === 403) {
+        console.error(`[vpsApi] Auth error ${status}: ${error.config?.url}`);
+      } else if (status && status >= 500) {
+        console.error(`[vpsApi] Server error ${status}: ${error.config?.url}`);
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+
 export const vpsApi = {
   async listVps(): Promise<VpsServer[]> {
     const { data } = await vpsApiClient.get<VpsServer[]>('/vps');
