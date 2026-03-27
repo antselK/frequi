@@ -220,7 +220,7 @@ const _subcategoryDefs: Record<ReportCategory, ReportOption[]> = {
     {
       value: 'trade-drilldown',
       label: 'Trade drill-down report',
-      todo: 'TODO: Add trade search/filter (bot, pair, strategy, etc.) and drill-down view.',
+      todo: 'Search and filter trades by bot, pair, strategy, entry tag, exit reason, and side. Expand any trade to view its order history and timeline. Includes summary stats and an equity chart.',
     },
     {
       value: 'missed-trades',
