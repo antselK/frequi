@@ -562,6 +562,10 @@ export interface DwhSignalIndicatorTradeRow {
   btc_trend: number | null;
   eth_trend: number | null;
   rel_str: number | null;
+  ob_spread_pct: number | null;
+  ob_bid_vol: number | null;
+  ob_ask_vol: number | null;
+  ob_imbalance: number | null;
   quality_score: number | null;
 }
 

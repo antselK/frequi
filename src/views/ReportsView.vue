@@ -5905,6 +5905,10 @@ onMounted(async () => {
                       :class="signalIndSortCol === 'rel_str' ? 'text-primary-400' : ''"
                       @click="toggleSignalIndSort('rel_str')"
                     >RelStr{{ signalIndSortArrow('rel_str') }}</th>
+                    <th class="py-2 pe-3 whitespace-nowrap text-right">Spread%</th>
+                    <th class="py-2 pe-3 whitespace-nowrap text-right">BidVol</th>
+                    <th class="py-2 pe-3 whitespace-nowrap text-right">AskVol</th>
+                    <th class="py-2 pe-3 whitespace-nowrap text-right">OBImbal</th>
                     <th class="py-2 pe-3">Exit</th>
                   </tr>
                 </thead>
@@ -5956,6 +5960,10 @@ onMounted(async () => {
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.btc_trend !== null ? row.btc_trend.toFixed(1) : '-' }}</td>
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.eth_trend !== null ? row.eth_trend.toFixed(1) : '-' }}</td>
                     <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rel_str !== null ? row.rel_str.toFixed(1) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs" :class="row.ob_spread_pct !== null ? (row.ob_spread_pct < 0.05 ? 'text-green-400' : row.ob_spread_pct < 0.15 ? 'text-yellow-400' : 'text-red-400') : ''">{{ row.ob_spread_pct !== null ? row.ob_spread_pct.toFixed(4) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.ob_bid_vol !== null ? row.ob_bid_vol.toFixed(0) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.ob_ask_vol !== null ? row.ob_ask_vol.toFixed(0) : '-' }}</td>
+                    <td class="py-2 pe-3 text-right font-mono text-xs" :class="row.ob_imbalance !== null ? (row.is_short ? (row.ob_imbalance < 0.5 ? 'text-green-400' : 'text-red-400') : (row.ob_imbalance > 0.5 ? 'text-green-400' : 'text-red-400')) : ''">{{ row.ob_imbalance !== null ? row.ob_imbalance.toFixed(3) : '-' }}</td>
                     <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.is_open ? 'Open' : row.exit_reason ?? '-' }}</td>
                   </tr>
                 </tbody>
