@@ -3919,7 +3919,7 @@ watch(
 
 onMounted(async () => {
   try {
-    allManagedBots.value = await vpsApi.allBots();
+    allManagedBots.value = (await vpsApi.allBots()).filter((b) => b.enabled);
     selectAllBots();
   } catch {
     /* non-critical — filter strip stays hidden */
