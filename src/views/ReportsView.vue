@@ -25,6 +25,8 @@ import type {
   DwhBotPerfRead,
   DwhBotPerfHistoryRead,
   DwhBotPerfRollingScoreRead,
+  DwhTodDurationRead,
+  DwhTodDurationHourlyStat,
 } from '@/types/vps';
 
 type ReportCategory = 'system' | 'trades';
@@ -364,9 +366,9 @@ PYEOF
     },
     // ── Tier 3: interesting, lower urgency ───────────────────────────────
     {
-      value: 'time-of-day-heatmap',
-      label: '📋 Time-of-day heatmap',
-      todo: 'TODO: 7×24 grid (weekday × hour) colored by avg profit_ratio. Identify best/worst times to trade. Source: dwh_trades.open_date.',
+      value: 'tod-duration',
+      label: 'Time-of-Day Duration',
+      todo: 'Per-UTC-hour trade duration stats: avg/median duration, % trades completing ≤1h and % stuck ≥8h, avg profit%, and win rate. Filters: date range, enter tag, direction. Use to identify hours with structurally slow/stuck trades and inform time-filter windows in the strategy.',
     },
     {
       value: 'entry-exit-matrix',
@@ -629,6 +631,44 @@ const signalIndTagOptions = [
   { label: 'short_chop_vol', value: 'short_chop_vol' },
   { label: 'short_chop_vol_trail', value: 'short_chop_vol_trail' },
 ];
+
+// Time-of-Day Duration state
+const todDuration = ref<DwhTodDurationRead | null>(null);
+const todDurLoaded = ref(false);
+const loadingTodDur = ref(false);
+const todDurDateFrom = ref(daysAgoStr(90));
+const todDurDateTo = ref(todayStr());
+const todDurFilterTag = ref('');
+const todDurFilterDir = ref<'all' | 'long' | 'short'>('all');
+const todDurSortCol = ref<keyof DwhTodDurationHourlyStat>('hour_utc');
+const todDurSortAsc = ref(true);
+
+async function loadTodDuration() {
+  try {
+    loadingTodDur.value = true;
+    todDuration.value = await vpsApi.dwhTodDuration(
+      todDurDateFrom.value,
+      todDurDateTo.value,
+      todDurFilterTag.value || undefined,
+      todDurFilterDir.value,
+    );
+    todDurLoaded.value = true;
+  } catch (err) {
+    reportsError.value = String(err);
+  } finally {
+    loadingTodDur.value = false;
+  }
+}
+
+const todDurItems = computed(() => {
+  if (!todDuration.value) return [];
+  const items = [...todDuration.value.items];
+  items.sort((a, b) => {
+    const diff = (a[todDurSortCol.value] as number) - (b[todDurSortCol.value] as number);
+    return todDurSortAsc.value ? diff : -diff;
+  });
+  return items;
+});
 
 // Bot Performance Analysis state
 const botPerf = ref<DwhBotPerfRead | null>(null);
@@ -6258,39 +6298,131 @@ onMounted(async () => {
           <!-- Stub report pages — Tier 3                               -->
           <!-- ============================================================ -->
 
-          <div v-if="selectedSubCategory === 'time-of-day-heatmap'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <!-- ═══ TIME-OF-DAY DURATION ═══ -->
+          <div v-if="selectedSubCategory === 'tod-duration'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+            <!-- Header + filters -->
             <div class="flex flex-wrap items-center justify-between gap-3">
-              <div class="flex items-center gap-2">
-                <h5 class="font-semibold">Time-of-Day Heatmap</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 3</span>
-              </div>
+              <h5 class="font-semibold">Time-of-Day Duration</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
-                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <InputText v-model="todDurDateFrom" type="date" size="small" class="w-36" />
+                <span class="text-surface-400 text-xs">to</span>
+                <InputText v-model="todDurDateTo" type="date" size="small" class="w-36" />
+                <InputText v-model="todDurFilterTag" size="small" class="w-44" placeholder="Enter tag (optional)" />
+                <Select
+                  v-model="todDurFilterDir"
+                  :options="[{label:'All directions',value:'all'},{label:'Long only',value:'long'},{label:'Short only',value:'short'}]"
+                  option-label="label"
+                  option-value="value"
+                  size="small"
+                  class="w-36"
+                />
+                <Button
+                  label="Load"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  :loading="loadingTodDur"
+                  @click="loadTodDuration"
+                />
               </div>
             </div>
-            <p class="text-sm text-surface-300">
-              7×24 grid (weekday × hour UTC) colored by avg <code class="bg-surface-700 px-1 rounded">profit_ratio</code>.
-              Answers: <em>are there consistently good or bad times to open trades?</em>
-            </p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div class="rounded border border-surface-700 p-3 space-y-1">
-                <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• 7 rows (Mon–Sun) × 24 cols (hours), cell = avg profit% for that slot</div>
-                <div class="text-surface-400">• Color scale: dark red (loss) → neutral → dark green (profit)</div>
-                <div class="text-surface-400">• Tooltip on hover: avg profit%, trade count</div>
-                <div class="text-surface-400">• Filter by bot, pair, date range</div>
+
+            <!-- Summary cards -->
+            <div v-if="todDurLoaded && todDuration" class="flex flex-wrap gap-3 text-sm">
+              <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold">{{ todDuration.total_trades }}</div>
+                <div class="text-xs text-surface-400">Total trades</div>
               </div>
-              <div class="rounded border border-surface-700 p-3 space-y-1">
-                <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">SELECT EXTRACT(dow FROM open_date), EXTRACT(hour FROM open_date), AVG(profit_ratio), COUNT(*) FROM dwh_trades GROUP BY 1, 2</code></div>
-                <div class="text-surface-400">• Frontend: render 7×24 grid of colored divs using Tailwind bg-opacity</div>
-                <div class="text-surface-400">• Color = lerp(red, green) based on profit_ratio range</div>
+              <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold">
+                  {{ todDurItems.length > 0 ? String(todDurItems.reduce((best, r) => r.pct_8h_plus < best.pct_8h_plus ? r : best, todDurItems[0]).hour_utc).padStart(2,'0') + ':00' : '—' }}
+                </div>
+                <div class="text-xs text-surface-400">Best hour (lowest 8h+%)</div>
+              </div>
+              <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div class="text-lg font-bold text-red-400">
+                  {{ todDurItems.length > 0 ? String(todDurItems.reduce((worst, r) => r.pct_8h_plus > worst.pct_8h_plus ? r : worst, todDurItems[0]).hour_utc).padStart(2,'0') + ':00' : '—' }}
+                </div>
+                <div class="text-xs text-surface-400">Worst hour (highest 8h+%)</div>
               </div>
             </div>
+
+            <!-- Table -->
+            <div v-if="todDurItems.length > 0" class="overflow-x-auto w-full">
+              <table class="w-full text-sm border-collapse">
+                <thead>
+                  <tr class="border-b border-surface-600 text-left text-surface-300">
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                      :class="todDurSortCol === 'hour_utc' ? 'text-primary-400' : ''"
+                      @click="todDurSortCol === 'hour_utc' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'hour_utc'), (todDurSortAsc = true))"
+                    >Hour (UTC) {{ todDurSortCol === 'hour_utc' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+                      :class="todDurSortCol === 'total_trades' ? 'text-primary-400' : ''"
+                      @click="todDurSortCol === 'total_trades' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'total_trades'), (todDurSortAsc = false))"
+                    >Trades {{ todDurSortCol === 'total_trades' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+                      :class="todDurSortCol === 'pct_le_1h' ? 'text-primary-400' : ''"
+                      @click="todDurSortCol === 'pct_le_1h' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'pct_le_1h'), (todDurSortAsc = false))"
+                    >≤1h% {{ todDurSortCol === 'pct_le_1h' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+                      :class="todDurSortCol === 'pct_8h_plus' ? 'text-primary-400' : ''"
+                      @click="todDurSortCol === 'pct_8h_plus' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'pct_8h_plus'), (todDurSortAsc = false))"
+                    >8h+% {{ todDurSortCol === 'pct_8h_plus' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+                      :class="todDurSortCol === 'avg_duration_min' ? 'text-primary-400' : ''"
+                      @click="todDurSortCol === 'avg_duration_min' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'avg_duration_min'), (todDurSortAsc = false))"
+                    >Avg Dur (min) {{ todDurSortCol === 'avg_duration_min' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+                      :class="todDurSortCol === 'median_duration_min' ? 'text-primary-400' : ''"
+                      @click="todDurSortCol === 'median_duration_min' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'median_duration_min'), (todDurSortAsc = false))"
+                    >Median Dur (min) {{ todDurSortCol === 'median_duration_min' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+                      :class="todDurSortCol === 'avg_profit_pct' ? 'text-primary-400' : ''"
+                      @click="todDurSortCol === 'avg_profit_pct' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'avg_profit_pct'), (todDurSortAsc = false))"
+                    >Avg Profit% {{ todDurSortCol === 'avg_profit_pct' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                    <th
+                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+                      :class="todDurSortCol === 'win_rate_pct' ? 'text-primary-400' : ''"
+                      @click="todDurSortCol === 'win_rate_pct' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'win_rate_pct'), (todDurSortAsc = false))"
+                    >Win Rate% {{ todDurSortCol === 'win_rate_pct' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in todDurItems"
+                    :key="row.hour_utc"
+                    class="border-b border-surface-700/70 hover:bg-surface-700/30"
+                  >
+                    <td class="py-1.5 pe-3 font-mono text-xs">{{ String(row.hour_utc).padStart(2, '0') }}:00</td>
+                    <td class="py-1.5 pe-3 text-right">{{ row.total_trades }}</td>
+                    <td class="py-1.5 pe-3 text-right font-mono text-xs"
+                      :class="row.pct_le_1h >= 50 ? 'text-green-400' : row.pct_le_1h < 30 ? 'text-red-400' : 'text-yellow-400'"
+                    >{{ row.pct_le_1h.toFixed(1) }}%</td>
+                    <td class="py-1.5 pe-3 text-right font-mono text-xs"
+                      :class="row.pct_8h_plus <= 5 ? 'text-green-400' : row.pct_8h_plus <= 15 ? 'text-yellow-400' : 'text-red-400'"
+                    >{{ row.pct_8h_plus.toFixed(1) }}%</td>
+                    <td class="py-1.5 pe-3 text-right font-mono text-xs">{{ row.avg_duration_min.toFixed(0) }}</td>
+                    <td class="py-1.5 pe-3 text-right font-mono text-xs">{{ row.median_duration_min.toFixed(0) }}</td>
+                    <td class="py-1.5 pe-3 text-right font-mono text-xs"
+                      :class="row.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'"
+                    >{{ row.avg_profit_pct.toFixed(2) }}%</td>
+                    <td class="py-1.5 pe-3 text-right font-mono text-xs"
+                      :class="row.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'"
+                    >{{ row.win_rate_pct.toFixed(1) }}%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty state -->
+            <div v-else-if="todDurLoaded" class="text-surface-400 text-sm">No data found for selected filters.</div>
           </div>
 
           <div v-if="selectedSubCategory === 'entry-exit-matrix'" class="border border-surface-400 rounded-sm p-4 space-y-4">

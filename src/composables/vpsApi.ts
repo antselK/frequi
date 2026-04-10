@@ -39,6 +39,7 @@ import type {
   DwhBotPerfRead,
   DwhBotPerfHistoryRead,
   DwhBotPerfRollingScoreRead,
+  DwhTodDurationRead,
   DwhOrder,
   DwhSummary,
   ReportLayoutSettings,
@@ -620,6 +621,23 @@ export const vpsApi = {
         },
       },
     );
+    return data;
+  },
+
+  async dwhTodDuration(
+    dateFrom?: string,
+    dateTo?: string,
+    enterTag?: string,
+    direction?: string,
+  ): Promise<DwhTodDurationRead> {
+    const { data } = await vpsApiClient.get<DwhTodDurationRead>('/dwh/reports/tod-duration', {
+      params: {
+        date_from: dateFrom,
+        date_to: dateTo,
+        enter_tag: enterTag || undefined,
+        direction: direction && direction !== 'all' ? direction : undefined,
+      },
+    });
     return data;
   },
 

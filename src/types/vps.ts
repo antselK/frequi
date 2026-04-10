@@ -659,6 +659,22 @@ export interface DwhBotPerfRollingScoreRead {
   items: DwhBotPerfRollingScorePoint[];
 }
 
+export interface DwhTodDurationHourlyStat {
+  hour_utc: number;
+  total_trades: number;
+  avg_duration_min: number;
+  median_duration_min: number;
+  pct_le_1h: number;
+  pct_8h_plus: number;
+  avg_profit_pct: number;
+  win_rate_pct: number;
+}
+
+export interface DwhTodDurationRead {
+  total_trades: number;
+  items: DwhTodDurationHourlyStat[];
+}
+
 // Report layout settings (stored in app_settings under key "report-layout")
 export interface ReportSubcategorySettings {
   order: string[];
