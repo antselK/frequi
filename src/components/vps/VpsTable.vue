@@ -18,7 +18,9 @@ const emit = defineEmits<{
   (event: 'delete', item: VpsServer): void;
 }>();
 
-const sortKey = ref<'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker' | 'last_error'>('name');
+const sortKey = ref<'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker' | 'last_error'>(
+  'name',
+);
 const sortDirection = ref<'asc' | 'desc'>('asc');
 
 function severityByStatus(status: string) {
@@ -41,7 +43,10 @@ function dockerSortValue(item: VpsServer): string {
   return 'unknown';
 }
 
-function sortableValue(item: VpsServer, key: 'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker' | 'last_error'): string | number {
+function sortableValue(
+  item: VpsServer,
+  key: 'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker' | 'last_error',
+): string | number {
   if (key === 'ssh_port') {
     return item.ssh_port;
   }
@@ -54,7 +59,9 @@ function sortableValue(item: VpsServer, key: 'name' | 'ip' | 'ssh_user' | 'ssh_p
   return item[key] || '';
 }
 
-function toggleSort(key: 'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker' | 'last_error') {
+function toggleSort(
+  key: 'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker' | 'last_error',
+) {
   if (sortKey.value === key) {
     sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
     return;
@@ -63,7 +70,9 @@ function toggleSort(key: 'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'd
   sortDirection.value = 'asc';
 }
 
-function sortIndicator(key: 'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker' | 'last_error') {
+function sortIndicator(
+  key: 'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker' | 'last_error',
+) {
   if (sortKey.value !== key) {
     return '';
   }
@@ -80,10 +89,12 @@ const sortedItems = computed(() => {
       return (leftValue - rightValue) * direction;
     }
 
-    return String(leftValue).localeCompare(String(rightValue), undefined, {
-      numeric: true,
-      sensitivity: 'base',
-    }) * direction;
+    return (
+      String(leftValue).localeCompare(String(rightValue), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      }) * direction
+    );
   });
 });
 </script>
@@ -94,10 +105,14 @@ const sortedItems = computed(() => {
       <thead>
         <tr class="border-b border-surface-500">
           <th class="p-2">
-            <button type="button" class="font-semibold" @click="toggleSort('name')">Name{{ sortIndicator('name') }}</button>
+            <button type="button" class="font-semibold" @click="toggleSort('name')">
+              Name{{ sortIndicator('name') }}
+            </button>
           </th>
           <th class="p-2">
-            <button type="button" class="font-semibold" @click="toggleSort('ip')">IP{{ sortIndicator('ip') }}</button>
+            <button type="button" class="font-semibold" @click="toggleSort('ip')">
+              IP{{ sortIndicator('ip') }}
+            </button>
           </th>
           <th class="p-2">
             <button type="button" class="font-semibold" @click="toggleSort('ssh_user')">
@@ -105,13 +120,19 @@ const sortedItems = computed(() => {
             </button>
           </th>
           <th class="p-2">
-            <button type="button" class="font-semibold" @click="toggleSort('ssh_port')">Port{{ sortIndicator('ssh_port') }}</button>
+            <button type="button" class="font-semibold" @click="toggleSort('ssh_port')">
+              Port{{ sortIndicator('ssh_port') }}
+            </button>
           </th>
           <th class="p-2">
-            <button type="button" class="font-semibold" @click="toggleSort('status')">Status{{ sortIndicator('status') }}</button>
+            <button type="button" class="font-semibold" @click="toggleSort('status')">
+              Status{{ sortIndicator('status') }}
+            </button>
           </th>
           <th class="p-2">
-            <button type="button" class="font-semibold" @click="toggleSort('docker')">Docker{{ sortIndicator('docker') }}</button>
+            <button type="button" class="font-semibold" @click="toggleSort('docker')">
+              Docker{{ sortIndicator('docker') }}
+            </button>
           </th>
           <th class="p-2">
             <button type="button" class="font-semibold" @click="toggleSort('last_error')">
@@ -122,11 +143,7 @@ const sortedItems = computed(() => {
         </tr>
       </thead>
       <tbody>
-        <tr
-          v-for="item in sortedItems"
-          :key="item.id"
-          class="border-b border-surface-500"
-        >
+        <tr v-for="item in sortedItems" :key="item.id" class="border-b border-surface-500">
           <td class="p-2 align-middle">{{ item.name }}</td>
           <td class="p-2 align-middle">{{ item.ip }}</td>
           <td class="p-2 align-middle">{{ item.ssh_user }}</td>
@@ -142,32 +159,68 @@ const sortedItems = computed(() => {
           <td class="p-2 align-middle">{{ item.last_error || '' }}</td>
           <td class="p-2 align-middle">
             <div class="flex flex-wrap gap-1">
-              <Button size="small" severity="secondary" outlined title="Test SSH connection" @click="emit('test', item)">
+              <Button
+                size="small"
+                severity="secondary"
+                outlined
+                title="Test SSH connection"
+                @click="emit('test', item)"
+              >
                 <template #icon>
                   <i-mdi-lan-connect />
                 </template>
               </Button>
-              <Button size="small" severity="secondary" outlined title="Check Docker availability" @click="emit('checkDocker', item)">
+              <Button
+                size="small"
+                severity="secondary"
+                outlined
+                title="Check Docker availability"
+                @click="emit('checkDocker', item)"
+              >
                 <template #icon>
                   <i-mdi-docker />
                 </template>
               </Button>
-              <Button size="small" severity="secondary" outlined title="Discover running containers" @click="emit('discover', item)">
+              <Button
+                size="small"
+                severity="secondary"
+                outlined
+                title="Discover running containers"
+                @click="emit('discover', item)"
+              >
                 <template #icon>
                   <i-mdi-magnify />
                 </template>
               </Button>
-              <Button size="small" severity="success" outlined title="Start discovered containers" @click="emit('startAll', item)">
+              <Button
+                size="small"
+                severity="success"
+                outlined
+                title="Start discovered containers"
+                @click="emit('startAll', item)"
+              >
                 <template #icon>
                   <i-mdi-play />
                 </template>
               </Button>
-              <Button size="small" severity="secondary" outlined title="Restart discovered containers" @click="emit('restartAll', item)">
+              <Button
+                size="small"
+                severity="secondary"
+                outlined
+                title="Restart discovered containers"
+                @click="emit('restartAll', item)"
+              >
                 <template #icon>
                   <i-mdi-restart />
                 </template>
               </Button>
-              <Button size="small" severity="danger" outlined title="Stop discovered containers" @click="emit('stopAll', item)">
+              <Button
+                size="small"
+                severity="danger"
+                outlined
+                title="Stop discovered containers"
+                @click="emit('stopAll', item)"
+              >
                 <template #icon>
                   <i-mdi-stop />
                 </template>
@@ -177,12 +230,24 @@ const sortedItems = computed(() => {
                   <i-mdi-view-list />
                 </template>
               </Button>
-              <Button size="small" severity="secondary" outlined title="Edit VPS" @click="emit('edit', item)">
+              <Button
+                size="small"
+                severity="secondary"
+                outlined
+                title="Edit VPS"
+                @click="emit('edit', item)"
+              >
                 <template #icon>
                   <i-mdi-pencil />
                 </template>
               </Button>
-              <Button size="small" severity="danger" outlined title="Delete VPS" @click="emit('delete', item)">
+              <Button
+                size="small"
+                severity="danger"
+                outlined
+                title="Delete VPS"
+                @click="emit('delete', item)"
+              >
                 <template #icon>
                   <i-mdi-delete />
                 </template>

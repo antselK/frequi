@@ -244,9 +244,15 @@ async function loadRollupCompactionConfig() {
 async function loadTrades() {
   tradesLoading.value = true;
   try {
-    const normalizedDays = Number.isFinite(Number(tradeDays.value)) ? Math.max(0, Math.floor(Number(tradeDays.value))) : 0;
-    const normalizedLimit = Number.isFinite(Number(tradeLimit.value)) ? Math.max(0, Math.floor(Number(tradeLimit.value))) : 0;
-    const normalizedBotId = Number.isFinite(Number(tradeBotId.value)) ? Math.max(0, Math.floor(Number(tradeBotId.value))) : 0;
+    const normalizedDays = Number.isFinite(Number(tradeDays.value))
+      ? Math.max(0, Math.floor(Number(tradeDays.value)))
+      : 0;
+    const normalizedLimit = Number.isFinite(Number(tradeLimit.value))
+      ? Math.max(0, Math.floor(Number(tradeLimit.value)))
+      : 0;
+    const normalizedBotId = Number.isFinite(Number(tradeBotId.value))
+      ? Math.max(0, Math.floor(Number(tradeBotId.value)))
+      : 0;
 
     tradeDays.value = normalizedDays;
     tradeLimit.value = normalizedLimit;
@@ -286,14 +292,22 @@ async function refreshAllData() {
 async function loadAuditData() {
   auditLoading.value = true;
   try {
-    const normalizedHours = Number.isFinite(Number(auditHours.value)) ? Math.max(1, Math.floor(Number(auditHours.value))) : 24;
-    const normalizedBotId = Number.isFinite(Number(auditBotId.value)) ? Math.max(0, Math.floor(Number(auditBotId.value))) : 0;
+    const normalizedHours = Number.isFinite(Number(auditHours.value))
+      ? Math.max(1, Math.floor(Number(auditHours.value)))
+      : 24;
+    const normalizedBotId = Number.isFinite(Number(auditBotId.value))
+      ? Math.max(0, Math.floor(Number(auditBotId.value)))
+      : 0;
     auditHours.value = normalizedHours;
     auditBotId.value = normalizedBotId > 0 ? normalizedBotId : null;
 
     const [mode, summaryData, rules] = await Promise.all([
       vpsApi.dwhAuditMode(),
-      vpsApi.dwhAuditSummary(normalizedHours, 200, normalizedBotId > 0 ? normalizedBotId : undefined),
+      vpsApi.dwhAuditSummary(
+        normalizedHours,
+        200,
+        normalizedBotId > 0 ? normalizedBotId : undefined,
+      ),
       vpsApi.dwhAuditRules(),
     ]);
     auditMode.value = mode;
@@ -310,8 +324,12 @@ async function loadAuditData() {
 async function loadAuditMessages() {
   auditMessagesLoading.value = true;
   try {
-    const normalizedHours = Number.isFinite(Number(auditHours.value)) ? Math.max(1, Math.floor(Number(auditHours.value))) : 24;
-    const normalizedBotId = Number.isFinite(Number(auditBotId.value)) ? Math.max(0, Math.floor(Number(auditBotId.value))) : 0;
+    const normalizedHours = Number.isFinite(Number(auditHours.value))
+      ? Math.max(1, Math.floor(Number(auditHours.value)))
+      : 24;
+    const normalizedBotId = Number.isFinite(Number(auditBotId.value))
+      ? Math.max(0, Math.floor(Number(auditBotId.value)))
+      : 0;
     const normalizedLimit = Number.isFinite(Number(auditMessageLimit.value))
       ? Math.max(1, Math.min(500, Math.floor(Number(auditMessageLimit.value))))
       : 60;
@@ -337,11 +355,20 @@ async function loadAuditMessages() {
   }
 }
 
-async function upsertAuditBucketRule(logger: string, level: string, ruleType: 'include' | 'exclude') {
+async function upsertAuditBucketRule(
+  logger: string,
+  level: string,
+  ruleType: 'include' | 'exclude',
+) {
   auditRuleSaving.value = true;
   errorText.value = '';
   try {
-    await vpsApi.upsertDwhAuditRule({ logger_name: logger, level, rule_type: ruleType, enabled: true });
+    await vpsApi.upsertDwhAuditRule({
+      logger_name: logger,
+      level,
+      rule_type: ruleType,
+      enabled: true,
+    });
     await loadAuditData();
     await loadAnomalies();
     await loadTrades();
@@ -368,7 +395,12 @@ async function deleteAuditRule(ruleId: number) {
 }
 
 async function purgeExcludedLogs() {
-  if (!confirm('Delete all stored log events matching exclude rules? This frees DWH space but cannot be undone. Run ingestion afterwards to backfill new logs.')) return;
+  if (
+    !confirm(
+      'Delete all stored log events matching exclude rules? This frees DWH space but cannot be undone. Run ingestion afterwards to backfill new logs.',
+    )
+  )
+    return;
   purging.value = true;
   purgeResult.value = null;
   errorText.value = '';
@@ -384,7 +416,13 @@ async function purgeExcludedLogs() {
 async function toggleAuditMode() {
   if (!auditMode.value) return;
   const next = !auditMode.value.enabled;
-  if (next && !confirm('Enable full audit capture? All logs will be stored including excluded loggers. DWH will grow faster.')) return;
+  if (
+    next &&
+    !confirm(
+      'Enable full audit capture? All logs will be stored including excluded loggers. DWH will grow faster.',
+    )
+  )
+    return;
   auditModeToggling.value = true;
   errorText.value = '';
   try {
@@ -399,10 +437,7 @@ async function toggleAuditMode() {
 async function loadAlerts() {
   alertLoading.value = true;
   try {
-    const [config, status] = await Promise.all([
-      vpsApi.dwhAlertConfig(),
-      vpsApi.dwhAlertStatus(),
-    ]);
+    const [config, status] = await Promise.all([vpsApi.dwhAlertConfig(), vpsApi.dwhAlertStatus()]);
     alertConfig.value = config;
     alertStatus.value = status;
   } catch (error) {
@@ -643,7 +678,9 @@ async function saveIngestionConfig() {
       ? Math.max(5, Math.min(300, Math.floor(Number(ingestionTimeoutSeconds.value))))
       : 20;
     ingestionTimeoutSeconds.value = normalized;
-    ingestionConfig.value = await vpsApi.updateDwhIngestionConfig({ log_fetch_timeout_seconds: normalized });
+    ingestionConfig.value = await vpsApi.updateDwhIngestionConfig({
+      log_fetch_timeout_seconds: normalized,
+    });
     unstickMessage.value = `Saved global log fetch timeout: ${normalized}s`;
   } catch (error) {
     errorText.value = String(error);
@@ -718,7 +755,12 @@ async function runRollupCompaction() {
 
     rollupDays.value = normalizeIntInput(rollupDays.value, fallbackRollupDays, 1, 3650);
     compactLogDays.value = normalizeIntInput(compactLogDays.value, fallbackCompactDays, 1, 3650);
-    compactMessageMaxLen.value = normalizeIntInput(compactMessageMaxLen.value, fallbackMessageLen, 50, 2000);
+    compactMessageMaxLen.value = normalizeIntInput(
+      compactMessageMaxLen.value,
+      fallbackMessageLen,
+      50,
+      2000,
+    );
 
     rollupCompactionResult.value = await vpsApi.runDwhRollupCompaction(
       rollupDays.value,
@@ -803,12 +845,19 @@ onBeforeUnmount(() => {
       </button>
     </section>
 
-    <section v-if="errorText" class="rounded border border-red-700 bg-red-950/40 text-red-300 p-3 text-sm">
+    <section
+      v-if="errorText"
+      class="rounded border border-red-700 bg-red-950/40 text-red-300 p-3 text-sm"
+    >
       {{ errorText }}
     </section>
 
     <section class="grid grid-cols-2 lg:grid-cols-6 gap-3">
-      <article v-for="card in cards" :key="card.label" class="rounded border border-surface-700 p-3 bg-surface-900">
+      <article
+        v-for="card in cards"
+        :key="card.label"
+        class="rounded border border-surface-700 p-3 bg-surface-900"
+      >
         <p class="text-xs text-surface-400">{{ card.label }}</p>
         <p class="text-xl font-semibold">{{ card.value }}</p>
       </article>
@@ -817,21 +866,30 @@ onBeforeUnmount(() => {
     <section v-if="retentionResult" class="rounded border border-surface-700 bg-surface-900 p-4">
       <h2 class="font-semibold mb-2">Retention Result</h2>
       <p class="text-sm text-surface-300">
-        Deleted trades {{ retentionResult.deleted_trades }}, orders {{ retentionResult.deleted_orders }}, logs {{ retentionResult.deleted_log_events }}, anomalies {{ retentionResult.deleted_anomalies }}, runs {{ retentionResult.deleted_runs }}.
+        Deleted trades {{ retentionResult.deleted_trades }}, orders
+        {{ retentionResult.deleted_orders }}, logs {{ retentionResult.deleted_log_events }},
+        anomalies {{ retentionResult.deleted_anomalies }}, runs {{ retentionResult.deleted_runs }}.
       </p>
     </section>
 
-    <section v-if="rollupCompactionResult" class="rounded border border-surface-700 bg-surface-900 p-4">
+    <section
+      v-if="rollupCompactionResult"
+      class="rounded border border-surface-700 bg-surface-900 p-4"
+    >
       <h2 class="font-semibold mb-2">Rollup + Compaction Result</h2>
       <p class="text-sm text-surface-300">
-        Upserted rollup rows {{ rollupCompactionResult.upserted_rollup_rows }}, deleted old rollup rows {{ rollupCompactionResult.deleted_rollup_rows }}, compacted log events {{ rollupCompactionResult.compacted_log_events }}.
+        Upserted rollup rows {{ rollupCompactionResult.upserted_rollup_rows }}, deleted old rollup
+        rows {{ rollupCompactionResult.deleted_rollup_rows }}, compacted log events
+        {{ rollupCompactionResult.compacted_log_events }}.
       </p>
     </section>
 
     <section class="rounded border border-surface-700 bg-surface-900 p-4 space-y-3">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <h2 class="font-semibold">Trade Explorer</h2>
-        <p class="text-xs text-surface-400">Showing {{ trades.length }} of {{ tradesTotal }} trades</p>
+        <p class="text-xs text-surface-400">
+          Showing {{ trades.length }} of {{ tradesTotal }} trades
+        </p>
       </div>
 
       <div class="grid grid-cols-2 md:grid-cols-7 gap-2">
@@ -894,7 +952,9 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="tradesLoading" class="text-sm text-surface-400">Loading trades...</div>
-      <div v-else-if="!trades.length" class="text-sm text-surface-400">No trades matched current filters.</div>
+      <div v-else-if="!trades.length" class="text-sm text-surface-400">
+        No trades matched current filters.
+      </div>
       <div v-else class="overflow-x-auto">
         <table class="w-full text-sm table-auto">
           <thead>
@@ -918,15 +978,24 @@ onBeforeUnmount(() => {
               <tr class="border-b border-surface-800">
                 <td class="ps-0 pe-2 py-2 align-top whitespace-nowrap">
                   <div class="font-medium">{{ trade.vps_name || '—' }}</div>
-                  <div class="text-xs text-surface-400">{{ trade.container_name || '—' }} · ID {{ trade.bot_id }}</div>
+                  <div class="text-xs text-surface-400">
+                    {{ trade.container_name || '—' }} · ID {{ trade.bot_id }}
+                  </div>
                 </td>
                 <td class="px-2 py-2 align-top">#{{ trade.source_trade_id }}</td>
                 <td class="px-2 py-2 align-top">{{ trade.pair || '—' }}</td>
-                <td class="px-2 py-2 align-top">{{ trade.is_short === null ? '—' : (trade.is_short ? 'Short' : 'Long') }}</td>
+                <td class="px-2 py-2 align-top">
+                  {{ trade.is_short === null ? '—' : trade.is_short ? 'Short' : 'Long' }}
+                </td>
                 <td class="px-2 py-2 align-top">{{ trade.strategy || '—' }}</td>
                 <td class="px-2 py-2 text-xs leading-5 align-top">
-                  <div><span class="text-surface-400">Entry:</span> {{ trade.enter_tag || '—' }}</div>
-                  <div><span class="text-surface-400">Exit:</span> {{ trade.exit_reason || (trade.is_open ? 'OPEN' : '—') }}</div>
+                  <div>
+                    <span class="text-surface-400">Entry:</span> {{ trade.enter_tag || '—' }}
+                  </div>
+                  <div>
+                    <span class="text-surface-400">Exit:</span>
+                    {{ trade.exit_reason || (trade.is_open ? 'OPEN' : '—') }}
+                  </div>
                 </td>
                 <td class="px-2 py-2 align-top">{{ formatDate(trade.open_date) }}</td>
                 <td class="px-2 py-2 align-top">{{ formatDate(trade.close_date) }}</td>
@@ -942,10 +1011,20 @@ onBeforeUnmount(() => {
                   </button>
                 </td>
               </tr>
-              <tr v-if="expandedTradeId === trade.id" class="border-b border-surface-800 bg-surface-950/40">
+              <tr
+                v-if="expandedTradeId === trade.id"
+                class="border-b border-surface-800 bg-surface-950/40"
+              >
                 <td colspan="12" class="py-3 px-2">
-                  <p v-if="loadingTradeTimeline[trade.id]" class="text-sm text-surface-400">Loading timeline...</p>
-                  <div v-else-if="!(tradeTimelines[trade.id]?.items?.length)" class="text-sm text-surface-400">No timeline events found.</div>
+                  <p v-if="loadingTradeTimeline[trade.id]" class="text-sm text-surface-400">
+                    Loading timeline...
+                  </p>
+                  <div
+                    v-else-if="!tradeTimelines[trade.id]?.items?.length"
+                    class="text-sm text-surface-400"
+                  >
+                    No timeline events found.
+                  </div>
                   <div v-else class="space-y-2 max-h-72 overflow-y-auto">
                     <div
                       v-for="(item, idx) in tradeTimelines[trade.id].items"
@@ -954,11 +1033,20 @@ onBeforeUnmount(() => {
                     >
                       <div class="flex flex-wrap items-center gap-2 mb-1">
                         <span class="text-surface-300">{{ formatDate(item.ts) }}</span>
-                        <span class="px-2 py-0.5 rounded border" :class="timelineConfidenceClass(item.confidence)">{{ item.confidence }}</span>
+                        <span
+                          class="px-2 py-0.5 rounded border"
+                          :class="timelineConfidenceClass(item.confidence)"
+                          >{{ item.confidence }}</span
+                        >
                         <span class="text-surface-200 font-semibold">{{ item.kind }}</span>
                         <span class="text-surface-100">{{ item.title }}</span>
                       </div>
-                      <p v-if="item.details" class="text-surface-300 whitespace-pre-wrap break-words">{{ item.details }}</p>
+                      <p
+                        v-if="item.details"
+                        class="text-surface-300 whitespace-pre-wrap break-words"
+                      >
+                        {{ item.details }}
+                      </p>
                     </div>
                   </div>
                 </td>
@@ -974,10 +1062,15 @@ onBeforeUnmount(() => {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       @click.self="showAuditModal = false"
     >
-      <section class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto">
+      <section
+        class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto"
+      >
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">Audit View</h2>
-          <button class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800" @click="showAuditModal = false">
+          <button
+            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
+            @click="showAuditModal = false"
+          >
             Close
           </button>
         </div>
@@ -986,14 +1079,26 @@ onBeforeUnmount(() => {
           <span class="text-surface-300">Full audit capture:</span>
           <button
             class="px-2 py-0.5 rounded border text-xs disabled:opacity-50 transition-colors"
-            :class="auditMode?.enabled
-              ? 'border-orange-600 text-orange-300 hover:bg-orange-950/30'
-              : 'border-surface-600 text-surface-400 hover:bg-surface-800'"
+            :class="
+              auditMode?.enabled
+                ? 'border-orange-600 text-orange-300 hover:bg-orange-950/30'
+                : 'border-surface-600 text-surface-400 hover:bg-surface-800'
+            "
             :disabled="auditModeToggling || auditMode === null"
-            :title="auditMode?.enabled ? 'Full audit ON — all logs stored, exclude rules bypassed. Click to disable.' : 'Normal mode — exclude rules active. Click to enable full audit capture.'"
+            :title="
+              auditMode?.enabled
+                ? 'Full audit ON — all logs stored, exclude rules bypassed. Click to disable.'
+                : 'Normal mode — exclude rules active. Click to enable full audit capture.'
+            "
             @click="toggleAuditMode"
           >
-            {{ auditModeToggling ? '...' : auditMode?.enabled ? 'ON (override exclude rules)' : 'OFF (exclude rules active)' }}
+            {{
+              auditModeToggling
+                ? '...'
+                : auditMode?.enabled
+                  ? 'ON (override exclude rules)'
+                  : 'OFF (exclude rules active)'
+            }}
           </button>
         </div>
 
@@ -1021,7 +1126,9 @@ onBeforeUnmount(() => {
             >
               {{ auditLoading ? 'Loading...' : 'Refresh Audit Data' }}
             </button>
-            <p v-if="auditSummary" class="text-xs text-surface-400">Total events in range: {{ auditSummary.total_events }}</p>
+            <p v-if="auditSummary" class="text-xs text-surface-400">
+              Total events in range: {{ auditSummary.total_events }}
+            </p>
           </div>
         </div>
 
@@ -1029,7 +1136,9 @@ onBeforeUnmount(() => {
           <div class="rounded border border-surface-700 p-3 overflow-x-auto lg:col-span-2">
             <h3 class="font-semibold mb-2">Log Event Summary (Logger + Level)</h3>
             <p v-if="auditLoading" class="text-sm text-surface-400">Loading audit summary...</p>
-            <p v-else-if="!(auditSummary?.buckets?.length)" class="text-sm text-surface-400">No log events in selected range.</p>
+            <p v-else-if="!auditSummary?.buckets?.length" class="text-sm text-surface-400">
+              No log events in selected range.
+            </p>
             <table v-else class="w-full text-sm">
               <thead>
                 <tr class="text-left text-surface-400 border-b border-surface-700">
@@ -1042,7 +1151,11 @@ onBeforeUnmount(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="bucket in auditSummary?.buckets ?? []" :key="`${bucket.logger}-${bucket.level}`" class="border-b border-surface-800">
+                <tr
+                  v-for="bucket in auditSummary?.buckets ?? []"
+                  :key="`${bucket.logger}-${bucket.level}`"
+                  class="border-b border-surface-800"
+                >
                   <td class="py-2 pe-2">{{ bucket.logger }}</td>
                   <td class="py-2 pe-2">{{ bucket.level }}</td>
                   <td class="py-2 pe-2">{{ bucket.total }}</td>
@@ -1073,8 +1186,12 @@ onBeforeUnmount(() => {
 
           <div class="rounded border border-surface-700 p-3 overflow-x-auto lg:col-span-1">
             <h3 class="font-semibold mb-2">Selected Capture Rules</h3>
-            <p class="text-xs text-surface-400 mb-2">These rules drive anomaly/trade log analytics filtering.</p>
-            <p v-if="!auditRules.length" class="text-sm text-surface-400">No rules selected yet (all logs are included).</p>
+            <p class="text-xs text-surface-400 mb-2">
+              These rules drive anomaly/trade log analytics filtering.
+            </p>
+            <p v-if="!auditRules.length" class="text-sm text-surface-400">
+              No rules selected yet (all logs are included).
+            </p>
             <table v-else class="w-full text-sm">
               <thead>
                 <tr class="text-left text-surface-400 border-b border-surface-700">
@@ -1101,10 +1218,13 @@ onBeforeUnmount(() => {
                 </tr>
               </tbody>
             </table>
-            <div v-if="auditRules.some((r) => r.rule_type === 'exclude')" class="mt-3 pt-3 border-t border-surface-700">
+            <div
+              v-if="auditRules.some((r) => r.rule_type === 'exclude')"
+              class="mt-3 pt-3 border-t border-surface-700"
+            >
               <p class="text-xs text-surface-400 mb-2">
-                Excluded logs are stored in DWH but hidden from reports. Purging removes them permanently to free space.
-                Future ingestions will skip them automatically.
+                Excluded logs are stored in DWH but hidden from reports. Purging removes them
+                permanently to free space. Future ingestions will skip them automatically.
               </p>
               <div class="flex flex-wrap items-center gap-3">
                 <button
@@ -1117,7 +1237,10 @@ onBeforeUnmount(() => {
                 <span v-if="purgeResult" class="text-xs text-surface-300">
                   Done — deleted {{ purgeResult.deleted_log_events.toLocaleString() }} log events,
                   {{ purgeResult.deleted_anomaly_signatures.toLocaleString() }} anomaly signatures
-                  ({{ purgeResult.rules_applied }} rule{{ purgeResult.rules_applied !== 1 ? 's' : '' }} applied)
+                  ({{ purgeResult.rules_applied }} rule{{
+                    purgeResult.rules_applied !== 1 ? 's' : ''
+                  }}
+                  applied)
                 </span>
               </div>
             </div>
@@ -1127,7 +1250,9 @@ onBeforeUnmount(() => {
         <section class="rounded border border-surface-700 p-3 space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-semibold">Strategy Message Explorer</h3>
-            <p class="text-xs text-surface-400">Matched {{ auditMessages.length }} of {{ auditMessagesTotal }} events</p>
+            <p class="text-xs text-surface-400">
+              Matched {{ auditMessages.length }} of {{ auditMessagesTotal }} events
+            </p>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-6 gap-2">
@@ -1167,11 +1292,16 @@ onBeforeUnmount(() => {
           </div>
 
           <p class="text-xs text-surface-400">
-            Use this to verify/report strategy events like trade skips, entry blocks, and other decision messages.
+            Use this to verify/report strategy events like trade skips, entry blocks, and other
+            decision messages.
           </p>
 
-          <p v-if="auditMessagesLoading" class="text-sm text-surface-400">Loading strategy messages...</p>
-          <p v-else-if="!auditMessages.length" class="text-sm text-surface-400">No matching messages in selected range.</p>
+          <p v-if="auditMessagesLoading" class="text-sm text-surface-400">
+            Loading strategy messages...
+          </p>
+          <p v-else-if="!auditMessages.length" class="text-sm text-surface-400">
+            No matching messages in selected range.
+          </p>
           <div v-else class="max-h-[38vh] overflow-y-auto space-y-2">
             <div
               v-for="(item, index) in auditMessages"
@@ -1179,7 +1309,10 @@ onBeforeUnmount(() => {
               class="rounded border border-surface-700 p-2 text-xs"
             >
               <p class="text-surface-300">
-                {{ formatDate(item.event_ts) }} · #{{ item.bot_id }} · {{ item.vps_name || '—' }}/{{ item.container_name || '—' }} · {{ item.level }} · {{ item.logger }}
+                {{ formatDate(item.event_ts) }} · #{{ item.bot_id }} · {{ item.vps_name || '—' }}/{{
+                  item.container_name || '—'
+                }}
+                · {{ item.level }} · {{ item.logger }}
               </p>
               <p class="text-surface-100 whitespace-pre-wrap break-words">{{ item.message }}</p>
             </div>
@@ -1193,10 +1326,15 @@ onBeforeUnmount(() => {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       @click.self="showRunsModal = false"
     >
-      <section class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto">
+      <section
+        class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto"
+      >
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">Recent Ingestion Runs</h2>
-          <button class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800" @click="showRunsModal = false">
+          <button
+            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
+            @click="showRunsModal = false"
+          >
             Close
           </button>
         </div>
@@ -1220,7 +1358,9 @@ onBeforeUnmount(() => {
               >
                 Apply
               </button>
-              <label class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap ms-2">
+              <label
+                class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap ms-2"
+              >
                 <input v-model="showFailedOnly" type="checkbox" class="accent-primary" />
                 Failed only
               </label>
@@ -1233,7 +1373,9 @@ onBeforeUnmount(() => {
               </button>
             </div>
           </div>
-          <div v-if="!visibleRunHistory.length" class="text-sm text-surface-400">No runs to display.</div>
+          <div v-if="!visibleRunHistory.length" class="text-sm text-surface-400">
+            No runs to display.
+          </div>
           <div v-else class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead>
@@ -1254,13 +1396,18 @@ onBeforeUnmount(() => {
                     <td class="py-2 pe-2">#{{ run.id }}</td>
                     <td class="py-2 pe-2">{{ run.mode }}</td>
                     <td class="py-2 pe-2">
-                      <span class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold" :class="runStatusClass(run.status)">
+                      <span
+                        class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold"
+                        :class="runStatusClass(run.status)"
+                      >
                         {{ run.status }}
                       </span>
                     </td>
                     <td class="py-2 pe-2">{{ formatDate(run.started_at) }}</td>
                     <td class="py-2 pe-2">{{ formatDate(run.finished_at) }}</td>
-                    <td class="py-2 pe-2">{{ run.result ? `${run.result.bots_synced}/${run.result.bots_failed}` : '—' }}</td>
+                    <td class="py-2 pe-2">
+                      {{ run.result ? `${run.result.bots_synced}/${run.result.bots_failed}` : '—' }}
+                    </td>
                     <td class="py-2 pe-2">{{ run.actor || '—' }}</td>
                     <td class="py-2">
                       <button
@@ -1271,7 +1418,10 @@ onBeforeUnmount(() => {
                       </button>
                     </td>
                   </tr>
-                  <tr v-if="expandedRunId === run.id" class="border-b border-surface-800 bg-surface-950/40">
+                  <tr
+                    v-if="expandedRunId === run.id"
+                    class="border-b border-surface-800 bg-surface-950/40"
+                  >
                     <td colspan="8" class="py-3 px-2">
                       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                         <div class="rounded border border-surface-700 p-3">
@@ -1279,26 +1429,57 @@ onBeforeUnmount(() => {
                           <p>Scanned: {{ run.result?.bots_scanned ?? 0 }}</p>
                           <p>Synced: {{ run.result?.bots_synced ?? 0 }}</p>
                           <p>Failed: {{ run.result?.bots_failed ?? 0 }}</p>
-                          <p>Trades +{{ run.result?.inserted_trades ?? 0 }} / ~{{ run.result?.updated_trades ?? 0 }}</p>
-                          <p>Orders +{{ run.result?.inserted_orders ?? 0 }} / ~{{ run.result?.updated_orders ?? 0 }}</p>
-                          <p>Logs +{{ run.result?.inserted_log_events ?? 0 }}, anomaly signatures touched {{ run.result?.updated_anomalies ?? 0 }}</p>
+                          <p>
+                            Trades +{{ run.result?.inserted_trades ?? 0 }} / ~{{
+                              run.result?.updated_trades ?? 0
+                            }}
+                          </p>
+                          <p>
+                            Orders +{{ run.result?.inserted_orders ?? 0 }} / ~{{
+                              run.result?.updated_orders ?? 0
+                            }}
+                          </p>
+                          <p>
+                            Logs +{{ run.result?.inserted_log_events ?? 0 }}, anomaly signatures
+                            touched {{ run.result?.updated_anomalies ?? 0 }}
+                          </p>
                         </div>
                         <div class="rounded border border-surface-700 p-3">
                           <h3 class="font-semibold mb-1">Errors</h3>
                           <p v-if="run.error" class="text-red-300 mb-1">{{ run.error }}</p>
-                          <p v-if="!run.result?.errors?.length && !run.error" class="text-surface-400">No errors recorded.</p>
+                          <p
+                            v-if="!run.result?.errors?.length && !run.error"
+                            class="text-surface-400"
+                          >
+                            No errors recorded.
+                          </p>
                           <ul v-else class="list-disc ms-5 space-y-1 text-red-300">
-                            <li v-for="(entry, index) in run.result?.errors ?? []" :key="`${run.id}-${index}`">{{ entry }}</li>
+                            <li
+                              v-for="(entry, index) in run.result?.errors ?? []"
+                              :key="`${run.id}-${index}`"
+                            >
+                              {{ entry }}
+                            </li>
                           </ul>
                         </div>
                         <div class="rounded border border-surface-700 p-3">
                           <h3 class="font-semibold mb-1">Top Anomalies In Run</h3>
-                          <p v-if="loadingRunAnomalies[run.id]" class="text-surface-400">Loading...</p>
-                          <p v-else-if="!(runAnomalies[run.id]?.length)" class="text-surface-400">No anomaly spikes found.</p>
+                          <p v-if="loadingRunAnomalies[run.id]" class="text-surface-400">
+                            Loading...
+                          </p>
+                          <p v-else-if="!runAnomalies[run.id]?.length" class="text-surface-400">
+                            No anomaly spikes found.
+                          </p>
                           <ul v-else class="space-y-1 text-surface-200">
-                            <li v-for="(row, index) in runAnomalies[run.id]" :key="`${run.id}-a-${index}`" class="text-xs">
+                            <li
+                              v-for="(row, index) in runAnomalies[run.id]"
+                              :key="`${run.id}-a-${index}`"
+                              class="text-xs"
+                            >
                               <span class="font-semibold">{{ row.occurrences }}x</span>
-                              <span class="text-surface-400"> {{ row.level }} / {{ row.logger }} </span>
+                              <span class="text-surface-400">
+                                {{ row.level }} / {{ row.logger }}
+                              </span>
                               <span> {{ row.signature }} </span>
                             </li>
                           </ul>
@@ -1314,7 +1495,9 @@ onBeforeUnmount(() => {
 
         <section v-if="runResult" class="rounded border border-surface-700 p-4">
           <h3 class="font-semibold mb-2">Last Run Errors</h3>
-          <p v-if="!runErrors.length" class="text-sm text-surface-400">No errors reported in the last run.</p>
+          <p v-if="!runErrors.length" class="text-sm text-surface-400">
+            No errors reported in the last run.
+          </p>
           <ul v-else class="list-disc ms-5 space-y-1 text-sm text-red-300">
             <li v-for="(entry, index) in runErrors" :key="`${index}-${entry}`">{{ entry }}</li>
           </ul>
@@ -1327,10 +1510,15 @@ onBeforeUnmount(() => {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       @click.self="showAnomaliesModal = false"
     >
-      <section class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto">
+      <section
+        class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto"
+      >
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">Anomaly Trends + Samples</h2>
-          <button class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800" @click="showAnomaliesModal = false">
+          <button
+            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
+            @click="showAnomaliesModal = false"
+          >
             Close
           </button>
         </div>
@@ -1357,7 +1545,9 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-if="anomaliesLoading" class="text-sm text-surface-400">Loading anomalies...</div>
-          <div v-else-if="!anomalies.length" class="text-sm text-surface-400">No anomaly data yet.</div>
+          <div v-else-if="!anomalies.length" class="text-sm text-surface-400">
+            No anomaly data yet.
+          </div>
           <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div class="rounded border border-surface-700 p-3 overflow-x-auto">
               <table class="w-full text-sm">
@@ -1371,7 +1561,11 @@ onBeforeUnmount(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in anomalies" :key="item.signature_hash" class="border-b border-surface-800">
+                  <tr
+                    v-for="item in anomalies"
+                    :key="item.signature_hash"
+                    class="border-b border-surface-800"
+                  >
                     <td class="py-2 pe-2">{{ item.level }}</td>
                     <td class="py-2 pe-2">{{ item.logger }}</td>
                     <td class="py-2 pe-2">{{ item.occurrences }}</td>
@@ -1395,20 +1589,37 @@ onBeforeUnmount(() => {
               <template v-else>
                 <div>
                   <p class="text-xs text-surface-400 mb-1">Hourly trend (last 7d)</p>
-                  <div v-if="!anomalyTrend.length" class="text-sm text-surface-400">No trend points.</div>
+                  <div v-if="!anomalyTrend.length" class="text-sm text-surface-400">
+                    No trend points.
+                  </div>
                   <div v-else class="max-h-40 overflow-y-auto space-y-1">
-                    <div v-for="(point, index) in anomalyTrend" :key="`trend-${index}`" class="text-xs text-surface-200">
+                    <div
+                      v-for="(point, index) in anomalyTrend"
+                      :key="`trend-${index}`"
+                      class="text-xs text-surface-200"
+                    >
                       {{ formatDate(point.bucket_ts) }} — {{ point.occurrences }}
                     </div>
                   </div>
                 </div>
                 <div>
                   <p class="text-xs text-surface-400 mb-1">Recent samples</p>
-                  <div v-if="!anomalySamples.length" class="text-sm text-surface-400">No samples.</div>
+                  <div v-if="!anomalySamples.length" class="text-sm text-surface-400">
+                    No samples.
+                  </div>
                   <div v-else class="max-h-56 overflow-y-auto space-y-2">
-                    <div v-for="(sample, index) in anomalySamples" :key="`sample-${index}`" class="rounded border border-surface-700 p-2 text-xs">
-                      <p class="text-surface-300">{{ formatDate(sample.event_ts) }} · #{{ sample.bot_id }} · {{ sample.level }} · {{ sample.logger }}</p>
-                      <p class="text-surface-100 whitespace-pre-wrap break-words">{{ sample.message }}</p>
+                    <div
+                      v-for="(sample, index) in anomalySamples"
+                      :key="`sample-${index}`"
+                      class="rounded border border-surface-700 p-2 text-xs"
+                    >
+                      <p class="text-surface-300">
+                        {{ formatDate(sample.event_ts) }} · #{{ sample.bot_id }} ·
+                        {{ sample.level }} · {{ sample.logger }}
+                      </p>
+                      <p class="text-surface-100 whitespace-pre-wrap break-words">
+                        {{ sample.message }}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1424,17 +1635,24 @@ onBeforeUnmount(() => {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       @click.self="showCheckpointsModal = false"
     >
-      <section class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto">
+      <section
+        class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto"
+      >
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">Bot Checkpoints</h2>
-          <button class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800" @click="showCheckpointsModal = false">
+          <button
+            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
+            @click="showCheckpointsModal = false"
+          >
             Close
           </button>
         </div>
 
         <section class="rounded border border-surface-700 p-4">
           <h3 class="font-semibold mb-2">Bot Checkpoints</h3>
-          <div v-if="!summary?.checkpoints?.length" class="text-sm text-surface-400">No checkpoints yet.</div>
+          <div v-if="!summary?.checkpoints?.length" class="text-sm text-surface-400">
+            No checkpoints yet.
+          </div>
           <div v-else class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead>
@@ -1449,12 +1667,19 @@ onBeforeUnmount(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="checkpoint in summary.checkpoints" :key="`${checkpoint.bot_id}-${checkpoint.container_name}`" class="border-b border-surface-800">
+                <tr
+                  v-for="checkpoint in summary.checkpoints"
+                  :key="`${checkpoint.bot_id}-${checkpoint.container_name}`"
+                  class="border-b border-surface-800"
+                >
                   <td class="py-2 pe-2">{{ checkpoint.vps_name }}</td>
                   <td class="py-2 pe-2">{{ checkpoint.container_name }}</td>
                   <td class="py-2 pe-2">{{ checkpoint.strategy || '—' }}</td>
                   <td class="py-2 pe-2">
-                    <span class="px-2 py-1 rounded text-xs font-medium" :class="checkpointStatusClass(checkpoint.last_status)">
+                    <span
+                      class="px-2 py-1 rounded text-xs font-medium"
+                      :class="checkpointStatusClass(checkpoint.last_status)"
+                    >
                       {{ checkpoint.last_status }}
                     </span>
                   </td>
@@ -1474,10 +1699,15 @@ onBeforeUnmount(() => {
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       @click.self="showSettingsModal = false"
     >
-      <section class="w-full max-w-4xl rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[90vh] overflow-y-auto">
+      <section
+        class="w-full max-w-4xl rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[90vh] overflow-y-auto"
+      >
         <div class="flex items-center justify-between">
           <h2 class="text-lg font-semibold">DWH Settings</h2>
-          <button class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800" @click="showSettingsModal = false">
+          <button
+            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
+            @click="showSettingsModal = false"
+          >
             Close
           </button>
         </div>
@@ -1488,7 +1718,10 @@ onBeforeUnmount(() => {
           <template v-else>
             <p class="text-sm text-surface-300">
               Enabled:
-              <span class="font-semibold" :class="alertConfig?.enabled ? 'text-green-300' : 'text-yellow-300'">
+              <span
+                class="font-semibold"
+                :class="alertConfig?.enabled ? 'text-green-300' : 'text-yellow-300'"
+              >
                 {{ alertConfig?.enabled ? 'on' : 'off' }}
               </span>
             </p>
@@ -1496,12 +1729,18 @@ onBeforeUnmount(() => {
               Alerting is disabled in this dev stage (no alerts are sent/logged automatically).
             </p>
             <p v-if="alertConfig" class="text-xs text-surface-400">
-              Rules: bots_failed ≥ {{ alertConfig.bots_failed_threshold }}, anomaly spike ≥ {{ alertConfig.anomaly_occurrences_threshold }} in {{ alertConfig.anomaly_window_minutes }}m.
+              Rules: bots_failed ≥ {{ alertConfig.bots_failed_threshold }}, anomaly spike ≥
+              {{ alertConfig.anomaly_occurrences_threshold }} in
+              {{ alertConfig.anomaly_window_minutes }}m.
             </p>
             <p v-if="alertStatus" class="text-xs text-surface-400">
-              Last evaluation: {{ formatDate(alertStatus.evaluated_at) }} · currently triggered: {{ alertStatus.triggered_count }}
+              Last evaluation: {{ formatDate(alertStatus.evaluated_at) }} · currently triggered:
+              {{ alertStatus.triggered_count }}
             </p>
-            <ul v-if="alertStatus?.enabled && alertStatus.alerts.length" class="list-disc ms-5 text-xs text-red-300 space-y-1">
+            <ul
+              v-if="alertStatus?.enabled && alertStatus.alerts.length"
+              class="list-disc ms-5 text-xs text-red-300 space-y-1"
+            >
               <li v-for="item in alertStatus.alerts" :key="item.key">{{ item.message }}</li>
             </ul>
           </template>
@@ -1511,27 +1750,46 @@ onBeforeUnmount(() => {
           <h3 class="font-semibold">Ingestion Controls</h3>
           <p class="text-sm text-surface-300">
             State:
-            <span class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold ms-1" :class="asyncStatusBadgeClass">
+            <span
+              class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold ms-1"
+              :class="asyncStatusBadgeClass"
+            >
               {{ asyncStatus?.status ?? 'idle' }}
             </span>
           </p>
-          <p class="text-sm text-surface-300">Started: {{ formatDate(asyncStatus?.started_at ?? null) }}</p>
-          <p class="text-sm text-surface-300">Finished: {{ formatDate(asyncStatus?.finished_at ?? null) }}</p>
+          <p class="text-sm text-surface-300">
+            Started: {{ formatDate(asyncStatus?.started_at ?? null) }}
+          </p>
+          <p class="text-sm text-surface-300">
+            Finished: {{ formatDate(asyncStatus?.finished_at ?? null) }}
+          </p>
           <p
-            v-if="asyncStatus?.status === 'running' && (asyncStatus?.current_container_name || asyncStatus?.current_vps_name)"
+            v-if="
+              asyncStatus?.status === 'running' &&
+              (asyncStatus?.current_container_name || asyncStatus?.current_vps_name)
+            "
             class="text-sm text-surface-300"
           >
             Current bot:
             <span class="font-medium text-surface-100">
-              {{ asyncStatus?.current_vps_name || '—' }} / {{ asyncStatus?.current_container_name || '—' }}
+              {{ asyncStatus?.current_vps_name || '—' }} /
+              {{ asyncStatus?.current_container_name || '—' }}
             </span>
-            <span v-if="asyncStatus?.current_bot_index && asyncStatus?.current_bots_total" class="text-surface-400">
+            <span
+              v-if="asyncStatus?.current_bot_index && asyncStatus?.current_bots_total"
+              class="text-surface-400"
+            >
               ({{ asyncStatus.current_bot_index }}/{{ asyncStatus.current_bots_total }})
             </span>
           </p>
           <div class="flex flex-wrap items-center gap-3 pt-1">
             <label class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap">
-              <input v-model="runAsyncMode" type="checkbox" class="accent-primary" :disabled="running" />
+              <input
+                v-model="runAsyncMode"
+                type="checkbox"
+                class="accent-primary"
+                :disabled="running"
+              />
               Run async before start
             </label>
             <button
@@ -1580,7 +1838,9 @@ onBeforeUnmount(() => {
               {{ ingestionConfigSaving ? 'Saving...' : 'Save Timeout' }}
             </button>
           </div>
-          <p class="text-xs text-surface-400">Applies globally to all VPS log fetch operations for ingestion.</p>
+          <p class="text-xs text-surface-400">
+            Applies globally to all VPS log fetch operations for ingestion.
+          </p>
           <p v-if="unstickMessage" class="text-xs text-surface-400">{{ unstickMessage }}</p>
         </section>
 
@@ -1604,7 +1864,8 @@ onBeforeUnmount(() => {
           </div>
           <p class="text-xs text-surface-400">Delete DWH rows older than selected days.</p>
           <p v-if="retentionConfig" class="text-xs text-surface-400">
-            Auto: {{ retentionConfig.enabled ? 'on' : 'off' }} · {{ retentionConfig.days }}d · every {{ retentionConfig.interval_minutes }}m · next {{ nextAutoRetentionText }}
+            Auto: {{ retentionConfig.enabled ? 'on' : 'off' }} · {{ retentionConfig.days }}d · every
+            {{ retentionConfig.interval_minutes }}m · next {{ nextAutoRetentionText }}
           </p>
         </section>
 
@@ -1644,7 +1905,10 @@ onBeforeUnmount(() => {
             </button>
           </div>
           <p v-if="rollupCompactionConfig" class="text-xs text-surface-400">
-            Auto: {{ rollupCompactionConfig.enabled ? 'on' : 'off' }} · rollup {{ rollupCompactionConfig.rollup_days }}d · compact {{ rollupCompactionConfig.compact_log_days }}d · every {{ rollupCompactionConfig.interval_minutes }}m · next {{ nextAutoRollupText }}
+            Auto: {{ rollupCompactionConfig.enabled ? 'on' : 'off' }} · rollup
+            {{ rollupCompactionConfig.rollup_days }}d · compact
+            {{ rollupCompactionConfig.compact_log_days }}d · every
+            {{ rollupCompactionConfig.interval_minutes }}m · next {{ nextAutoRollupText }}
           </p>
           <p class="text-xs text-surface-400">
             Rollups store hourly anomaly counts; compaction truncates older long log messages.

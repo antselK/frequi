@@ -7,18 +7,15 @@ import { useTableSort } from '@/composables/useTableSort';
 import ReportsAdminDialog from '@/components/ReportsAdminDialog.vue';
 import type { BotSummary, ReportLayoutSettings } from '@/types/vps';
 import type {
-  DwhAnomaly,
   DwhCheckpoint,
-  DwhIngestionRun,
-  DwhIngestionRunResult,
   DwhLogCauseSummary,
   DwhLogCumulativePoint,
+  DwhAnomalySample,
   DwhMissedSignal,
   DwhMissedSignalList,
+  DwhOrder,
   DwhTrade,
-  DwhEntryTagStat,
   DwhEntryTagPerformanceList,
-  DwhDcaStat,
   DwhDcaAnalysisList,
   DwhSignalIndicatorTradeRow,
   DwhSignalIndicatorAnalysis,
@@ -58,15 +55,6 @@ interface TimelinePoint {
   ts: string;
   at: string;
   count: number;
-}
-
-interface IngestTimelinePoint {
-  at: string;
-  insertedLogs: number;
-  addedErrors: number;
-  addedStrategyLogs: number;
-  botsFailed: number;
-  status: DwhIngestionRun['status'];
 }
 
 interface LogsCumulativeChartPoint {
@@ -474,12 +462,9 @@ function handleLayoutSaved(layout: ReportLayoutSettings) {
 // ──────────────────────────────────────────────────────────────────────────
 
 const systemErrorTimelinePoints = ref<TimelinePoint[]>([]);
-const dwhIngestTimeline = ref<IngestTimelinePoint[]>([]);
 const logsCumulativeChartPoints = ref<LogsCumulativeChartPoint[]>([]);
 const missedTradeEvents = ref<ParsedLogEvent[]>([]);
 const missedTotal = ref(0);
-const missedOffset = ref(0);
-const missedPageSize = 500;
 const botDisplayById = ref<Map<number, BotDisplayMeta>>(new Map());
 const systemSpikeSummary = ref<DwhLogCauseSummary | null>(null);
 const logsSpikeSummary = ref<DwhLogCauseSummary | null>(null);
@@ -557,12 +542,12 @@ const drillFilterStrategy = ref('');
 const drillFilterEntryReason = ref('');
 const drillFilterExitReason = ref('');
 const drillFilterSide = ref<'all' | 'long' | 'short'>('all');
-const drillTrades = ref<import('@/types/vps').DwhTrade[]>([]);
+const drillTrades = ref<DwhTrade[]>([]);
 const drillTotal = ref(0);
 const drillOffset = ref(0);
 const drillPageSize = 100;
 const drillExpandedKey = ref<string | null>(null);
-const drillOrdersCache = ref<Map<string, import('@/types/vps').DwhOrder[]>>(new Map());
+const drillOrdersCache = ref<Map<string, DwhOrder[]>>(new Map());
 const drillOrdersLoading = ref<Set<string>>(new Set());
 
 // Signal Outcomes state
@@ -590,7 +575,9 @@ const entryTagDateFrom = ref(daysAgoStr(30));
 const entryTagDateTo = ref(todayStr());
 const entryTagFilterBotId = ref<number | null>(null);
 const entryTagMinTrades = ref(1);
-const entryTagSortCol = ref<'trades' | 'wins' | 'win_rate_pct' | 'avg_profit_pct' | 'avg_duration_hours' | 'total_profit_abs'>('trades');
+const entryTagSortCol = ref<
+  'trades' | 'wins' | 'win_rate_pct' | 'avg_profit_pct' | 'avg_duration_hours' | 'total_profit_abs'
+>('trades');
 const entryTagSortAsc = ref(false);
 
 // DCA Analysis state
@@ -600,7 +587,15 @@ const loadingDca = ref(false);
 const dcaDateFrom = ref(daysAgoStr(30));
 const dcaDateTo = ref(todayStr());
 const dcaFilterBotId = ref<number | null>(null);
-const dcaSortCol = ref<'order_count' | 'trades' | 'wins' | 'win_rate_pct' | 'avg_profit_pct' | 'avg_duration_hours' | 'total_profit_abs'>('order_count');
+const dcaSortCol = ref<
+  | 'order_count'
+  | 'trades'
+  | 'wins'
+  | 'win_rate_pct'
+  | 'avg_profit_pct'
+  | 'avg_duration_hours'
+  | 'total_profit_abs'
+>('order_count');
 const dcaSortAsc = ref(true);
 
 // Signal Indicator Analysis state
@@ -676,7 +671,17 @@ const botPerfLoaded = ref(false);
 const loadingBotPerf = ref(false);
 const botPerfDateFrom = ref(daysAgoStr(30));
 const botPerfDateTo = ref(todayStr());
-const botPerfSortCol = ref<'total_closed_trades' | 'win_rate_pct' | 'avg_profit_pct' | 'total_profit_abs' | 'avg_duration_hours' | 'avg_dca_orders' | 'trades_per_day' | 'days_active' | 'perf_score'>('perf_score');
+const botPerfSortCol = ref<
+  | 'total_closed_trades'
+  | 'win_rate_pct'
+  | 'avg_profit_pct'
+  | 'total_profit_abs'
+  | 'avg_duration_hours'
+  | 'avg_dca_orders'
+  | 'trades_per_day'
+  | 'days_active'
+  | 'perf_score'
+>('perf_score');
 const botPerfSortAsc = ref(false);
 const botPerfActiveTab = ref<'performance' | 'history'>('performance');
 const botPerfHistory = ref<DwhBotPerfHistoryRead | null>(null);
@@ -696,7 +701,6 @@ const stubFilterPair = ref('');
 
 const loadingSystemTimeline = ref(false);
 const loadingSystemSpikeSummary = ref(false);
-const loadingIngestTimeline = ref(false);
 const loadingLogsCumulative = ref(false);
 const loadingLogsSpikeSummary = ref(false);
 const loadingMissedTrades = ref(false);
@@ -705,7 +709,6 @@ const showTrailingAnalysisQuery = ref(false);
 const loadingDrilldown = ref(false);
 const reportsError = ref('');
 const systemLoaded = ref(false);
-const ingestLoaded = ref(false);
 const logsCumulativeLoaded = ref(false);
 const missedLoaded = ref(false);
 const trailingLoaded = ref(false);
@@ -722,7 +725,9 @@ const chartTooltip = ref<ChartTooltipState>({
 const selectedCategory = ref<ReportCategory>('system');
 const selectedSubCategory = ref('system-errors');
 
-const availableSubCategories = computed(() => subCategoryOptionsByCategory.value[selectedCategory.value]);
+const availableSubCategories = computed(
+  () => subCategoryOptionsByCategory.value[selectedCategory.value],
+);
 
 const selectedSubCategoryDefinition = computed(() => {
   return availableSubCategories.value.find((item) => item.value === selectedSubCategory.value);
@@ -821,9 +826,7 @@ const systemChartXTicks = computed(() => {
     .map((index) => {
       const point = coords[index];
       const date = new Date(systemErrorTimelinePoints.value[index]?.ts ?? '');
-      const label = Number.isNaN(date.getTime())
-        ? point?.at ?? ''
-        : timestampShort(date);
+      const label = Number.isNaN(date.getTime()) ? (point?.at ?? '') : timestampShort(date);
       return { x: point?.x ?? 0, label };
     });
 });
@@ -849,7 +852,9 @@ const maxLogsCumulativeCount = computed(() => {
 });
 
 const logsChartSeriesLabel = computed(() => {
-  return logsChartMode.value === 'hourly' ? 'Generated logs (Count per hour)' : 'Cumulative logs (Count)';
+  return logsChartMode.value === 'hourly'
+    ? 'Generated logs (Count per hour)'
+    : 'Cumulative logs (Count)';
 });
 
 const logsChartDateRangeLabel = computed(() => {
@@ -935,9 +940,7 @@ const logsChartXTicks = computed(() => {
     .map((index) => {
       const point = coords[index];
       const date = new Date(logsCumulativeChartPoints.value[index]?.ts ?? '');
-      const label = Number.isNaN(date.getTime())
-        ? point?.at ?? ''
-        : timestampShort(date);
+      const label = Number.isNaN(date.getTime()) ? (point?.at ?? '') : timestampShort(date);
       return { x: point?.x ?? 0, label };
     });
 });
@@ -1036,7 +1039,8 @@ const missedChartAreaPolyline = computed(() => {
 
 const missedChartCoordinates = computed(() => {
   const pts = missedChartPoints.value;
-  if (!pts.length) return [] as { x: number; y: number; at: string; count: number; cumulative: number }[];
+  if (!pts.length)
+    return [] as { x: number; y: number; at: string; count: number; cumulative: number }[];
   const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
   const plotWidth = width - leftPad - rightPad;
   const plotHeight = height - topPad - bottomPad;
@@ -1113,7 +1117,8 @@ const groupedMissedTradeEvents = computed<MissedTradeGroup[]>(() => {
   for (const event of parsedMissedTradeEvents.value) {
     const bucket = candleBucketMs(event.eventTs);
     const key = `${event.botId}|${event.pair}|${bucket}`;
-    if (!groups.has(key)) groups.set(key, { key, bucketMs: bucket, representative: event, events: [] });
+    if (!groups.has(key))
+      groups.set(key, { key, bucketMs: bucket, representative: event, events: [] });
     groups.get(key)!.events.push(event);
   }
   return Array.from(groups.values())
@@ -1127,7 +1132,10 @@ const groupedMissedTradeEvents = computed<MissedTradeGroup[]>(() => {
     }));
 });
 
-const allMissedGroupStats = computed<{ reasonCounts: Map<MissedTradeReasonCode, number>; total: number }>(() => {
+const allMissedGroupStats = computed<{
+  reasonCounts: Map<MissedTradeReasonCode, number>;
+  total: number;
+}>(() => {
   const groupReasons = new Map<string, Set<MissedTradeReasonCode>>();
   for (const event of filteredMissedTradeEventsByBotPair.value) {
     const bucket = candleBucketMs(event.eventTs);
@@ -1149,18 +1157,22 @@ const allMissedGroupStats = computed<{ reasonCounts: Map<MissedTradeReasonCode, 
 });
 
 const missedTradeSummaryByReason = computed<ReasonSummaryItem[]>(() => {
-  return Array.from(allMissedGroupStats.value.reasonCounts.entries()).map(([reasonCode, count]) => ({
-    reasonCode,
-    reason: MISSED_TRADE_REASON_LABELS[reasonCode],
-    count,
-  }));
+  return Array.from(allMissedGroupStats.value.reasonCounts.entries()).map(
+    ([reasonCode, count]) => ({
+      reasonCode,
+      reason: MISSED_TRADE_REASON_LABELS[reasonCode],
+      count,
+    }),
+  );
 });
 
 const missedTradeReasonButtons = computed<ReasonSummaryItem[]>(() => {
   return missedTradeSummaryByReason.value.filter((item) => item.reasonCode !== 'trailing_entry');
 });
 
-const trailingEntryMissCount = computed(() => allMissedGroupStats.value.reasonCounts.get('trailing_entry') ?? 0);
+const trailingEntryMissCount = computed(
+  () => allMissedGroupStats.value.reasonCounts.get('trailing_entry') ?? 0,
+);
 
 const trailingEntryMissPct = computed(() => {
   const total = allMissedGroupStats.value.total;
@@ -1169,7 +1181,9 @@ const trailingEntryMissPct = computed(() => {
 });
 
 // Signal Outcomes computed stats
-const signalOutcomeItems = computed<DwhMissedSignal[]>(() => (signalOutcomes.value?.items ?? []).filter((s) => isBotActive(s.bot_id)));
+const signalOutcomeItems = computed<DwhMissedSignal[]>(() =>
+  (signalOutcomes.value?.items ?? []).filter((s) => isBotActive(s.bot_id)),
+);
 
 const signalOutcomesFilteredByFields = computed<DwhMissedSignal[]>(() => {
   const pairNeedle = signalOutcomesFilterPair.value.trim().toLowerCase();
@@ -1184,17 +1198,19 @@ const signalOutcomesFilteredByFields = computed<DwhMissedSignal[]>(() => {
   });
 });
 
-const signalOutcomeReasonStats = computed<{ reasonCounts: Map<string, number>; total: number }>(() => {
-  const reasonCounts = new Map<string, number>();
-  for (const s of signalOutcomesFilteredByFields.value) {
-    const code = s.block_reason ?? 'other';
-    reasonCounts.set(code, (reasonCounts.get(code) ?? 0) + 1);
-  }
-  return { reasonCounts, total: signalOutcomesFilteredByFields.value.length };
-});
+const signalOutcomeReasonStats = computed<{ reasonCounts: Map<string, number>; total: number }>(
+  () => {
+    const reasonCounts = new Map<string, number>();
+    for (const s of signalOutcomesFilteredByFields.value) {
+      const code = s.block_reason ?? 'other';
+      reasonCounts.set(code, (reasonCounts.get(code) ?? 0) + 1);
+    }
+    return { reasonCounts, total: signalOutcomesFilteredByFields.value.length };
+  },
+);
 
-const signalOutcomeTrailingCount = computed(() =>
-  signalOutcomeReasonStats.value.reasonCounts.get('trailing_entry') ?? 0,
+const signalOutcomeTrailingCount = computed(
+  () => signalOutcomeReasonStats.value.reasonCounts.get('trailing_entry') ?? 0,
 );
 
 function signalOutcomeReasonSharePct(count: number): string {
@@ -1204,7 +1220,9 @@ function signalOutcomeReasonSharePct(count: number): string {
 }
 
 const signalOutcomesEvaluated = computed(() =>
-  signalOutcomesFiltered.value.filter((s) => s.outcome_fetched_at !== null && s.fetch_error === null),
+  signalOutcomesFiltered.value.filter(
+    (s) => s.outcome_fetched_at !== null && s.fetch_error === null,
+  ),
 );
 
 const signalOutcomesProfitable = computed(() =>
@@ -1220,31 +1238,6 @@ const signalOutcomesProfitablePct = computed(() => {
 });
 
 const signalOutcomesPendingCount = computed(() => signalOutcomes.value?.pending_outcomes ?? 0);
-
-const signalOutcomeStrategyOptions = [
-  { label: 'All strategies', value: 'all' },
-  { label: 'Printer_v5', value: 'Printer_v5' },
-  { label: 'Printer_v4', value: 'Printer_v4' },
-  { label: 'Printer_v2', value: 'Printer_v2' },
-  { label: 'Printer_v1', value: 'Printer_v1' },
-  { label: 'PrinterSafe_v2', value: 'PrinterSafe_v2' },
-];
-
-const signalOutcomeReasonOptions = [
-  { label: 'All reasons', value: 'all' },
-  { label: 'ETH volatility', value: 'eth_volatility' },
-  { label: 'DCA block', value: 'deep_dca_block' },
-  { label: 'Slippage', value: 'slippage' },
-  { label: 'Funding rate', value: 'funding_rate' },
-  { label: 'Price momentum', value: 'price_momentum' },
-  { label: 'Trailing entry', value: 'trailing_entry' },
-  { label: 'Time filter', value: 'time_filter' },
-  { label: 'Long disabled', value: 'long_disabled' },
-  { label: 'Trade rejected', value: 'trade_rejected' },
-  { label: 'Entry error', value: 'entry_error' },
-  { label: 'Insufficient data', value: 'insufficient_data' },
-  { label: 'Other', value: 'other' },
-];
 
 const signalOutcomeFilterOptions = [
   { label: 'All outcomes', value: 'all' },
@@ -1279,8 +1272,7 @@ const signalOutcomesFiltered = computed<DwhMissedSignal[]>(() => {
 /** True when a signal has been fetched but its outcome window hasn't elapsed yet. */
 function isPartialOutcome(sig: DwhMissedSignal): boolean {
   if (!sig.outcome_fetched_at || sig.fetch_error) return false;
-  const windowEndMs =
-    new Date(sig.signal_ts).getTime() + sig.outcome_window_hours * 3_600_000;
+  const windowEndMs = new Date(sig.signal_ts).getTime() + sig.outcome_window_hours * 3_600_000;
   return Date.now() < windowEndMs;
 }
 
@@ -1319,12 +1311,14 @@ const signalOutcomesChartPolyline = computed(() => {
   const plotHeight = height - topPad - bottomPad;
   const denominator = Math.max(pts.length - 1, 1);
   const maxY = maxSignalOutcomesChartCount.value;
-  return pts.map((pt, idx) => {
-    const x = leftPad + (idx / denominator) * plotWidth;
-    const val = signalOutcomesChartMode.value === 'hourly' ? pt.count : pt.cumulative;
-    const y = topPad + (1 - val / maxY) * plotHeight;
-    return `${x},${y}`;
-  }).join(' ');
+  return pts
+    .map((pt, idx) => {
+      const x = leftPad + (idx / denominator) * plotWidth;
+      const val = signalOutcomesChartMode.value === 'hourly' ? pt.count : pt.cumulative;
+      const y = topPad + (1 - val / maxY) * plotHeight;
+      return `${x},${y}`;
+    })
+    .join(' ');
 });
 
 const signalOutcomesChartAreaPolyline = computed(() => {
@@ -1338,7 +1332,8 @@ const signalOutcomesChartAreaPolyline = computed(() => {
 
 const signalOutcomesChartCoordinates = computed(() => {
   const pts = signalOutcomesChartPoints.value;
-  if (!pts.length) return [] as { x: number; y: number; at: string; count: number; cumulative: number }[];
+  if (!pts.length)
+    return [] as { x: number; y: number; at: string; count: number; cumulative: number }[];
   const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
   const plotWidth = width - leftPad - rightPad;
   const plotHeight = height - topPad - bottomPad;
@@ -1369,7 +1364,8 @@ const signalOutcomesChartXTicks = computed(() => {
   const coords = signalOutcomesChartCoordinates.value;
   if (!coords.length) return [] as { x: number; label: string }[];
   const indexes = new Set<number>([0, Math.floor((coords.length - 1) / 2), coords.length - 1]);
-  return Array.from(indexes).sort((a, b) => a - b)
+  return Array.from(indexes)
+    .sort((a, b) => a - b)
     .map((index) => ({ x: coords[index]?.x ?? 0, label: coords[index]?.at ?? '' }));
 });
 
@@ -1377,11 +1373,19 @@ const signalOutcomesChartXTicks = computed(() => {
 
 // Entry Tag Performance computed
 // Bot Performance computed
-const botPerfItemsFiltered = computed(() => (botPerf.value?.items ?? []).filter((r) => isBotActive(r.bot_id)));
+const botPerfItemsFiltered = computed(() =>
+  (botPerf.value?.items ?? []).filter((r) => isBotActive(r.bot_id)),
+);
 const botPerfItems = useTableSort(botPerfItemsFiltered, botPerfSortCol, botPerfSortAsc);
-const botPerfTotalClosed = computed(() => botPerfItemsFiltered.value.reduce((s, r) => s + r.total_closed_trades, 0));
-const botPerfTotalOpen = computed(() => botPerfItemsFiltered.value.reduce((s, r) => s + r.total_open_trades, 0));
-const botPerfTotalPnl = computed(() => botPerfItemsFiltered.value.reduce((s, r) => s + r.total_profit_abs, 0));
+const botPerfTotalClosed = computed(() =>
+  botPerfItemsFiltered.value.reduce((s, r) => s + r.total_closed_trades, 0),
+);
+const botPerfTotalOpen = computed(() =>
+  botPerfItemsFiltered.value.reduce((s, r) => s + r.total_open_trades, 0),
+);
+const botPerfTotalPnl = computed(() =>
+  botPerfItemsFiltered.value.reduce((s, r) => s + r.total_profit_abs, 0),
+);
 const botPerfBestBot = computed(() => {
   const rows = botPerfItemsFiltered.value;
   if (!rows.length) return null;
@@ -1393,46 +1397,78 @@ const botPerfBestBot = computed(() => {
 });
 
 // Bot History chart data
-const BH_W = 900, BH_H = 280, BH_ML = 65, BH_MR = 20, BH_MT = 20, BH_MB = 45;
-const BH_COLORS = ['#4ade80','#60a5fa','#f472b6','#facc15','#a78bfa','#fb923c','#34d399','#f87171','#38bdf8'];
+const BH_W = 900,
+  BH_H = 280,
+  BH_ML = 65,
+  BH_MR = 20,
+  BH_MT = 20,
+  BH_MB = 45;
+const BH_COLORS = [
+  '#4ade80',
+  '#60a5fa',
+  '#f472b6',
+  '#facc15',
+  '#a78bfa',
+  '#fb923c',
+  '#34d399',
+  '#f87171',
+  '#38bdf8',
+];
 
 const botHistChartData = computed(() => {
   const mode = botHistChartMode.value;
   const enabled = botHistEnabledBots.value;
 
   // Build unified data points from whichever source is active
-  interface RawPt { date: string; bot_id: number; container_name: string | null; vps_name: string | null; value: number; trades: number; extraLabel: string; }
+  interface RawPt {
+    date: string;
+    bot_id: number;
+    container_name: string | null;
+    vps_name: string | null;
+    value: number;
+    trades: number;
+    extraLabel: string;
+  }
   let rawItems: RawPt[];
 
   if (mode === 'equity') {
-    rawItems = (botPerfHistory.value?.items ?? []).map(i => ({
-      date: i.date, bot_id: i.bot_id, container_name: i.container_name, vps_name: i.vps_name,
-      value: i.cumulative_profit_abs, trades: i.trades,
+    rawItems = (botPerfHistory.value?.items ?? []).map((i) => ({
+      date: i.date,
+      bot_id: i.bot_id,
+      container_name: i.container_name,
+      vps_name: i.vps_name,
+      value: i.cumulative_profit_abs,
+      trades: i.trades,
       extraLabel: `${i.cumulative_profit_abs >= 0 ? '+' : ''}${i.cumulative_profit_abs.toFixed(2)} USDT (+${i.profit_abs.toFixed(2)} today, ${i.trades} trades)`,
     }));
   } else {
-    rawItems = (botPerfRollingScore.value?.items ?? []).map(i => ({
-      date: i.date, bot_id: i.bot_id, container_name: i.container_name, vps_name: i.vps_name,
-      value: i.score, trades: i.trade_count,
+    rawItems = (botPerfRollingScore.value?.items ?? []).map((i) => ({
+      date: i.date,
+      bot_id: i.bot_id,
+      container_name: i.container_name,
+      vps_name: i.vps_name,
+      value: i.score,
+      trades: i.trade_count,
       extraLabel: `score ${i.score >= 0 ? '+' : ''}${i.score.toFixed(2)} (${i.trade_count} trades, avg ${i.avg_profit_pct >= 0 ? '+' : ''}${i.avg_profit_pct.toFixed(2)}%)`,
     }));
   }
 
   // Filter to enabled bots (legend toggle) AND global bot filter
-  const globalFiltered = rawItems.filter(i => isBotActive(i.bot_id));
-  const filtered = enabled.size > 0 ? globalFiltered.filter(i => enabled.has(i.bot_id)) : globalFiltered;
+  const globalFiltered = rawItems.filter((i) => isBotActive(i.bot_id));
+  const filtered =
+    enabled.size > 0 ? globalFiltered.filter((i) => enabled.has(i.bot_id)) : globalFiltered;
   if (!filtered.length) return null;
 
   const plotW = BH_W - BH_ML - BH_MR;
   const plotH = BH_H - BH_MT - BH_MB;
 
-  const allDates = [...new Set(filtered.map(i => i.date))].sort();
+  const allDates = [...new Set(filtered.map((i) => i.date))].sort();
   const firstMs = new Date(allDates[0]).getTime();
   const lastMs = new Date(allDates[allDates.length - 1]).getTime();
   const spanMs = Math.max(lastMs - firstMs, 86_400_000);
   const dateToX = (d: string) => BH_ML + ((new Date(d).getTime() - firstMs) / spanMs) * plotW;
 
-  const allValues = filtered.map(i => i.value);
+  const allValues = filtered.map((i) => i.value);
   const rawMin = Math.min(mode === 'equity' ? 0 : Math.min(...allValues), ...allValues);
   const rawMax = Math.max(mode === 'equity' ? 1 : Math.max(...allValues), ...allValues);
   const yRange = rawMax - rawMin;
@@ -1459,10 +1495,10 @@ const botHistChartData = computed(() => {
     xTicks.push({ x: Math.round(dateToX(d) * 10) / 10, label: d.slice(5), date: d });
   }
 
-  const datePositions = allDates.map(d => ({ date: d, x: dateToX(d) }));
+  const datePositions = allDates.map((d) => ({ date: d, x: dateToX(d) }));
 
   // Series per bot — assign stable color by bot_id order from full (unfiltered) data
-  const allBotIds = [...new Set(rawItems.map(i => i.bot_id))].sort((a, b) => a - b);
+  const allBotIds = [...new Set(rawItems.map((i) => i.bot_id))].sort((a, b) => a - b);
   const colorByBot = new Map(allBotIds.map((id, idx) => [id, BH_COLORS[idx % BH_COLORS.length]]));
 
   const byBot = new Map<number, RawPt[]>();
@@ -1475,14 +1511,14 @@ const botHistChartData = computed(() => {
     const name = sorted[0]?.container_name ?? `Bot ${botId}`;
     const vpsName = sorted[0]?.vps_name ?? '';
     const color = colorByBot.get(botId) ?? BH_COLORS[0];
-    const points = sorted.map(item => ({
+    const points = sorted.map((item) => ({
       x: Math.round(dateToX(item.date) * 10) / 10,
       y: Math.round(valToY(item.value) * 10) / 10,
       date: item.date,
       value: item.value,
       extraLabel: item.extraLabel,
     }));
-    const polylinePoints = points.map(p => `${p.x},${p.y}`).join(' ');
+    const polylinePoints = points.map((p) => `${p.x},${p.y}`).join(' ');
     return { botId, name, vpsName, color, points, polylinePoints };
   });
 
@@ -1495,7 +1531,7 @@ const botHistChartData = computed(() => {
 const botHistHoverX = computed(() => {
   const d = botHistHoverDate.value;
   if (!d || !botHistChartData.value) return null;
-  return botHistChartData.value.datePositions.find(dp => dp.date === d)?.x ?? null;
+  return botHistChartData.value.datePositions.find((dp) => dp.date === d)?.x ?? null;
 });
 
 const botHistHoverPoints = computed(() => {
@@ -1520,9 +1556,16 @@ function botHistOnMouseMove(event: MouseEvent) {
   let minDist = Infinity;
   for (const dp of cd.datePositions) {
     const dist = Math.abs(dp.x - svgX);
-    if (dist < minDist) { minDist = dist; nearest = dp.date; }
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = dp.date;
+    }
   }
-  if (nearest === null) { botHistHoverDate.value = null; chartTooltip.value.visible = false; return; }
+  if (nearest === null) {
+    botHistHoverDate.value = null;
+    chartTooltip.value.visible = false;
+    return;
+  }
 
   botHistHoverDate.value = nearest;
   const lines: string[] = [nearest];
@@ -1539,11 +1582,13 @@ function botHistOnMouseLeave() {
 
 // All bots across both data sources — used for the legend so bots show even when de-selected
 const botHistAllBots = computed(() => {
-  const equityItems = (botPerfHistory.value?.items ?? []).filter(i => isBotActive(i.bot_id));
-  const scoreItems = (botPerfRollingScore.value?.items ?? []).filter(i => isBotActive(i.bot_id));
+  const equityItems = (botPerfHistory.value?.items ?? []).filter((i) => isBotActive(i.bot_id));
+  const scoreItems = (botPerfRollingScore.value?.items ?? []).filter((i) => isBotActive(i.bot_id));
   const seen = new Set<number>();
   const bots: { botId: number; name: string; vpsName: string; color: string }[] = [];
-  const allIds = [...new Set([...equityItems, ...scoreItems].map(i => i.bot_id))].sort((a, b) => a - b);
+  const allIds = [...new Set([...equityItems, ...scoreItems].map((i) => i.bot_id))].sort(
+    (a, b) => a - b,
+  );
   const colorByBot = new Map(allIds.map((id, idx) => [id, BH_COLORS[idx % BH_COLORS.length]]));
   for (const item of [...equityItems, ...scoreItems]) {
     if (seen.has(item.bot_id)) continue;
@@ -1573,26 +1618,34 @@ const entryTagItems = useTableSort(entryTagRawItems, entryTagSortCol, entryTagSo
 const entryTagBestWinRate = computed(() => {
   const rows = entryTagPerformance.value?.items ?? [];
   if (!rows.length) return null;
-  return rows.reduce((best, r) => r.win_rate_pct > best.win_rate_pct ? r : best);
+  return rows.reduce((best, r) => (r.win_rate_pct > best.win_rate_pct ? r : best));
 });
 const entryTagBestAvgProfit = computed(() => {
   const rows = entryTagPerformance.value?.items ?? [];
   if (!rows.length) return null;
-  return rows.reduce((best, r) => r.avg_profit_pct > best.avg_profit_pct ? r : best);
+  return rows.reduce((best, r) => (r.avg_profit_pct > best.avg_profit_pct ? r : best));
 });
 
 // DCA Analysis computed
 const dcaRawItems = computed(() => dcaAnalysis.value?.items ?? []);
 const dcaItems = useTableSort(dcaRawItems, dcaSortCol, dcaSortAsc);
-const dcaSingleEntry = computed(() => dcaAnalysis.value?.items.find(r => r.order_count === 1) ?? null);
+const dcaSingleEntry = computed(
+  () => dcaAnalysis.value?.items.find((r) => r.order_count === 1) ?? null,
+);
 const dcaMultiEntry = computed(() => {
-  const rows = dcaAnalysis.value?.items.filter(r => r.order_count > 1) ?? [];
+  const rows = dcaAnalysis.value?.items.filter((r) => r.order_count > 1) ?? [];
   if (!rows.length) return null;
   const totalTrades = rows.reduce((s, r) => s + r.trades, 0);
   const totalWins = rows.reduce((s, r) => s + r.wins, 0);
   const totalProfit = rows.reduce((s, r) => s + r.total_profit_abs, 0);
   const avgProfit = rows.reduce((s, r) => s + r.avg_profit_pct * r.trades, 0) / totalTrades;
-  return { trades: totalTrades, wins: totalWins, win_rate_pct: totalWins / totalTrades * 100, avg_profit_pct: avgProfit, total_profit_abs: totalProfit };
+  return {
+    trades: totalTrades,
+    wins: totalWins,
+    win_rate_pct: (totalWins / totalTrades) * 100,
+    avg_profit_pct: avgProfit,
+    total_profit_abs: totalProfit,
+  };
 });
 
 // ── Signal Indicator Analysis computed ─────────────────────────────────────
@@ -1637,11 +1690,13 @@ const signalIndItems = computed<DwhSignalIndicatorTradeRow[]>(() => {
     }
     const av = (a[col] as number | null) ?? (asc ? Infinity : -Infinity);
     const bv = (b[col] as number | null) ?? (asc ? Infinity : -Infinity);
-    return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
+    return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : av > bv ? -1 : av < bv ? 1 : 0;
   });
 });
 
-const signalIndMatchedItems = computed(() => signalIndItems.value.filter((r) => r.rsi !== null && !r.is_open));
+const signalIndMatchedItems = computed(() =>
+  signalIndItems.value.filter((r) => r.rsi !== null && !r.is_open),
+);
 
 const signalIndAvgQuality = computed(() => {
   const rows = signalIndMatchedItems.value.filter((r) => r.quality_score !== null);
@@ -1704,7 +1759,10 @@ const signalIndChartCoordinates = computed(() => {
       const x = leftPad + ((xVal - xMin) / xRange) * plotWidth;
       const y = topPad + ((yMax - yVal) / yRange) * plotHeight;
       return {
-        x, y, xVal, yVal,
+        x,
+        y,
+        xVal,
+        yVal,
         pair: r.pair ?? '?',
         tag: r.enter_tag ?? '?',
         profit: r.profit_pct,
@@ -1756,7 +1814,8 @@ function toggleSignalIndSort(col: string) {
     signalIndSortAsc.value = !signalIndSortAsc.value;
   } else {
     signalIndSortCol.value = col;
-    signalIndSortAsc.value = col === 'duration_hours' || col === 'dca_order_count' || col === 'rsi' || col === 'open_date';
+    signalIndSortAsc.value =
+      col === 'duration_hours' || col === 'dca_order_count' || col === 'rsi' || col === 'open_date';
   }
 }
 
@@ -1766,23 +1825,50 @@ function signalIndSortArrow(col: string): string {
 }
 
 // Analytics tab: combined indicator histograms (all bots pooled)
-interface _SigIndHistBin { lo: number; hi: number; good: number; bad: number }
-interface _SigIndHistBar { goodX: number; goodY: number; goodH: number; badX: number; badY: number; badH: number }
+interface _SigIndHistBin {
+  lo: number;
+  hi: number;
+  good: number;
+  bad: number;
+}
+interface _SigIndHistBar {
+  goodX: number;
+  goodY: number;
+  goodH: number;
+  badX: number;
+  badY: number;
+  badH: number;
+}
 interface _SigIndHistogram {
-  key: string; label: string; decimals: number;
-  bins: _SigIndHistBin[]; min: number; max: number; maxCount: number;
+  key: string;
+  label: string;
+  decimals: number;
+  bins: _SigIndHistBin[];
+  min: number;
+  max: number;
+  maxCount: number;
   svgBars: _SigIndHistBar[];
   svgXLabels: Array<{ x: number; val: string; stagger: boolean }>;
 }
-interface _SigIndBbCat { cat: string; good: number; bad: number; total: number }
+interface _SigIndBbCat {
+  cat: string;
+  good: number;
+  bad: number;
+  total: number;
+}
 interface SigIndCombinedAnalytics {
-  tradeCount: number; goodCount: number;
+  tradeCount: number;
+  goodCount: number;
   histograms: _SigIndHistogram[];
   bbCats: _SigIndBbCat[];
   bbMaxTotal: number;
 }
 
-const _sigIndAnalyticsKeys: Array<{ key: keyof DwhSignalIndicatorTradeRow; label: string; decimals: number }> = [
+const _sigIndAnalyticsKeys: Array<{
+  key: keyof DwhSignalIndicatorTradeRow;
+  label: string;
+  decimals: number;
+}> = [
   { key: 'rsi', label: 'RSI', decimals: 1 },
   { key: 'hv', label: 'HV', decimals: 2 },
   { key: 'rocr_1h', label: 'ROCR 1h', decimals: 4 },
@@ -1809,23 +1895,36 @@ function _buildSigIndHistograms(
   badRows: DwhSignalIndicatorTradeRow[],
 ): _SigIndHistogram[] {
   return _sigIndAnalyticsKeys.flatMap(({ key, label, decimals }) => {
-    const gv = goodRows.map(r => r[key] as number | null).filter((v): v is number => v !== null);
-    const bv = badRows.map(r => r[key] as number | null).filter((v): v is number => v !== null);
+    const gv = goodRows.map((r) => r[key] as number | null).filter((v): v is number => v !== null);
+    const bv = badRows.map((r) => r[key] as number | null).filter((v): v is number => v !== null);
     const all = [...gv, ...bv];
     if (!all.length) return [];
-    const mn = Math.min(...all), mx = Math.max(...all);
+    const mn = Math.min(...all),
+      mx = Math.max(...all);
     const bs = (mx - mn) / _SIG_BINS || 1;
     const bins: _SigIndHistBin[] = Array.from({ length: _SIG_BINS }, (_, i) => {
       const lo = mn + i * bs;
       const hi = i === _SIG_BINS - 1 ? mx + 0.001 : lo + bs;
-      return { lo, hi, good: gv.filter(v => v >= lo && v < hi).length, bad: bv.filter(v => v >= lo && v < hi).length };
+      return {
+        lo,
+        hi,
+        good: gv.filter((v) => v >= lo && v < hi).length,
+        bad: bv.filter((v) => v >= lo && v < hi).length,
+      };
     });
-    const maxCount = Math.max(...bins.map(b => b.good + b.bad), 1);
+    const maxCount = Math.max(...bins.map((b) => b.good + b.bad), 1);
     const svgBars: _SigIndHistBar[] = bins.map((b, i) => {
       const gH = (b.good / maxCount) * _SIG_SVG.plotH;
       const bH = (b.bad / maxCount) * _SIG_SVG.plotH;
       const sx = _SIG_SVG.x0 + i * _SIG_SVG.slotW;
-      return { goodX: sx + 1, goodY: _SIG_SVG.yBot - gH, goodH: gH, badX: sx + 1 + _SIG_SVG.barW + 1, badY: _SIG_SVG.yBot - bH, badH: bH };
+      return {
+        goodX: sx + 1,
+        goodY: _SIG_SVG.yBot - gH,
+        goodH: gH,
+        badX: sx + 1 + _SIG_SVG.barW + 1,
+        badY: _SIG_SVG.yBot - bH,
+        badH: bH,
+      };
     });
     const fmtDec = Math.min(decimals, 3);
     // All 9 bin boundaries so the user can read exact ranges; stagger odd/even to avoid overlap
@@ -1834,7 +1933,19 @@ function _buildSigIndHistograms(
       val: (mn + (i / _SIG_BINS) * (mx - mn)).toFixed(fmtDec),
       stagger: i % 2 !== 0,
     }));
-    return [{ key: key as string, label, decimals, bins, min: mn, max: mx, maxCount, svgBars, svgXLabels }];
+    return [
+      {
+        key: key as string,
+        label,
+        decimals,
+        bins,
+        min: mn,
+        max: mx,
+        maxCount,
+        svgBars,
+        svgXLabels,
+      },
+    ];
   });
 }
 
@@ -1844,15 +1955,18 @@ const signalIndAnalyticsData = computed<SigIndCombinedAnalytics | null>(() => {
   if (!allRows.length || avgScore === null) return null;
 
   const side = signalIndAnalyticsSide.value;
-  const rows = side === 'all' ? allRows
-    : side === 'long' ? allRows.filter(r => !r.is_short)
-    : allRows.filter(r => r.is_short);
+  const rows =
+    side === 'all'
+      ? allRows
+      : side === 'long'
+        ? allRows.filter((r) => !r.is_short)
+        : allRows.filter((r) => r.is_short);
 
   if (!rows.length) return null;
 
   const isGood = (r: (typeof rows)[0]) => (r.quality_score ?? -Infinity) >= avgScore!;
   const goodRows = rows.filter(isGood);
-  const badRows = rows.filter(r => !isGood(r));
+  const badRows = rows.filter((r) => !isGood(r));
 
   const histograms = _buildSigIndHistograms(goodRows, badRows);
 
@@ -1860,13 +1974,14 @@ const signalIndAnalyticsData = computed<SigIndCombinedAnalytics | null>(() => {
   for (const r of rows) {
     if (!r.bb_pos) continue;
     const e = bbMap.get(r.bb_pos) ?? { good: 0, bad: 0 };
-    if (isGood(r)) e.good++; else e.bad++;
+    if (isGood(r)) e.good++;
+    else e.bad++;
     bbMap.set(r.bb_pos, e);
   }
   const bbCats: _SigIndBbCat[] = Array.from(bbMap.entries())
     .map(([cat, c]) => ({ cat, ...c, total: c.good + c.bad }))
     .sort((a, b) => b.total - a.total);
-  const bbMaxTotal = Math.max(...bbCats.map(c => c.total), 1);
+  const bbMaxTotal = Math.max(...bbCats.map((c) => c.total), 1);
 
   return { tradeCount: rows.length, goodCount: goodRows.length, histograms, bbCats, bbMaxTotal };
 });
@@ -1914,10 +2029,22 @@ const signalIndUnmatchedBreakdown = computed(() => {
     tagMap.set(tagKey, te);
   }
   const byBot = Array.from(botMap.entries())
-    .map(([label, c]) => ({ label, total: c.total, matched: c.matched, unmatched: c.total - c.matched, rate: Math.round((c.matched / c.total) * 100) }))
+    .map(([label, c]) => ({
+      label,
+      total: c.total,
+      matched: c.matched,
+      unmatched: c.total - c.matched,
+      rate: Math.round((c.matched / c.total) * 100),
+    }))
     .sort((a, b) => b.unmatched - a.unmatched);
   const byTag = Array.from(tagMap.entries())
-    .map(([tag, c]) => ({ tag, total: c.total, matched: c.matched, unmatched: c.total - c.matched, rate: Math.round((c.matched / c.total) * 100) }))
+    .map(([tag, c]) => ({
+      tag,
+      total: c.total,
+      matched: c.matched,
+      unmatched: c.total - c.matched,
+      rate: Math.round((c.matched / c.total) * 100),
+    }))
     .sort((a, b) => b.unmatched - a.unmatched);
   return { byBot, byTag };
 });
@@ -1946,7 +2073,16 @@ const filteredTrailingTradeRows = computed(() => {
     const sideMatches = sideFilter === 'all' || row.side === sideFilter;
     const matchSourceMatches = matchSourceFilter === 'all' || row.matchSource === matchSourceFilter;
     const globalBotMatches = isBotActive(row.botId);
-    return globalBotMatches && botMatches && tradeMatches && pairMatches && vpsMatches && containerMatches && sideMatches && matchSourceMatches;
+    return (
+      globalBotMatches &&
+      botMatches &&
+      tradeMatches &&
+      pairMatches &&
+      vpsMatches &&
+      containerMatches &&
+      sideMatches &&
+      matchSourceMatches
+    );
   });
 });
 
@@ -2118,7 +2254,16 @@ const trailingChartZeroY = computed(() => {
 
 const trailingChartCoordinates = computed(() => {
   const pts = trailingChartPoints.value;
-  if (!pts.length) return [] as { x: number; y: number; at: string; tradeId: number; pair: string; value: number | null; positive: boolean }[];
+  if (!pts.length)
+    return [] as {
+      x: number;
+      y: number;
+      at: string;
+      tradeId: number;
+      pair: string;
+      value: number | null;
+      positive: boolean;
+    }[];
   const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
   const plotWidth = width - leftPad - rightPad;
   const plotHeight = height - topPad - bottomPad;
@@ -2130,8 +2275,19 @@ const trailingChartCoordinates = computed(() => {
     const val = rawVal ?? min; // place nulls at bottom
     const x = leftPad + (idx / denominator) * plotWidth;
     const y = topPad + ((max - val) / range) * plotHeight;
-    const at = (() => { const d = new Date(pt.at); return Number.isNaN(d.getTime()) ? pt.at : timestampShort(d); })();
-    return { x, y, at, tradeId: pt.tradeId, pair: pt.pair, value: rawVal, positive: (rawVal ?? 0) >= 0 };
+    const at = (() => {
+      const d = new Date(pt.at);
+      return Number.isNaN(d.getTime()) ? pt.at : timestampShort(d);
+    })();
+    return {
+      x,
+      y,
+      at,
+      tradeId: pt.tradeId,
+      pair: pt.pair,
+      value: rawVal,
+      positive: (rawVal ?? 0) >= 0,
+    };
   });
 });
 
@@ -2154,7 +2310,7 @@ const drillChartMetricOptions: { label: string; value: DrillChartMetric }[] = [
   { label: 'Duration (min)', value: 'duration' },
 ];
 
-function tradeDurationMinutes(trade: import('@/types/vps').DwhTrade): number | null {
+function tradeDurationMinutes(trade: DwhTrade): number | null {
   if (!trade.open_date || !trade.close_date) return null;
   const diff = new Date(trade.close_date).getTime() - new Date(trade.open_date).getTime();
   return diff > 0 ? diff / 60000 : null;
@@ -2171,7 +2327,9 @@ const drillTradesFiltered = computed(() => drillTrades.value.filter((t) => isBot
 const drillChartDateRangeLabel = computed(() => {
   const trades = drillTradesFiltered.value;
   if (!trades.length) return 'Date / Time: n/a';
-  const sorted = [...trades].sort((a, b) => (a.close_date ?? a.open_date ?? '').localeCompare(b.close_date ?? b.open_date ?? ''));
+  const sorted = [...trades].sort((a, b) =>
+    (a.close_date ?? a.open_date ?? '').localeCompare(b.close_date ?? b.open_date ?? ''),
+  );
   const fmt = (s: string | null) => {
     if (!s) return '?';
     const d = new Date(s);
@@ -2185,7 +2343,8 @@ const drillChartYRange = computed(() => {
   if (!trades.length) return { min: 0, max: 1 };
   const values = trades
     .map((t) => {
-      if (drillChartMetric.value === 'profit_pct') return t.profit_ratio !== null ? t.profit_ratio * 100 : null;
+      if (drillChartMetric.value === 'profit_pct')
+        return t.profit_ratio !== null ? t.profit_ratio * 100 : null;
       if (drillChartMetric.value === 'profit_abs') return t.profit_abs;
       return tradeDurationMinutes(t);
     })
@@ -2227,8 +2386,19 @@ const drillChartZeroY = computed(() => {
 
 const drillChartCoordinates = computed(() => {
   const trades = drillTradesFiltered.value;
-  if (!trades.length) return [] as { x: number; y: number; at: string; tradeId: number; pair: string; value: number | null; positive: boolean }[];
-  const sorted = [...trades].sort((a, b) => (a.close_date ?? a.open_date ?? '').localeCompare(b.close_date ?? b.open_date ?? ''));
+  if (!trades.length)
+    return [] as {
+      x: number;
+      y: number;
+      at: string;
+      tradeId: number;
+      pair: string;
+      value: number | null;
+      positive: boolean;
+    }[];
+  const sorted = [...trades].sort((a, b) =>
+    (a.close_date ?? a.open_date ?? '').localeCompare(b.close_date ?? b.open_date ?? ''),
+  );
   const { width, height, leftPad, rightPad, topPad, bottomPad } = logsChartLayout;
   const plotWidth = width - leftPad - rightPad;
   const plotHeight = height - topPad - bottomPad;
@@ -2237,7 +2407,8 @@ const drillChartCoordinates = computed(() => {
   const range = max - min || 1;
   return sorted.map((trade, idx) => {
     let rawVal: number | null = null;
-    if (drillChartMetric.value === 'profit_pct') rawVal = trade.profit_ratio !== null ? trade.profit_ratio * 100 : null;
+    if (drillChartMetric.value === 'profit_pct')
+      rawVal = trade.profit_ratio !== null ? trade.profit_ratio * 100 : null;
     else if (drillChartMetric.value === 'profit_abs') rawVal = trade.profit_abs;
     else rawVal = tradeDurationMinutes(trade);
     const val = rawVal ?? min;
@@ -2246,7 +2417,15 @@ const drillChartCoordinates = computed(() => {
     const dateStr = trade.close_date ?? trade.open_date ?? '';
     const d = new Date(dateStr);
     const at = Number.isNaN(d.getTime()) ? dateStr : timestampShort(d);
-    return { x, y, at, tradeId: trade.source_trade_id, pair: trade.pair ?? '?', value: rawVal, positive: (rawVal ?? 0) >= 0 };
+    return {
+      x,
+      y,
+      at,
+      tradeId: trade.source_trade_id,
+      pair: trade.pair ?? '?',
+      value: rawVal,
+      positive: (rawVal ?? 0) >= 0,
+    };
   });
 });
 
@@ -2454,13 +2633,19 @@ function classifyMissedTradeReason(message: string): {
       reason: MISSED_TRADE_REASON_LABELS.deep_dca_block,
     };
   }
-  if (loweredMessage.includes('can_long is disabled') || loweredMessage.includes('long trade rejected')) {
+  if (
+    loweredMessage.includes('can_long is disabled') ||
+    loweredMessage.includes('long trade rejected')
+  ) {
     return {
       reasonCode: 'long_disabled',
       reason: MISSED_TRADE_REASON_LABELS.long_disabled,
     };
   }
-  if (loweredMessage.includes('time filter active') || loweredMessage.includes('due to unfavorable time')) {
+  if (
+    loweredMessage.includes('time filter active') ||
+    loweredMessage.includes('due to unfavorable time')
+  ) {
     return {
       reasonCode: 'time_filter',
       reason: MISSED_TRADE_REASON_LABELS.time_filter,
@@ -2542,7 +2727,10 @@ function classifyMissedTradeReason(message: string): {
       reason: MISSED_TRADE_REASON_LABELS.insufficient_data,
     };
   }
-  if (loweredMessage.includes('entry confirmation error') || loweredMessage.includes('confirm_trade_entry error')) {
+  if (
+    loweredMessage.includes('entry confirmation error') ||
+    loweredMessage.includes('confirm_trade_entry error')
+  ) {
     return {
       reasonCode: 'entry_error',
       reason: MISSED_TRADE_REASON_LABELS.entry_error,
@@ -2578,8 +2766,13 @@ function extractDecisionDetails(message: string): string | null {
     return `Funding rate ${percentCompareMatch[1]}% ${comparator} limit ${percentCompareMatch[3]}%`;
   }
 
-  if (loweredMessage.includes('blocking new entry') || loweredMessage.includes('blocking new trades:')) {
-    const dcaPairMatch = message.match(/:\s*([A-Z0-9]+\/[A-Z0-9]+(?::[A-Z0-9]+)?)\s+has\s+(\d+)\s+DCA.*?total entries:\s*(\d+)/i);
+  if (
+    loweredMessage.includes('blocking new entry') ||
+    loweredMessage.includes('blocking new trades:')
+  ) {
+    const dcaPairMatch = message.match(
+      /:\s*([A-Z0-9]+\/[A-Z0-9]+(?::[A-Z0-9]+)?)\s+has\s+(\d+)\s+DCA.*?total entries:\s*(\d+)/i,
+    );
     if (dcaPairMatch) {
       return `${dcaPairMatch[1]} has ${dcaPairMatch[2]} DCA (${dcaPairMatch[3]} entries)`;
     }
@@ -2590,7 +2783,10 @@ function extractDecisionDetails(message: string): string | null {
     return 'Long entries disabled (can_long=false)';
   }
 
-  if (loweredMessage.includes('time filter active') || loweredMessage.includes('due to unfavorable time')) {
+  if (
+    loweredMessage.includes('time filter active') ||
+    loweredMessage.includes('due to unfavorable time')
+  ) {
     const timeMatch = message.match(/on\s+(\w+)\s+due to unfavorable time:\s*(\d{2}):?\w*/i);
     if (timeMatch) {
       return `${timeMatch[1]} ${timeMatch[2]}:XX UTC`;
@@ -2607,7 +2803,9 @@ function extractDecisionDetails(message: string): string | null {
   }
 
   if (loweredMessage.includes('insufficient price momentum')) {
-    const momentumMatch = message.match(/(\d+(?:\.\d+)?)%\s*<\s*(\d+(?:\.\d+)?)%\s*over\s*(\d+)\s*candles/i);
+    const momentumMatch = message.match(
+      /(\d+(?:\.\d+)?)%\s*<\s*(\d+(?:\.\d+)?)%\s*over\s*(\d+)\s*candles/i,
+    );
     if (momentumMatch) {
       return `Momentum ${momentumMatch[1]}% below threshold ${momentumMatch[2]}% over ${momentumMatch[3]} candles`;
     }
@@ -2615,19 +2813,27 @@ function extractDecisionDetails(message: string): string | null {
   }
 
   if (loweredMessage.includes('slippage too high') || loweredMessage.includes('bad slippage')) {
-    const slippageMatch = message.match(/slippage\s+([0-9]+(?:\.[0-9]+)?)%\s*>?=\s*([0-9]+(?:\.[0-9]+)?)%/i);
+    const slippageMatch = message.match(
+      /slippage\s+([0-9]+(?:\.[0-9]+)?)%\s*>?=\s*([0-9]+(?:\.[0-9]+)?)%/i,
+    );
     if (slippageMatch) {
       return `Slippage ${slippageMatch[1]}% exceeded limit ${slippageMatch[2]}%`;
     }
     return 'Slippage exceeded configured limit';
   }
 
-  if (loweredMessage.includes('start trailing long') || loweredMessage.includes('start trailing short')) {
+  if (
+    loweredMessage.includes('start trailing long') ||
+    loweredMessage.includes('start trailing short')
+  ) {
     const priceMatch = message.match(/at\s+(\d+(?:\.\d+)?)/);
     const side = loweredMessage.includes('trailing long') ? 'long' : 'short';
     return priceMatch ? `Start trailing ${side} @ ${priceMatch[1]}` : `Start trailing ${side}`;
   }
-  if (loweredMessage.includes('stop trailing long') || loweredMessage.includes('stop trailing short')) {
+  if (
+    loweredMessage.includes('stop trailing long') ||
+    loweredMessage.includes('stop trailing short')
+  ) {
     const side = loweredMessage.includes('trailing long') ? 'long' : 'short';
     if (loweredMessage.includes('offset returned none')) {
       return `Stop trailing ${side}: offset=None`;
@@ -2637,16 +2843,24 @@ function extractDecisionDetails(message: string): string | null {
     }
     return `Stop trailing ${side}`;
   }
-  if (loweredMessage.includes('update trailing long') || loweredMessage.includes('update trailing short')) {
+  if (
+    loweredMessage.includes('update trailing long') ||
+    loweredMessage.includes('update trailing short')
+  ) {
     const side = loweredMessage.includes('trailing long') ? 'long' : 'short';
     return `Update trailing ${side} limit`;
   }
   if (loweredMessage.includes('triggering long') || loweredMessage.includes('triggering short')) {
     const side = loweredMessage.includes('triggering long') ? 'long' : 'short';
     const profitMatch = message.match(/\((-?\d+(?:\.\d+)?)\s*%\)/);
-    return profitMatch ? `Trailing ${side} triggered (${profitMatch[1]}%)` : `Trailing ${side} triggered`;
+    return profitMatch
+      ? `Trailing ${side} triggered (${profitMatch[1]}%)`
+      : `Trailing ${side} triggered`;
   }
-  if (loweredMessage.includes('trailing long for') || loweredMessage.includes('trailing short for')) {
+  if (
+    loweredMessage.includes('trailing long for') ||
+    loweredMessage.includes('trailing short for')
+  ) {
     const side = loweredMessage.includes('trailing long') ? 'long' : 'short';
     const current = message.match(/Current:\s*([\d.]+)/i)?.[1];
     const lowlimit = message.match(/Lowlimit:\s*([\d.]+)/i)?.[1];
@@ -2677,7 +2891,10 @@ function extractDecisionDetails(message: string): string | null {
     return 'Not enough candle data for analysis';
   }
 
-  if (loweredMessage.includes('entry confirmation error') || loweredMessage.includes('confirm_trade_entry error')) {
+  if (
+    loweredMessage.includes('entry confirmation error') ||
+    loweredMessage.includes('confirm_trade_entry error')
+  ) {
     const errMatch = message.match(/error.*?:\s*(.*)$/i);
     const errMsg = errMatch?.[1]?.trim();
     return errMsg ? `Error: ${errMsg}` : 'Exception in entry confirmation';
@@ -2707,7 +2924,9 @@ function formatMissedTradeMessage(message: string): string {
 
 function parseLabeledNumber(message: string, label: string): number | null {
   const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = message.match(new RegExp(`${escapedLabel}\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)\\s*%?`, 'i'));
+  const match = message.match(
+    new RegExp(`${escapedLabel}\\s*[:=]\\s*(-?\\d+(?:\\.\\d+)?)\\s*%?`, 'i'),
+  );
   if (!match) {
     return null;
   }
@@ -2717,7 +2936,7 @@ function parseLabeledNumber(message: string, label: string): number | null {
 
 // Extracts the trailing profit % from "Price OK for PAIR (X.XX %), ..." messages.
 function parsePriceOkProfit(message: string): number | null {
-  const match = message.match(/price ok for [^\(]+\(\s*(-?\d+(?:\.\d+)?)\s*%\s*\)/i);
+  const match = message.match(/price ok for [^(]+\(\s*(-?\d+(?:\.\d+)?)\s*%\s*\)/i);
   if (!match) return null;
   const parsed = Number(match[1]);
   return Number.isFinite(parsed) ? parsed : null;
@@ -2731,7 +2950,9 @@ function parsePeakDrawdownProfit(message: string): number | null {
 }
 
 function parseDurationMinutes(message: string): number | null {
-  const durationMatch = message.match(/duration\s*[:=]\s*(-?\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)?/i);
+  const durationMatch = message.match(
+    /duration\s*[:=]\s*(-?\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)?/i,
+  );
   if (!durationMatch) {
     return null;
   }
@@ -2785,7 +3006,9 @@ function isTrailEnterTag(value: string | null | undefined): boolean {
     return false;
   }
   const normalized = value.trim().toLowerCase();
-  return normalized.endsWith('_trail') || normalized.includes('_trail_') || normalized.includes('trail');
+  return (
+    normalized.endsWith('_trail') || normalized.includes('_trail_') || normalized.includes('trail')
+  );
 }
 
 function parseTradeIdFromMessage(message: string): number | null {
@@ -2797,7 +3020,9 @@ function parseTradeIdFromMessage(message: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function buildRpcTradeHints(samplesBySignature: Array<Array<{ event_ts: string; bot_id: number; message: string }>>): RpcTradeHint[] {
+function buildRpcTradeHints(
+  samplesBySignature: Array<Array<{ event_ts: string; bot_id: number; message: string }>>,
+): RpcTradeHint[] {
   const hints: RpcTradeHint[] = [];
   for (const samples of samplesBySignature) {
     for (const sample of samples) {
@@ -2838,16 +3063,24 @@ async function loadRpcTradeHints(days: number): Promise<RpcTradeHint[]> {
     return [];
   }
 
-  const rpcSamples = await Promise.all(rpcSignatures.map((item) => vpsApi.dwhAnomalySamples(item.signature_hash, 80)));
+  const rpcSamples = await Promise.all(
+    rpcSignatures.map((item) => vpsApi.dwhAnomalySamples(item.signature_hash, 80)),
+  );
   const hints = buildRpcTradeHints(rpcSamples);
   const dedupe = new Map<string, RpcTradeHint>();
   for (const hint of hints) {
-    dedupe.set(`${hint.tradeId}|${hint.botId}|${normalizePairForMatch(hint.pair)}|${hint.eventTs}`, hint);
+    dedupe.set(
+      `${hint.tradeId}|${hint.botId}|${normalizePairForMatch(hint.pair)}|${hint.eventTs}`,
+      hint,
+    );
   }
   return Array.from(dedupe.values());
 }
 
-function matchTrailingEventRpcTradeHint(event: TrailingTriggerEvent, rpcHints: RpcTradeHint[]): TrailingTriggerEvent {
+function matchTrailingEventRpcTradeHint(
+  event: TrailingTriggerEvent,
+  rpcHints: RpcTradeHint[],
+): TrailingTriggerEvent {
   const eventTs = new Date(event.eventTs).getTime();
   if (!Number.isFinite(eventTs)) {
     return event;
@@ -2864,7 +3097,8 @@ function matchTrailingEventRpcTradeHint(event: TrailingTriggerEvent, rpcHints: R
       continue;
     }
     const hintPairNorm = normalizePairForMatch(hint.pair);
-    const samePair = hintPairNorm === normalizedPair || simplifyPairForMatch(hint.pair) === simplifiedPair;
+    const samePair =
+      hintPairNorm === normalizedPair || simplifyPairForMatch(hint.pair) === simplifiedPair;
     if (!samePair) {
       continue;
     }
@@ -2972,7 +3206,10 @@ function pickClosestTradeByTime(eventTs: string, trades: DwhTrade[]): DwhTrade |
   return recentPastCandidates[0] ?? null;
 }
 
-function matchTrailingEventTrade(event: TrailingTriggerEvent, tradeIndex: Map<string, DwhTrade[]>): TrailingTriggerEvent {
+function matchTrailingEventTrade(
+  event: TrailingTriggerEvent,
+  tradeIndex: Map<string, DwhTrade[]>,
+): TrailingTriggerEvent {
   const normalizedPair = normalizePairForMatch(event.pair);
   const simplifiedPair = simplifyPairForMatch(event.pair);
   const directKey = `${event.botId}|${normalizedPair}`;
@@ -2980,7 +3217,11 @@ function matchTrailingEventTrade(event: TrailingTriggerEvent, tradeIndex: Map<st
   let candidateTrades = tradeIndex.get(directKey) ?? [];
   if (!candidateTrades.length && simplifiedPair) {
     candidateTrades = Array.from(tradeIndex.entries())
-      .filter(([key]) => key.startsWith(`${event.botId}|`) && simplifyPairForMatch(key.split('|')[1]) === simplifiedPair)
+      .filter(
+        ([key]) =>
+          key.startsWith(`${event.botId}|`) &&
+          simplifyPairForMatch(key.split('|')[1]) === simplifiedPair,
+      )
       .flatMap(([, trades]) => trades);
   }
 
@@ -3089,7 +3330,8 @@ async function fetchTrailingAuditLogs(
   const pageLimit = 500;
 
   async function fetchPages(botId: number, keyword: string) {
-    const collected: Array<{ event_ts: string; bot_id: number; logger: string; message: string }> = [];
+    const collected: Array<{ event_ts: string; bot_id: number; logger: string; message: string }> =
+      [];
     let offset = 0;
     for (;;) {
       const result = await vpsApi.dwhAuditMessages({
@@ -3116,9 +3358,7 @@ async function fetchTrailingAuditLogs(
     return collected;
   }
 
-  const tasks = botIds.flatMap((botId) =>
-    keywords.map((keyword) => fetchPages(botId, keyword)),
-  );
+  const tasks = botIds.flatMap((botId) => keywords.map((keyword) => fetchPages(botId, keyword)));
   const results = await Promise.all(tasks);
   return results.flat();
 }
@@ -3136,9 +3376,8 @@ function pickSnapshotLog(
   const isTriggerLog = (l: TrailingTriggerEvent) =>
     /price ok for /i.test(l.message) || /peak drawdown entry for /i.test(l.message);
   const triggerLogs = logs.filter(isTriggerLog);
-  const triggerProfit = triggerLogs.length > 0
-    ? (triggerLogs[triggerLogs.length - 1]?.profitPct ?? null)
-    : null;
+  const triggerProfit =
+    triggerLogs.length > 0 ? (triggerLogs[triggerLogs.length - 1]?.profitPct ?? null) : null;
 
   // Pick the best structural log (has Start/Current/Lowlimit/Duration/Offset) using timestamp logic:
   // last "Trailing short/long for" log at or before trade open time.
@@ -3273,7 +3512,9 @@ async function loadSystemErrorsTimeline() {
     }
 
     const trends = await Promise.all(
-      targetAnomalies.map((item) => vpsApi.dwhAnomalyTrend(item.signature_hash, systemDaysComputed)),
+      targetAnomalies.map((item) =>
+        vpsApi.dwhAnomalyTrend(item.signature_hash, systemDaysComputed),
+      ),
     );
 
     const bucketMap = new Map<string, number>();
@@ -3301,50 +3542,6 @@ async function loadSystemErrorsTimeline() {
     systemErrorTimelinePoints.value = [];
   } finally {
     loadingSystemTimeline.value = false;
-  }
-}
-
-function mapRunResult(run: DwhIngestionRun): DwhIngestionRunResult {
-  return run.result ?? {
-    bots_scanned: 0,
-    bots_synced: 0,
-    bots_failed: 0,
-    inserted_trades: 0,
-    updated_trades: 0,
-    inserted_orders: 0,
-    updated_orders: 0,
-    inserted_log_events: 0,
-    inserted_error_logs: 0,
-    inserted_strategy_logs: 0,
-    log_rows_scanned: 0,
-    high_volume_warning: false,
-    updated_anomalies: 0,
-    errors: [],
-  };
-}
-
-async function loadDwhIngestTimeline() {
-  loadingIngestTimeline.value = true;
-  reportsError.value = '';
-  try {
-    const runs = await vpsApi.dwhIngestionRuns(20);
-    dwhIngestTimeline.value = runs.map((run) => {
-      const result = mapRunResult(run);
-      return {
-        at: formatDate(run.started_at),
-        insertedLogs: result.inserted_log_events,
-        addedErrors: result.inserted_error_logs,
-        addedStrategyLogs: result.inserted_strategy_logs,
-        botsFailed: result.bots_failed,
-        status: run.status,
-      };
-    });
-    ingestLoaded.value = true;
-  } catch (error) {
-    reportsError.value = String(error);
-    dwhIngestTimeline.value = [];
-  } finally {
-    loadingIngestTimeline.value = false;
   }
 }
 
@@ -3393,55 +3590,8 @@ async function loadLogsCumulativeChart() {
   }
 }
 
-function isMissedTradeMessage(loweredText: string): boolean {
-  if (loweredText.includes('[ok]')) {
-    return false;
-  }
-  // Exclude tick-by-tick trailing debug logs (massive volume, not actionable)
-  if (
-    loweredText.includes('update trailing long') ||
-    loweredText.includes('update trailing short') ||
-    (loweredText.includes('trailing long for') && loweredText.includes('duration:')) ||
-    (loweredText.includes('trailing short for') && loweredText.includes('duration:'))
-  ) {
-    return false;
-  }
-  return (
-    loweredText.includes('trade rejected') ||
-    loweredText.includes('blocking new entry') ||
-    loweredText.includes('blocking new trades:') ||
-    loweredText.includes('can_long is disabled') ||
-    loweredText.includes('time filter active') ||
-    loweredText.includes('due to unfavorable time') ||
-    loweredText.includes('eth volatility too high') ||
-    loweredText.includes('insufficient price momentum') ||
-    loweredText.includes('slippage too high') ||
-    loweredText.includes('bad slippage') ||
-    loweredText.includes('start trailing long') ||
-    loweredText.includes('start trailing short') ||
-    loweredText.includes('stop trailing long') ||
-    loweredText.includes('stop trailing short') ||
-    loweredText.includes('triggering long') ||
-    loweredText.includes('triggering short') ||
-    loweredText.includes('price too high') ||
-    loweredText.includes('price too low') ||
-    loweredText.includes('funding rate') ||
-    loweredText.includes('unfavorable funding') ||
-    loweredText.includes('insufficient data') ||
-    loweredText.includes('entry confirmation error')
-  );
-}
-
-function isMissedTradeSignature(item: DwhAnomaly): boolean {
-  const text = `${item.signature} ${item.logger}`.toLowerCase();
-  if (isStrategyUserDenyMessage(text)) {
-    return false;
-  }
-  return isMissedTradeMessage(text);
-}
-
 function parseMissedTradeSamples(
-  samples: import('@/types/vps').DwhAnomalySample[],
+  samples: DwhAnomalySample[],
   existing: Map<string, ParsedLogEvent>,
 ): Map<string, ParsedLogEvent> {
   for (const sample of samples) {
@@ -3521,7 +3671,7 @@ async function loadSignalOutcomes() {
     let offset = 0;
     let total = Infinity;
     let pendingOutcomes = 0;
-    const allItems: import('../types/vps').DwhMissedSignal[] = [];
+    const allItems: DwhMissedSignal[] = [];
     while (offset < total) {
       const page = await vpsApi.dwhMissedSignals(
         signalOutcomesDateFrom.value || undefined,
@@ -3603,9 +3753,18 @@ async function loadBotPerf() {
   reportsError.value = '';
   try {
     const [perf, hist, rolling] = await Promise.all([
-      vpsApi.dwhBotPerformance(botPerfDateFrom.value || undefined, botPerfDateTo.value || undefined),
-      vpsApi.dwhBotPerfHistory(botPerfDateFrom.value || undefined, botPerfDateTo.value || undefined),
-      vpsApi.dwhBotPerfRollingScore(botPerfDateFrom.value || undefined, botPerfDateTo.value || undefined),
+      vpsApi.dwhBotPerformance(
+        botPerfDateFrom.value || undefined,
+        botPerfDateTo.value || undefined,
+      ),
+      vpsApi.dwhBotPerfHistory(
+        botPerfDateFrom.value || undefined,
+        botPerfDateTo.value || undefined,
+      ),
+      vpsApi.dwhBotPerfRollingScore(
+        botPerfDateFrom.value || undefined,
+        botPerfDateTo.value || undefined,
+      ),
     ]);
     botPerf.value = perf;
     botPerfHistory.value = hist;
@@ -3887,11 +4046,11 @@ async function loadDrilldownReport(append = false) {
   }
 }
 
-function drillTradeKey(trade: import('@/types/vps').DwhTrade): string {
+function drillTradeKey(trade: DwhTrade): string {
   return `${trade.bot_id}|${trade.source_trade_id}`;
 }
 
-async function toggleDrillTradeExpand(trade: import('@/types/vps').DwhTrade) {
+async function toggleDrillTradeExpand(trade: DwhTrade) {
   const key = drillTradeKey(trade);
   if (drillExpandedKey.value === key) {
     drillExpandedKey.value = null;
@@ -3917,7 +4076,7 @@ async function toggleDrillTradeExpand(trade: import('@/types/vps').DwhTrade) {
   }
 }
 
-function isDrillTradeExpanded(trade: import('@/types/vps').DwhTrade): boolean {
+function isDrillTradeExpanded(trade: DwhTrade): boolean {
   return drillExpandedKey.value === drillTradeKey(trade);
 }
 
@@ -4005,23 +4164,38 @@ onMounted(async () => {
           </div>
 
           <!-- Global Bot Filter Strip -->
-          <div v-if="allManagedBots.length > 0" class="flex flex-wrap items-center gap-2 py-2 border-b border-surface-700/60">
+          <div
+            v-if="allManagedBots.length > 0"
+            class="flex flex-wrap items-center gap-2 py-2 border-b border-surface-700/60"
+          >
             <span class="text-surface-400 text-xs shrink-0">Bots:</span>
             <button
               v-for="bot in allManagedBots"
               :key="bot.id"
               class="px-2 py-0.5 rounded border text-xs transition-colors whitespace-nowrap"
-              :class="activeBotIds.has(bot.id)
-                ? 'bg-primary-600/20 border-primary-500/60 text-primary-300'
-                : 'border-surface-700 text-surface-600 line-through opacity-50'"
+              :class="
+                activeBotIds.has(bot.id)
+                  ? 'bg-primary-600/20 border-primary-500/60 text-primary-300'
+                  : 'border-surface-700 text-surface-600 line-through opacity-50'
+              "
               :title="`#${bot.id} · ${bot.container_name} · ${bot.exchange ?? ''}`"
               @click="toggleBot(bot.id)"
             >
               {{ bot.vps_name }} ({{ bot.container_name }} · {{ bot.strategy ?? '?' }})
             </button>
-            <button class="text-xs text-surface-400 hover:text-surface-200 px-1" @click="selectAllBots">All</button>
+            <button
+              class="text-xs text-surface-400 hover:text-surface-200 px-1"
+              @click="selectAllBots"
+            >
+              All
+            </button>
             <span class="text-surface-700">|</span>
-            <button class="text-xs text-surface-400 hover:text-surface-200 px-1" @click="clearAllBots">None</button>
+            <button
+              class="text-xs text-surface-400 hover:text-surface-200 px-1"
+              @click="clearAllBots"
+            >
+              None
+            </button>
             <span v-if="botFilterActive" class="text-xs text-yellow-400/70 ml-1">● filtered</span>
           </div>
 
@@ -4036,8 +4210,14 @@ onMounted(async () => {
               <button
                 class="text-xs text-surface-400 hover:text-surface-200 underline"
                 @click="showTrailingAnalysisQuery = !showTrailingAnalysisQuery"
-              >{{ showTrailingAnalysisQuery ? '▲ Hide analysis query' : '▼ Show analysis query' }}</button>
-              <pre v-if="showTrailingAnalysisQuery" class="mt-2 text-xs bg-surface-900 border border-surface-700 rounded p-3 overflow-x-auto whitespace-pre-wrap select-all">{{ selectedSubCategoryDefinition.analysisQuery }}</pre>
+              >
+                {{ showTrailingAnalysisQuery ? '▲ Hide analysis query' : '▼ Show analysis query' }}
+              </button>
+              <pre
+                v-if="showTrailingAnalysisQuery"
+                class="mt-2 text-xs bg-surface-900 border border-surface-700 rounded p-3 overflow-x-auto whitespace-pre-wrap select-all"
+                >{{ selectedSubCategoryDefinition.analysisQuery }}</pre
+              >
             </div>
             <p v-if="reportsError" class="text-sm text-red-400">{{ reportsError }}</p>
           </div>
@@ -4061,12 +4241,18 @@ onMounted(async () => {
                 />
               </div>
             </div>
-            <p class="text-sm text-surface-400">Total events in selected window: {{ totalSystemErrorCount }}</p>
+            <p class="text-sm text-surface-400">
+              Total events in selected window: {{ totalSystemErrorCount }}
+            </p>
             <div v-if="!systemErrorTimelinePoints.length" class="text-sm text-surface-400">
-              {{ loadingSystemTimeline ? 'Loading timeline...' : 'No error timeline data available.' }}
+              {{
+                loadingSystemTimeline ? 'Loading timeline...' : 'No error timeline data available.'
+              }}
             </div>
             <div v-else class="space-y-3">
-              <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-surface-400">
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 text-xs text-surface-400"
+              >
                 <div class="flex items-center gap-2">
                   <span class="inline-block w-7 h-0.5 bg-red-500" />
                   <span>System errors (Count)</span>
@@ -4109,7 +4295,9 @@ onMounted(async () => {
                   <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
                   <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
                   <text x="8" y="24" fill="#94a3b8" font-size="11">Count</text>
-                  <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Date / Time</text>
+                  <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">
+                    Date / Time
+                  </text>
                   <text
                     v-for="(tick, idx) in systemChartXTicks"
                     :key="`sys-x-label-${idx}`"
@@ -4121,7 +4309,10 @@ onMounted(async () => {
                   >
                     {{ tick.label }}
                   </text>
-                  <polygon :points="systemChartAreaPolyline" fill="url(#systemErrorsAreaGradient)" />
+                  <polygon
+                    :points="systemChartAreaPolyline"
+                    fill="url(#systemErrorsAreaGradient)"
+                  />
                   <polyline
                     :points="systemChartPolyline"
                     fill="none"
@@ -4138,7 +4329,9 @@ onMounted(async () => {
                     r="5"
                     fill="#fecaca"
                     class="cursor-pointer"
-                    @mousemove="showChartTooltip($event, [point.at, `System errors: ${point.count}`])"
+                    @mousemove="
+                      showChartTooltip($event, [point.at, `System errors: ${point.count}`])
+                    "
                     @mouseleave="hideChartTooltip"
                   >
                     <title>
@@ -4153,10 +4346,31 @@ onMounted(async () => {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <h6 class="font-semibold">Spike Cause Summary</h6>
                   <div class="flex flex-wrap items-center gap-2">
-                    <InputText v-model="systemSpikeFromLocal" type="datetime-local" size="small" class="w-56" />
-                    <InputText v-model="systemSpikeToLocal" type="datetime-local" size="small" class="w-56" />
-                    <InputText v-model="systemSpikeLevels" size="small" class="w-40" placeholder="Levels" />
-                    <InputNumber v-model="systemSpikeLimit" :min="1" :max="200" size="small" input-class="w-16" />
+                    <InputText
+                      v-model="systemSpikeFromLocal"
+                      type="datetime-local"
+                      size="small"
+                      class="w-56"
+                    />
+                    <InputText
+                      v-model="systemSpikeToLocal"
+                      type="datetime-local"
+                      size="small"
+                      class="w-56"
+                    />
+                    <InputText
+                      v-model="systemSpikeLevels"
+                      size="small"
+                      class="w-40"
+                      placeholder="Levels"
+                    />
+                    <InputNumber
+                      v-model="systemSpikeLimit"
+                      :min="1"
+                      :max="200"
+                      size="small"
+                      input-class="w-16"
+                    />
                     <Button
                       label="Use Peak"
                       size="small"
@@ -4183,7 +4397,11 @@ onMounted(async () => {
                 </p>
 
                 <div v-if="!systemSpikeSummary?.buckets?.length" class="text-sm text-surface-400">
-                  {{ loadingSystemSpikeSummary ? 'Analyzing spike window...' : 'No grouped causes found for this timeframe.' }}
+                  {{
+                    loadingSystemSpikeSummary
+                      ? 'Analyzing spike window...'
+                      : 'No grouped causes found for this timeframe.'
+                  }}
                 </div>
 
                 <div v-else class="overflow-x-auto">
@@ -4205,7 +4423,14 @@ onMounted(async () => {
                       >
                         <td class="py-2 pe-2 whitespace-nowrap">{{ item.occurrences }}</td>
                         <td class="py-2 pe-2 whitespace-nowrap">
-                          {{ systemSpikeSummary.total_events ? ((item.occurrences / systemSpikeSummary.total_events) * 100).toFixed(1) : '0.0' }}%
+                          {{
+                            systemSpikeSummary.total_events
+                              ? (
+                                  (item.occurrences / systemSpikeSummary.total_events) *
+                                  100
+                                ).toFixed(1)
+                              : '0.0'
+                          }}%
                         </td>
                         <td class="py-2 pe-2 whitespace-nowrap">{{ item.logger }}</td>
                         <td class="py-2 pe-2 whitespace-nowrap">{{ item.level }}</td>
@@ -4216,7 +4441,15 @@ onMounted(async () => {
                       <tr class="border-t border-surface-600">
                         <td class="py-2 pe-2 font-semibold">{{ systemSpikeTopOccurrences }}</td>
                         <td class="py-2 pe-2 text-surface-400" colspan="4">
-                          Covered by top causes: {{ systemSpikeSummary.total_events ? ((systemSpikeTopOccurrences / systemSpikeSummary.total_events) * 100).toFixed(1) : '0.0' }}%
+                          Covered by top causes:
+                          {{
+                            systemSpikeSummary.total_events
+                              ? (
+                                  (systemSpikeTopOccurrences / systemSpikeSummary.total_events) *
+                                  100
+                                ).toFixed(1)
+                              : '0.0'
+                          }}%
                         </td>
                       </tr>
                     </tfoot>
@@ -4263,8 +4496,18 @@ onMounted(async () => {
                   input-class="w-20"
                   placeholder="Bot ID"
                 />
-                <InputText v-model="logsFilterLogger" size="small" class="w-40" placeholder="Logger (e.g. Printer)" />
-                <InputText v-model="logsFilterLevel" size="small" class="w-28" placeholder="Level" />
+                <InputText
+                  v-model="logsFilterLogger"
+                  size="small"
+                  class="w-40"
+                  placeholder="Logger (e.g. Printer)"
+                />
+                <InputText
+                  v-model="logsFilterLevel"
+                  size="small"
+                  class="w-28"
+                  placeholder="Level"
+                />
                 <Button
                   label="Refresh"
                   size="small"
@@ -4281,7 +4524,12 @@ onMounted(async () => {
                 Peak per-hour logs in range: {{ maxLogsCumulativeCount }}
               </template>
               <template v-else>
-                Total generated logs in range: {{ logsCumulativeChartPoints.length ? logsCumulativeChartPoints[logsCumulativeChartPoints.length - 1].cumulative : 0 }}
+                Total generated logs in range:
+                {{
+                  logsCumulativeChartPoints.length
+                    ? logsCumulativeChartPoints[logsCumulativeChartPoints.length - 1].cumulative
+                    : 0
+                }}
               </template>
             </p>
 
@@ -4298,11 +4546,17 @@ onMounted(async () => {
             </div>
 
             <div v-if="!logsCumulativeChartPoints.length" class="text-sm text-surface-400">
-              {{ loadingLogsCumulative ? 'Loading cumulative logs...' : 'No log data available for selected filters.' }}
+              {{
+                loadingLogsCumulative
+                  ? 'Loading cumulative logs...'
+                  : 'No log data available for selected filters.'
+              }}
             </div>
 
             <div v-else class="space-y-3">
-              <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-surface-400">
+              <div
+                class="flex flex-wrap items-center justify-between gap-3 text-xs text-surface-400"
+              >
                 <div class="flex items-center gap-2">
                   <span class="inline-block w-7 h-0.5 bg-[#60a5fa]" />
                   <span>{{ logsChartSeriesLabel }}</span>
@@ -4345,7 +4599,9 @@ onMounted(async () => {
                   <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
                   <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
                   <text x="8" y="24" fill="#94a3b8" font-size="11">Count</text>
-                  <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Date / Time</text>
+                  <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">
+                    Date / Time
+                  </text>
                   <text
                     v-for="(tick, idx) in logsChartXTicks"
                     :key="`x-label-${idx}`"
@@ -4374,12 +4630,23 @@ onMounted(async () => {
                     r="5"
                     fill="#cbd5e1"
                     class="cursor-pointer"
-                    @mousemove="showChartTooltip($event, [point.at, logsChartMode === 'hourly' ? `Generated logs: ${point.generated}` : `Cumulative logs: ${point.cumulative}`])"
+                    @mousemove="
+                      showChartTooltip($event, [
+                        point.at,
+                        logsChartMode === 'hourly'
+                          ? `Generated logs: ${point.generated}`
+                          : `Cumulative logs: ${point.cumulative}`,
+                      ])
+                    "
                     @mouseleave="hideChartTooltip"
                   >
                     <title>
                       {{ point.at }}
-                      {{ logsChartMode === 'hourly' ? `Generated logs: ${point.generated}` : `Cumulative logs: ${point.cumulative}` }}
+                      {{
+                        logsChartMode === 'hourly'
+                          ? `Generated logs: ${point.generated}`
+                          : `Cumulative logs: ${point.cumulative}`
+                      }}
                     </title>
                   </circle>
                 </svg>
@@ -4389,10 +4656,31 @@ onMounted(async () => {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <h6 class="font-semibold">Logs Spike Cause Summary</h6>
                   <div class="flex flex-wrap items-center gap-2">
-                    <InputText v-model="logsSpikeFromLocal" type="datetime-local" size="small" class="w-56" />
-                    <InputText v-model="logsSpikeToLocal" type="datetime-local" size="small" class="w-56" />
-                    <InputText v-model="logsSpikeLevels" size="small" class="w-44" placeholder="Levels" />
-                    <InputNumber v-model="logsSpikeLimit" :min="1" :max="200" size="small" input-class="w-16" />
+                    <InputText
+                      v-model="logsSpikeFromLocal"
+                      type="datetime-local"
+                      size="small"
+                      class="w-56"
+                    />
+                    <InputText
+                      v-model="logsSpikeToLocal"
+                      type="datetime-local"
+                      size="small"
+                      class="w-56"
+                    />
+                    <InputText
+                      v-model="logsSpikeLevels"
+                      size="small"
+                      class="w-44"
+                      placeholder="Levels"
+                    />
+                    <InputNumber
+                      v-model="logsSpikeLimit"
+                      :min="1"
+                      :max="200"
+                      size="small"
+                      input-class="w-16"
+                    />
                     <Button
                       label="Use Peak"
                       size="small"
@@ -4412,14 +4700,19 @@ onMounted(async () => {
                 </div>
 
                 <p class="text-xs text-surface-400">
-                  Top repeated log messages for selected logs window. Uses current Bot ID and Logger filters from this report.
+                  Top repeated log messages for selected logs window. Uses current Bot ID and Logger
+                  filters from this report.
                   <template v-if="logsSpikeSummary">
                     Window total events: {{ logsSpikeSummary.total_events }}.
                   </template>
                 </p>
 
                 <div v-if="!logsSpikeSummary?.buckets?.length" class="text-sm text-surface-400">
-                  {{ loadingLogsSpikeSummary ? 'Analyzing logs spike window...' : 'No grouped causes found for this timeframe.' }}
+                  {{
+                    loadingLogsSpikeSummary
+                      ? 'Analyzing logs spike window...'
+                      : 'No grouped causes found for this timeframe.'
+                  }}
                 </div>
 
                 <div v-else class="overflow-x-auto">
@@ -4441,7 +4734,13 @@ onMounted(async () => {
                       >
                         <td class="py-2 pe-2 whitespace-nowrap">{{ item.occurrences }}</td>
                         <td class="py-2 pe-2 whitespace-nowrap">
-                          {{ logsSpikeSummary.total_events ? ((item.occurrences / logsSpikeSummary.total_events) * 100).toFixed(1) : '0.0' }}%
+                          {{
+                            logsSpikeSummary.total_events
+                              ? ((item.occurrences / logsSpikeSummary.total_events) * 100).toFixed(
+                                  1,
+                                )
+                              : '0.0'
+                          }}%
                         </td>
                         <td class="py-2 pe-2 whitespace-nowrap">{{ item.logger }}</td>
                         <td class="py-2 pe-2 whitespace-nowrap">{{ item.level }}</td>
@@ -4452,7 +4751,15 @@ onMounted(async () => {
                       <tr class="border-t border-surface-600">
                         <td class="py-2 pe-2 font-semibold">{{ logsSpikeTopOccurrences }}</td>
                         <td class="py-2 pe-2 text-surface-400" colspan="4">
-                          Covered by top causes: {{ logsSpikeSummary.total_events ? ((logsSpikeTopOccurrences / logsSpikeSummary.total_events) * 100).toFixed(1) : '0.0' }}%
+                          Covered by top causes:
+                          {{
+                            logsSpikeSummary.total_events
+                              ? (
+                                  (logsSpikeTopOccurrences / logsSpikeSummary.total_events) *
+                                  100
+                                ).toFixed(1)
+                              : '0.0'
+                          }}%
                         </td>
                       </tr>
                     </tfoot>
@@ -4501,18 +4808,31 @@ onMounted(async () => {
                   input-class="w-20"
                   placeholder="Bot ID"
                 />
-                <InputText v-model="missedFilterPair" size="small" class="w-40" placeholder="Pair (e.g. JTO/USDT)" />
+                <InputText
+                  v-model="missedFilterPair"
+                  size="small"
+                  class="w-40"
+                  placeholder="Pair (e.g. JTO/USDT)"
+                />
                 <InputText v-model="missedFilterVps" size="small" class="w-32" placeholder="VPS" />
                 <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
                   <button
-                    v-for="sf in [{ key: 'both', label: 'Both' }, { key: 'long', label: 'Long' }, { key: 'short', label: 'Short' }]"
+                    v-for="sf in [
+                      { key: 'both', label: 'Both' },
+                      { key: 'long', label: 'Long' },
+                      { key: 'short', label: 'Short' },
+                    ]"
                     :key="sf.key"
                     class="px-2 py-1 transition-colors"
-                    :class="missedFilterSide === sf.key
-                      ? 'bg-primary-600 text-white'
-                      : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                    :class="
+                      missedFilterSide === sf.key
+                        ? 'bg-primary-600 text-white'
+                        : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'
+                    "
                     @click="missedFilterSide = sf.key as 'both' | 'long' | 'short'"
-                  >{{ sf.label }}</button>
+                  >
+                    {{ sf.label }}
+                  </button>
                 </div>
                 <Button
                   label="Clear"
@@ -4602,14 +4922,18 @@ onMounted(async () => {
                     text-anchor="end"
                     fill="#94a3b8"
                     font-size="10"
-                  >{{ tick.value }}</text>
+                  >
+                    {{ tick.value }}
+                  </text>
                 </g>
                 <!-- Axes -->
                 <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
                 <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
                 <!-- Axis labels -->
                 <text x="8" y="24" fill="#94a3b8" font-size="11">Count</text>
-                <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Date / Time</text>
+                <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">
+                  Date / Time
+                </text>
                 <!-- X-axis tick labels -->
                 <text
                   v-for="(tick, idx) in missedChartXTicks"
@@ -4619,7 +4943,9 @@ onMounted(async () => {
                   text-anchor="middle"
                   fill="#94a3b8"
                   font-size="10"
-                >{{ tick.label }}</text>
+                >
+                  {{ tick.label }}
+                </text>
                 <!-- Area fill -->
                 <polygon :points="missedChartAreaPolyline" fill="url(#missedAreaGradient)" />
                 <!-- Line -->
@@ -4639,10 +4965,23 @@ onMounted(async () => {
                   r="4"
                   fill="#cbd5e1"
                   class="cursor-pointer"
-                  @mousemove="showChartTooltip($event, [point.at, missedChartMode === 'hourly' ? `Missed trades: ${point.count}` : `Cumulative missed: ${point.cumulative}`])"
+                  @mousemove="
+                    showChartTooltip($event, [
+                      point.at,
+                      missedChartMode === 'hourly'
+                        ? `Missed trades: ${point.count}`
+                        : `Cumulative missed: ${point.cumulative}`,
+                    ])
+                  "
                   @mouseleave="hideChartTooltip"
                 >
-                  <title>{{ missedChartMode === 'hourly' ? `Missed trades: ${point.count}` : `Cumulative missed: ${point.cumulative}` }}</title>
+                  <title>
+                    {{
+                      missedChartMode === 'hourly'
+                        ? `Missed trades: ${point.count}`
+                        : `Cumulative missed: ${point.cumulative}`
+                    }}
+                  </title>
                 </circle>
               </svg>
             </div>
@@ -4652,7 +4991,9 @@ onMounted(async () => {
             </div>
 
             <div v-if="!groupedMissedTradeEvents.length" class="text-sm text-surface-400">
-              {{ loadingMissedTrades ? 'Loading missed trades...' : 'No missed trade events found.' }}
+              {{
+                loadingMissedTrades ? 'Loading missed trades...' : 'No missed trade events found.'
+              }}
             </div>
 
             <div v-else class="overflow-x-auto w-full">
@@ -4676,31 +5017,45 @@ onMounted(async () => {
                         {{ group.representative.at }}
                       </td>
                       <td class="py-2 pe-2 whitespace-nowrap">
-                        <div class="font-medium">{{ getBotVpsName(group.representative.botId) }}</div>
+                        <div class="font-medium">
+                          {{ getBotVpsName(group.representative.botId) }}
+                        </div>
                         <div class="text-xs text-surface-400">
-                          {{ getBotContainerName(group.representative.botId) }} · #{{ group.representative.botId }}
+                          {{ getBotContainerName(group.representative.botId) }} · #{{
+                            group.representative.botId
+                          }}
                         </div>
                       </td>
-                      <td class="py-2 pe-2 whitespace-nowrap font-mono">{{ group.representative.pair }}</td>
+                      <td class="py-2 pe-2 whitespace-nowrap font-mono">
+                        {{ group.representative.pair }}
+                      </td>
                       <td class="py-2 pe-2 whitespace-nowrap text-xs">
-                        <template v-for="s in [...new Set(group.events.map((e) => e.side))].filter(Boolean)" :key="s">
+                        <template
+                          v-for="s in [...new Set(group.events.map((e) => e.side))].filter(Boolean)"
+                          :key="s"
+                        >
                           <span
                             v-if="s === 'long'"
                             class="px-1.5 py-0.5 rounded text-green-400 bg-green-900/40 font-medium me-1"
-                          >Long</span>
+                            >Long</span
+                          >
                           <span
                             v-else-if="s === 'short'"
                             class="px-1.5 py-0.5 rounded text-red-400 bg-red-900/40 font-medium me-1"
-                          >Short</span>
+                            >Short</span
+                          >
                         </template>
-                        <span v-if="!group.events.some((e) => e.side)" class="text-surface-500">—</span>
+                        <span v-if="!group.events.some((e) => e.side)" class="text-surface-500"
+                          >—</span
+                        >
                       </td>
                       <td class="py-2 pe-2">
                         <span
                           v-for="rc in [...new Set(group.events.map((e) => e.reasonCode))]"
                           :key="rc"
                           class="inline-block text-xs text-surface-300 bg-surface-700 rounded px-1 me-1 mb-0.5 whitespace-nowrap"
-                        >{{ rc }}</span>
+                          >{{ rc }}</span
+                        >
                       </td>
                       <td class="py-2 pe-2 text-center whitespace-nowrap text-surface-400 text-xs">
                         {{ group.events.length }}
@@ -4715,7 +5070,10 @@ onMounted(async () => {
                       </td>
                     </tr>
                     <!-- Expanded detail sub-table -->
-                    <tr v-if="isMissedGroupExpanded(group.key)" class="border-b border-surface-800 bg-surface-950/40">
+                    <tr
+                      v-if="isMissedGroupExpanded(group.key)"
+                      class="border-b border-surface-800 bg-surface-950/40"
+                    >
                       <td colspan="7" class="py-3 px-2">
                         <div class="max-h-72 overflow-y-auto">
                           <table class="w-full text-xs border-collapse">
@@ -4737,7 +5095,9 @@ onMounted(async () => {
                                 <td class="py-1 pe-2 whitespace-nowrap">{{ event.at }}</td>
                                 <td class="py-1 pe-2 whitespace-nowrap">{{ event.reasonCode }}</td>
                                 <td class="py-1 pe-2 whitespace-nowrap">{{ event.reason }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap">{{ event.details ?? '—' }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  {{ event.details ?? '—' }}
+                                </td>
                                 <td class="py-1 break-words">{{ event.message }}</td>
                               </tr>
                             </tbody>
@@ -4749,7 +5109,6 @@ onMounted(async () => {
                 </tbody>
               </table>
             </div>
-
           </div>
 
           <!-- ============================================================ -->
@@ -4787,12 +5146,22 @@ onMounted(async () => {
                 <!-- Side toggle -->
                 <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
                   <button
-                    v-for="sf in [{ key: 'both', label: 'Both' }, { key: 'long', label: 'Long' }, { key: 'short', label: 'Short' }]"
+                    v-for="sf in [
+                      { key: 'both', label: 'Both' },
+                      { key: 'long', label: 'Long' },
+                      { key: 'short', label: 'Short' },
+                    ]"
                     :key="sf.key"
                     class="px-2 py-1 transition-colors"
-                    :class="signalOutcomesFilterSide === sf.key ? 'bg-primary-600 text-white' : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                    :class="
+                      signalOutcomesFilterSide === sf.key
+                        ? 'bg-primary-600 text-white'
+                        : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'
+                    "
                     @click="signalOutcomesFilterSide = sf.key as 'both' | 'long' | 'short'"
-                  >{{ sf.label }}</button>
+                  >
+                    {{ sf.label }}
+                  </button>
                 </div>
                 <Select
                   v-model="signalOutcomesFilterOutcome"
@@ -4842,20 +5211,34 @@ onMounted(async () => {
                 @click="selectedSignalOutcomeReasons = []"
               />
               <Button
-                v-for="[code, count] in [...signalOutcomeReasonStats.reasonCounts.entries()].filter(([c]) => c !== 'trailing_entry')"
+                v-for="[code, count] in [...signalOutcomeReasonStats.reasonCounts.entries()].filter(
+                  ([c]) => c !== 'trailing_entry',
+                )"
                 :key="code"
                 :label="`${SIGNAL_OUTCOME_REASON_LABELS[code] ?? code}: ${count} (${signalOutcomeReasonSharePct(count)}%)`"
                 size="small"
                 severity="warn"
                 :outlined="!selectedSignalOutcomeReasons.includes(code)"
-                @click="selectedSignalOutcomeReasons.includes(code) ? (selectedSignalOutcomeReasons = selectedSignalOutcomeReasons.filter((r) => r !== code)) : selectedSignalOutcomeReasons.push(code)"
+                @click="
+                  selectedSignalOutcomeReasons.includes(code)
+                    ? (selectedSignalOutcomeReasons = selectedSignalOutcomeReasons.filter(
+                        (r) => r !== code,
+                      ))
+                    : selectedSignalOutcomeReasons.push(code)
+                "
               />
               <Button
                 :label="`Trailing-entry misses: ${signalOutcomeTrailingCount} (${signalOutcomeReasonSharePct(signalOutcomeTrailingCount)}%)`"
                 size="small"
                 severity="warn"
                 :outlined="!selectedSignalOutcomeReasons.includes('trailing_entry')"
-                @click="selectedSignalOutcomeReasons.includes('trailing_entry') ? (selectedSignalOutcomeReasons = selectedSignalOutcomeReasons.filter((r) => r !== 'trailing_entry')) : selectedSignalOutcomeReasons.push('trailing_entry')"
+                @click="
+                  selectedSignalOutcomeReasons.includes('trailing_entry')
+                    ? (selectedSignalOutcomeReasons = selectedSignalOutcomeReasons.filter(
+                        (r) => r !== 'trailing_entry',
+                      ))
+                    : selectedSignalOutcomeReasons.push('trailing_entry')
+                "
               />
             </div>
 
@@ -4863,7 +5246,11 @@ onMounted(async () => {
             <div v-if="signalOutcomesChartPoints.length" class="space-y-1">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-center gap-3 text-xs text-surface-400">
-                  <span>{{ signalOutcomesChartMode === 'hourly' ? 'Signals (Count per hour)' : 'Signals (Cumulative)' }}</span>
+                  <span>{{
+                    signalOutcomesChartMode === 'hourly'
+                      ? 'Signals (Count per hour)'
+                      : 'Signals (Cumulative)'
+                  }}</span>
                 </div>
                 <Select
                   v-model="signalOutcomesChartMode"
@@ -4902,14 +5289,18 @@ onMounted(async () => {
                     text-anchor="end"
                     fill="#94a3b8"
                     font-size="10"
-                  >{{ tick.value }}</text>
+                  >
+                    {{ tick.value }}
+                  </text>
                 </g>
                 <!-- Axes -->
                 <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
                 <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
                 <!-- Axis labels -->
                 <text x="8" y="24" fill="#94a3b8" font-size="11">Count</text>
-                <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Date / Time</text>
+                <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">
+                  Date / Time
+                </text>
                 <!-- X-axis tick labels -->
                 <text
                   v-for="(tick, idx) in signalOutcomesChartXTicks"
@@ -4919,9 +5310,14 @@ onMounted(async () => {
                   text-anchor="middle"
                   fill="#94a3b8"
                   font-size="10"
-                >{{ tick.label }}</text>
+                >
+                  {{ tick.label }}
+                </text>
                 <!-- Area fill -->
-                <polygon :points="signalOutcomesChartAreaPolyline" fill="url(#signalOutcomesAreaGradient)" />
+                <polygon
+                  :points="signalOutcomesChartAreaPolyline"
+                  fill="url(#signalOutcomesAreaGradient)"
+                />
                 <!-- Line -->
                 <polyline
                   :points="signalOutcomesChartPolyline"
@@ -4939,10 +5335,23 @@ onMounted(async () => {
                   r="4"
                   fill="#cbd5e1"
                   class="cursor-pointer"
-                  @mousemove="showChartTooltip($event, [point.at, signalOutcomesChartMode === 'hourly' ? `Signals: ${point.count}` : `Cumulative signals: ${point.cumulative}`])"
+                  @mousemove="
+                    showChartTooltip($event, [
+                      point.at,
+                      signalOutcomesChartMode === 'hourly'
+                        ? `Signals: ${point.count}`
+                        : `Cumulative signals: ${point.cumulative}`,
+                    ])
+                  "
                   @mouseleave="hideChartTooltip"
                 >
-                  <title>{{ signalOutcomesChartMode === 'hourly' ? `Signals: ${point.count}` : `Cumulative signals: ${point.cumulative}` }}</title>
+                  <title>
+                    {{
+                      signalOutcomesChartMode === 'hourly'
+                        ? `Signals: ${point.count}`
+                        : `Cumulative signals: ${point.cumulative}`
+                    }}
+                  </title>
                 </circle>
               </svg>
             </div>
@@ -4979,10 +5388,7 @@ onMounted(async () => {
             </div>
 
             <!-- Summary stats -->
-            <div
-              v-if="signalOutcomesLoaded && signalOutcomes"
-              class="flex flex-wrap gap-3 text-sm"
-            >
+            <div v-if="signalOutcomesLoaded && signalOutcomes" class="flex flex-wrap gap-3 text-sm">
               <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
                 <div class="text-lg font-bold">{{ signalOutcomes.total }}</div>
                 <div class="text-xs text-surface-400">Total signals</div>
@@ -4996,13 +5402,17 @@ onMounted(async () => {
                   {{ signalOutcomesProfitable.length }}
                   <span class="text-sm font-normal">({{ signalOutcomesProfitablePct }}%)</span>
                 </div>
-                <div class="text-xs text-surface-400">Win (≥{{ signalOutcomesProfitThreshold }}%)</div>
+                <div class="text-xs text-surface-400">
+                  Win (≥{{ signalOutcomesProfitThreshold }}%)
+                </div>
               </div>
               <div
                 v-if="signalOutcomesPendingCount > 0"
                 class="rounded border border-yellow-700 px-3 py-2 min-w-28 text-center"
               >
-                <div class="text-lg font-bold text-yellow-400">{{ signalOutcomesPendingCount }}</div>
+                <div class="text-lg font-bold text-yellow-400">
+                  {{ signalOutcomesPendingCount }}
+                </div>
                 <div class="text-xs text-surface-400">Awaiting outcome fetch</div>
               </div>
             </div>
@@ -5043,7 +5453,9 @@ onMounted(async () => {
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap">
                       <div class="font-medium">{{ sig.vps_name ?? `Bot ${sig.bot_id}` }}</div>
-                      <div class="text-xs text-surface-400">{{ sig.container_name }} · #{{ sig.bot_id }}</div>
+                      <div class="text-xs text-surface-400">
+                        {{ sig.container_name }} · #{{ sig.bot_id }}
+                      </div>
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap font-mono">{{ sig.pair }}</td>
                     <td class="py-2 pe-3 whitespace-nowrap text-xs text-surface-300">
@@ -5056,11 +5468,13 @@ onMounted(async () => {
                       <span
                         v-if="sig.direction === 'long'"
                         class="px-1.5 py-0.5 rounded text-green-400 bg-green-900/40 font-medium"
-                      >Long</span>
+                        >Long</span
+                      >
                       <span
                         v-else-if="sig.direction === 'short'"
                         class="px-1.5 py-0.5 rounded text-red-400 bg-red-900/40 font-medium"
-                      >Short</span>
+                        >Short</span
+                      >
                       <span v-else class="text-surface-500">—</span>
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap font-mono text-xs">
@@ -5075,53 +5489,52 @@ onMounted(async () => {
                       <span v-else class="text-surface-500">—</span>
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap font-mono text-xs">
-                      <span
-                        v-if="sig.max_gain_pct !== null"
-                        class="text-green-400"
-                      >+{{ sig.max_gain_pct.toFixed(2) }}%</span>
+                      <span v-if="sig.max_gain_pct !== null" class="text-green-400"
+                        >+{{ sig.max_gain_pct.toFixed(2) }}%</span
+                      >
                       <span v-else class="text-surface-500">—</span>
                     </td>
                     <td class="py-2 pe-3 whitespace-nowrap font-mono text-xs">
-                      <span
-                        v-if="sig.max_loss_pct !== null"
-                        class="text-red-400"
-                      >{{ sig.max_loss_pct.toFixed(2) }}%</span>
+                      <span v-if="sig.max_loss_pct !== null" class="text-red-400"
+                        >{{ sig.max_loss_pct.toFixed(2) }}%</span
+                      >
                       <span v-else class="text-surface-500">—</span>
                     </td>
                     <td class="py-2 whitespace-nowrap text-xs">
-                      <span
-                        v-if="sig.fetch_error"
-                        class="text-orange-400"
-                        :title="sig.fetch_error"
-                      >Error</span>
-                      <span
-                        v-else-if="sig.outcome_fetched_at === null"
-                        class="text-surface-500"
-                      >Pending</span>
-                      <template v-else-if="(sig.max_gain_pct ?? 0) >= signalOutcomesProfitThreshold">
+                      <span v-if="sig.fetch_error" class="text-orange-400" :title="sig.fetch_error"
+                        >Error</span
+                      >
+                      <span v-else-if="sig.outcome_fetched_at === null" class="text-surface-500"
+                        >Pending</span
+                      >
+                      <template
+                        v-else-if="(sig.max_gain_pct ?? 0) >= signalOutcomesProfitThreshold"
+                      >
                         <span class="text-green-400 font-medium">Win</span>
                         <span
                           v-if="isPartialOutcome(sig)"
                           class="text-yellow-400 ms-1"
                           title="Window still open — outcome may improve"
-                        >⟳</span>
+                          >⟳</span
+                        >
                       </template>
                       <template v-else>
                         <span
                           v-if="isPartialOutcome(sig)"
                           class="text-yellow-400 font-medium"
                           :title="`${sig.outcome_window_hours}h window still open`"
-                        >Live</span>
-                        <span
-                          v-else
-                          class="text-red-400 font-medium"
-                        >No trigger</span>
+                          >Live</span
+                        >
+                        <span v-else class="text-red-400 font-medium">No trigger</span>
                       </template>
                     </td>
                   </tr>
                 </tbody>
               </table>
-              <div v-if="signalOutcomes && signalOutcomes.total > signalOutcomeItems.length" class="mt-2 text-xs text-surface-400">
+              <div
+                v-if="signalOutcomes && signalOutcomes.total > signalOutcomeItems.length"
+                class="mt-2 text-xs text-surface-400"
+              >
                 Showing {{ signalOutcomeItems.length }} of {{ signalOutcomes.total }} signals
               </div>
             </div>
@@ -5170,16 +5583,15 @@ onMounted(async () => {
             </div>
 
             <!-- Summary stats -->
-            <div
-              v-if="entryTagLoaded && entryTagPerformance"
-              class="flex flex-wrap gap-3 text-sm"
-            >
+            <div v-if="entryTagLoaded && entryTagPerformance" class="flex flex-wrap gap-3 text-sm">
               <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
                 <div class="text-lg font-bold">{{ entryTagPerformance.total_tags }}</div>
                 <div class="text-xs text-surface-400">Unique tags</div>
               </div>
               <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
-                <div class="text-lg font-bold">{{ entryTagPerformance.items.reduce((s, r) => s + r.trades, 0) }}</div>
+                <div class="text-lg font-bold">
+                  {{ entryTagPerformance.items.reduce((s, r) => s + r.trades, 0) }}
+                </div>
                 <div class="text-xs text-surface-400">Total trades</div>
               </div>
               <div
@@ -5189,16 +5601,21 @@ onMounted(async () => {
                 <div class="text-lg font-bold text-green-400">
                   {{ entryTagBestWinRate.win_rate_pct.toFixed(1) }}%
                 </div>
-                <div class="text-xs text-surface-400">Best win rate ({{ entryTagBestWinRate.enter_tag ?? 'null' }})</div>
+                <div class="text-xs text-surface-400">
+                  Best win rate ({{ entryTagBestWinRate.enter_tag ?? 'null' }})
+                </div>
               </div>
               <div
                 v-if="entryTagBestAvgProfit"
                 class="rounded border border-green-700 px-3 py-2 min-w-36 text-center"
               >
                 <div class="text-lg font-bold text-green-400">
-                  {{ entryTagBestAvgProfit.avg_profit_pct > 0 ? '+' : '' }}{{ entryTagBestAvgProfit.avg_profit_pct.toFixed(2) }}%
+                  {{ entryTagBestAvgProfit.avg_profit_pct > 0 ? '+' : ''
+                  }}{{ entryTagBestAvgProfit.avg_profit_pct.toFixed(2) }}%
                 </div>
-                <div class="text-xs text-surface-400">Best avg profit ({{ entryTagBestAvgProfit.enter_tag ?? 'null' }})</div>
+                <div class="text-xs text-surface-400">
+                  Best avg profit ({{ entryTagBestAvgProfit.enter_tag ?? 'null' }})
+                </div>
               </div>
             </div>
 
@@ -5219,33 +5636,83 @@ onMounted(async () => {
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="entryTagSortCol === 'trades' ? 'text-primary-400' : ''"
-                      @click="entryTagSortCol === 'trades' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'trades'), (entryTagSortAsc = false))"
-                    >Trades {{ entryTagSortCol === 'trades' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        entryTagSortCol === 'trades'
+                          ? (entryTagSortAsc = !entryTagSortAsc)
+                          : ((entryTagSortCol = 'trades'), (entryTagSortAsc = false))
+                      "
+                    >
+                      Trades {{ entryTagSortCol === 'trades' ? (entryTagSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="entryTagSortCol === 'wins' ? 'text-primary-400' : ''"
-                      @click="entryTagSortCol === 'wins' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'wins'), (entryTagSortAsc = false))"
-                    >Wins {{ entryTagSortCol === 'wins' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        entryTagSortCol === 'wins'
+                          ? (entryTagSortAsc = !entryTagSortAsc)
+                          : ((entryTagSortCol = 'wins'), (entryTagSortAsc = false))
+                      "
+                    >
+                      Wins {{ entryTagSortCol === 'wins' ? (entryTagSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="entryTagSortCol === 'win_rate_pct' ? 'text-primary-400' : ''"
-                      @click="entryTagSortCol === 'win_rate_pct' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'win_rate_pct'), (entryTagSortAsc = false))"
-                    >Win rate {{ entryTagSortCol === 'win_rate_pct' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        entryTagSortCol === 'win_rate_pct'
+                          ? (entryTagSortAsc = !entryTagSortAsc)
+                          : ((entryTagSortCol = 'win_rate_pct'), (entryTagSortAsc = false))
+                      "
+                    >
+                      Win rate
+                      {{ entryTagSortCol === 'win_rate_pct' ? (entryTagSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="entryTagSortCol === 'avg_profit_pct' ? 'text-primary-400' : ''"
-                      @click="entryTagSortCol === 'avg_profit_pct' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'avg_profit_pct'), (entryTagSortAsc = false))"
-                    >Avg profit {{ entryTagSortCol === 'avg_profit_pct' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        entryTagSortCol === 'avg_profit_pct'
+                          ? (entryTagSortAsc = !entryTagSortAsc)
+                          : ((entryTagSortCol = 'avg_profit_pct'), (entryTagSortAsc = false))
+                      "
+                    >
+                      Avg profit
+                      {{
+                        entryTagSortCol === 'avg_profit_pct' ? (entryTagSortAsc ? '↑' : '↓') : ''
+                      }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="entryTagSortCol === 'avg_duration_hours' ? 'text-primary-400' : ''"
-                      @click="entryTagSortCol === 'avg_duration_hours' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'avg_duration_hours'), (entryTagSortAsc = false))"
-                    >Avg duration {{ entryTagSortCol === 'avg_duration_hours' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        entryTagSortCol === 'avg_duration_hours'
+                          ? (entryTagSortAsc = !entryTagSortAsc)
+                          : ((entryTagSortCol = 'avg_duration_hours'), (entryTagSortAsc = false))
+                      "
+                    >
+                      Avg duration
+                      {{
+                        entryTagSortCol === 'avg_duration_hours'
+                          ? entryTagSortAsc
+                            ? '↑'
+                            : '↓'
+                          : ''
+                      }}
+                    </th>
                     <th
                       class="py-2 cursor-pointer select-none whitespace-nowrap"
                       :class="entryTagSortCol === 'total_profit_abs' ? 'text-primary-400' : ''"
-                      @click="entryTagSortCol === 'total_profit_abs' ? (entryTagSortAsc = !entryTagSortAsc) : ((entryTagSortCol = 'total_profit_abs'), (entryTagSortAsc = false))"
-                    >Total profit {{ entryTagSortCol === 'total_profit_abs' ? (entryTagSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        entryTagSortCol === 'total_profit_abs'
+                          ? (entryTagSortAsc = !entryTagSortAsc)
+                          : ((entryTagSortCol = 'total_profit_abs'), (entryTagSortAsc = false))
+                      "
+                    >
+                      Total profit
+                      {{
+                        entryTagSortCol === 'total_profit_abs' ? (entryTagSortAsc ? '↑' : '↓') : ''
+                      }}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5268,12 +5735,15 @@ onMounted(async () => {
                       </span>
                     </td>
                     <td class="py-2 pe-3 text-right font-mono text-xs">
-                      <span v-if="row.avg_duration_hours !== null">{{ row.avg_duration_hours.toFixed(1) }}h</span>
+                      <span v-if="row.avg_duration_hours !== null"
+                        >{{ row.avg_duration_hours.toFixed(1) }}h</span
+                      >
                       <span v-else class="text-surface-500">—</span>
                     </td>
                     <td class="py-2 text-right font-mono text-xs">
                       <span :class="row.total_profit_abs >= 0 ? 'text-green-400' : 'text-red-400'">
-                        {{ row.total_profit_abs >= 0 ? '+' : '' }}{{ row.total_profit_abs.toFixed(2) }}
+                        {{ row.total_profit_abs >= 0 ? '+' : ''
+                        }}{{ row.total_profit_abs.toFixed(2) }}
                       </span>
                     </td>
                   </tr>
@@ -5282,82 +5752,144 @@ onMounted(async () => {
             </div>
           </div>
 
-          <div v-if="selectedSubCategory === 'exit-reason-distribution'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'exit-reason-distribution'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h5 class="font-semibold">Exit Reason Distribution</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded"
+                  >Tier 1</span
+                >
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputNumber
+                  v-model="stubFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
                 <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
-              Groups closed trades by <code class="bg-surface-700 px-1 rounded">exit_reason</code> and shows count, avg profit %, and % share.
-              Answers: <em>how often does the trailing stop fire vs stoploss vs ROI? Are we exiting well?</em>
+              Groups closed trades by
+              <code class="bg-surface-700 px-1 rounded">exit_reason</code> and shows count, avg
+              profit %, and % share. Answers:
+              <em
+                >how often does the trailing stop fire vs stoploss vs ROI? Are we exiting well?</em
+              >
             </p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">What it will show</div>
                 <div class="text-surface-400">• Bar chart: exit_reason by count + avg profit</div>
                 <div class="text-surface-400">• Pie/donut: % share by exit reason</div>
-                <div class="text-surface-400">• Table: reason | count | % share | avg profit% | avg profit abs</div>
+                <div class="text-surface-400">
+                  • Table: reason | count | % share | avg profit% | avg profit abs
+                </div>
                 <div class="text-surface-400">• Filter by bot, date range, pair</div>
               </div>
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">GET /dwh/reports/exit-reason-distribution</code></div>
-                <div class="text-surface-400">• Query: <code class="bg-surface-800 px-1 rounded">SELECT exit_reason, COUNT(*), AVG(profit_ratio) FROM dwh_trades WHERE close_date IS NOT NULL GROUP BY exit_reason</code></div>
-                <div class="text-surface-400">• Printer.py key exit reasons: trailing_stop_loss, roi, stop_loss, force_sell</div>
-                <div class="text-surface-400">• Frontend: table + optional SVG bar chart reusing existing chart patterns</div>
+                <div class="text-surface-400">
+                  • Backend:
+                  <code class="bg-surface-800 px-1 rounded"
+                    >GET /dwh/reports/exit-reason-distribution</code
+                  >
+                </div>
+                <div class="text-surface-400">
+                  • Query:
+                  <code class="bg-surface-800 px-1 rounded"
+                    >SELECT exit_reason, COUNT(*), AVG(profit_ratio) FROM dwh_trades WHERE
+                    close_date IS NOT NULL GROUP BY exit_reason</code
+                  >
+                </div>
+                <div class="text-surface-400">
+                  • Printer.py key exit reasons: trailing_stop_loss, roi, stop_loss, force_sell
+                </div>
+                <div class="text-surface-400">
+                  • Frontend: table + optional SVG bar chart reusing existing chart patterns
+                </div>
               </div>
             </div>
           </div>
 
-          <div v-if="selectedSubCategory === 'equity-curve'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'equity-curve'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h5 class="font-semibold">Equity Curve & Drawdown</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded"
+                  >Tier 1</span
+                >
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputNumber
+                  v-model="stubFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
-              Plots cumulative <code class="bg-surface-700 px-1 rounded">profit_abs</code> over time per bot, with rolling max drawdown.
-              Answers: <em>is each bot growing its account? When were the worst drawdown periods?</em>
+              Plots cumulative <code class="bg-surface-700 px-1 rounded">profit_abs</code> over time
+              per bot, with rolling max drawdown. Answers:
+              <em>is each bot growing its account? When were the worst drawdown periods?</em>
             </p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• Line chart: cumulative profit_abs over close_date, one line per bot</div>
+                <div class="text-surface-400">
+                  • Line chart: cumulative profit_abs over close_date, one line per bot
+                </div>
                 <div class="text-surface-400">• Shaded area below line = drawdown depth</div>
-                <div class="text-surface-400">• Summary: total PnL, max drawdown, recovery factor per bot</div>
+                <div class="text-surface-400">
+                  • Summary: total PnL, max drawdown, recovery factor per bot
+                </div>
                 <div class="text-surface-400">• Bot toggle to show/hide individual lines</div>
               </div>
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Backend: return sorted <code class="bg-surface-800 px-1 rounded">(close_date, bot_id, profit_abs)</code> rows</div>
-                <div class="text-surface-400">• Frontend: compute running sum + rolling max in JS, then render with SVG polyline (pattern exists in system errors chart)</div>
-                <div class="text-surface-400">• Drawdown = (running_max - current) / running_max</div>
+                <div class="text-surface-400">
+                  • Backend: return sorted
+                  <code class="bg-surface-800 px-1 rounded">(close_date, bot_id, profit_abs)</code>
+                  rows
+                </div>
+                <div class="text-surface-400">
+                  • Frontend: compute running sum + rolling max in JS, then render with SVG polyline
+                  (pattern exists in system errors chart)
+                </div>
+                <div class="text-surface-400">
+                  • Drawdown = (running_max - current) / running_max
+                </div>
                 <div class="text-surface-400">• One API call, all bots; group client-side</div>
               </div>
             </div>
           </div>
 
-          <div v-if="selectedSubCategory === 'bot-comparison'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'bot-comparison'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h5 class="font-semibold">Bot Comparison Dashboard</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded"
+                  >Tier 1</span
+                >
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
@@ -5366,58 +5898,106 @@ onMounted(async () => {
               </div>
             </div>
             <p class="text-sm text-surface-300">
-              All bots side-by-side with key performance metrics.
-              Answers: <em>which bots are outperforming? Which are dragging down results?</em>
+              All bots side-by-side with key performance metrics. Answers:
+              <em>which bots are outperforming? Which are dragging down results?</em>
             </p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• Table: Bot | VPS | Trades | Trades/day | Win rate | Avg profit% | Total PnL | Avg duration</div>
-                <div class="text-surface-400">• Color-coded: green/red for win rate and avg profit</div>
+                <div class="text-surface-400">
+                  • Table: Bot | VPS | Trades | Trades/day | Win rate | Avg profit% | Total PnL |
+                  Avg duration
+                </div>
+                <div class="text-surface-400">
+                  • Color-coded: green/red for win rate and avg profit
+                </div>
                 <div class="text-surface-400">• Sortable columns</div>
                 <div class="text-surface-400">• Date range filter</div>
               </div>
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">SELECT bot_id, COUNT(*), AVG(profit_ratio), SUM(profit_abs), ... FROM dwh_trades GROUP BY bot_id</code></div>
-                <div class="text-surface-400">• Join managed_bots + vps_servers for display names</div>
-                <div class="text-surface-400">• Frontend: sortable table, stat cards for fleet-level totals</div>
-                <div class="text-surface-400">• Reuse <code class="bg-surface-800 px-1 rounded">getBotVpsName / getBotContainerName</code> helpers</div>
+                <div class="text-surface-400">
+                  • Backend:
+                  <code class="bg-surface-800 px-1 rounded"
+                    >SELECT bot_id, COUNT(*), AVG(profit_ratio), SUM(profit_abs), ... FROM
+                    dwh_trades GROUP BY bot_id</code
+                  >
+                </div>
+                <div class="text-surface-400">
+                  • Join managed_bots + vps_servers for display names
+                </div>
+                <div class="text-surface-400">
+                  • Frontend: sortable table, stat cards for fleet-level totals
+                </div>
+                <div class="text-surface-400">
+                  • Reuse
+                  <code class="bg-surface-800 px-1 rounded"
+                    >getBotVpsName / getBotContainerName</code
+                  >
+                  helpers
+                </div>
               </div>
             </div>
           </div>
 
-          <div v-if="selectedSubCategory === 'pair-performance'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'pair-performance'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h5 class="font-semibold">Pair-Level Performance</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 1</span>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded"
+                  >Tier 1</span
+                >
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputNumber
+                  v-model="stubFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
                 <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
-              Groups closed trades by <code class="bg-surface-700 px-1 rounded">pair</code> and shows win rate, avg profit, trade count, total abs profit.
-              Answers: <em>which pairs are consistently profitable? Which should be removed from the pairlist?</em>
+              Groups closed trades by <code class="bg-surface-700 px-1 rounded">pair</code> and
+              shows win rate, avg profit, trade count, total abs profit. Answers:
+              <em
+                >which pairs are consistently profitable? Which should be removed from the
+                pairlist?</em
+              >
             </p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• Table: Pair | trades | win rate | avg profit% | total PnL | avg duration</div>
+                <div class="text-surface-400">
+                  • Table: Pair | trades | win rate | avg profit% | total PnL | avg duration
+                </div>
                 <div class="text-surface-400">• Sort by total PnL or win rate</div>
                 <div class="text-surface-400">• Filter by bot, date range</div>
                 <div class="text-surface-400">• Highlight top 5 / bottom 5 pairs</div>
               </div>
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">SELECT pair, COUNT(*), SUM(profit_abs), AVG(profit_ratio) FROM dwh_trades WHERE close_date IS NOT NULL GROUP BY pair ORDER BY SUM(profit_abs) DESC</code></div>
-                <div class="text-surface-400">• Optional bot_id filter to see per-bot pair performance</div>
-                <div class="text-surface-400">• Frontend: sortable table, color-coded PnL column</div>
+                <div class="text-surface-400">
+                  • Backend:
+                  <code class="bg-surface-800 px-1 rounded"
+                    >SELECT pair, COUNT(*), SUM(profit_abs), AVG(profit_ratio) FROM dwh_trades WHERE
+                    close_date IS NOT NULL GROUP BY pair ORDER BY SUM(profit_abs) DESC</code
+                  >
+                </div>
+                <div class="text-surface-400">
+                  • Optional bot_id filter to see per-bot pair performance
+                </div>
+                <div class="text-surface-400">
+                  • Frontend: sortable table, color-coded PnL column
+                </div>
               </div>
             </div>
           </div>
@@ -5426,14 +6006,23 @@ onMounted(async () => {
           <!-- Stub report pages — Tier 2                               -->
           <!-- ============================================================ -->
 
-          <div v-if="selectedSubCategory === 'dca-analysis'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'dca-analysis'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <!-- Header + filters -->
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">DCA / Multi-Order Analysis</h5>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="dcaDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="dcaDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="dcaFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputNumber
+                  v-model="dcaFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
                 <Button
                   label="Load"
                   size="small"
@@ -5447,33 +6036,61 @@ onMounted(async () => {
 
             <!-- Coverage note -->
             <div v-if="dcaLoaded && dcaAnalysis" class="text-xs text-surface-400">
-              {{ dcaAnalysis.trades_with_orders.toLocaleString() }} of {{ dcaAnalysis.total_closed_trades.toLocaleString() }} closed trades have order data
+              {{ dcaAnalysis.trades_with_orders.toLocaleString() }} of
+              {{ dcaAnalysis.total_closed_trades.toLocaleString() }} closed trades have order data
               <span v-if="dcaAnalysis.total_closed_trades > 0">
-                ({{ Math.round(dcaAnalysis.trades_with_orders / dcaAnalysis.total_closed_trades * 100) }}% coverage)
+                ({{
+                  Math.round(
+                    (dcaAnalysis.trades_with_orders / dcaAnalysis.total_closed_trades) * 100,
+                  )
+                }}% coverage)
               </span>
             </div>
 
             <!-- Single vs DCA summary cards -->
-            <div v-if="dcaLoaded && dcaAnalysis && dcaAnalysis.items.length > 0" class="flex flex-wrap gap-3 text-sm">
-              <div v-if="dcaSingleEntry" class="rounded border border-surface-600 px-3 py-2 min-w-40 text-center">
+            <div
+              v-if="dcaLoaded && dcaAnalysis && dcaAnalysis.items.length > 0"
+              class="flex flex-wrap gap-3 text-sm"
+            >
+              <div
+                v-if="dcaSingleEntry"
+                class="rounded border border-surface-600 px-3 py-2 min-w-40 text-center"
+              >
                 <div class="text-xs text-surface-400 mb-1">Single entry (1 order)</div>
                 <div class="text-lg font-bold">{{ dcaSingleEntry.trades }}</div>
                 <div class="text-xs text-surface-400">trades</div>
-                <div class="mt-1 font-mono text-sm" :class="dcaSingleEntry.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'">
-                  {{ dcaSingleEntry.avg_profit_pct >= 0 ? '+' : '' }}{{ dcaSingleEntry.avg_profit_pct.toFixed(2) }}% avg
+                <div
+                  class="mt-1 font-mono text-sm"
+                  :class="dcaSingleEntry.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'"
+                >
+                  {{ dcaSingleEntry.avg_profit_pct >= 0 ? '+' : ''
+                  }}{{ dcaSingleEntry.avg_profit_pct.toFixed(2) }}% avg
                 </div>
-                <div class="font-mono text-xs" :class="dcaSingleEntry.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'">
+                <div
+                  class="font-mono text-xs"
+                  :class="dcaSingleEntry.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'"
+                >
                   {{ dcaSingleEntry.win_rate_pct.toFixed(1) }}% win rate
                 </div>
               </div>
-              <div v-if="dcaMultiEntry" class="rounded border border-primary-700 px-3 py-2 min-w-40 text-center">
+              <div
+                v-if="dcaMultiEntry"
+                class="rounded border border-primary-700 px-3 py-2 min-w-40 text-center"
+              >
                 <div class="text-xs text-surface-400 mb-1">DCA (2+ orders)</div>
                 <div class="text-lg font-bold">{{ dcaMultiEntry.trades }}</div>
                 <div class="text-xs text-surface-400">trades</div>
-                <div class="mt-1 font-mono text-sm" :class="dcaMultiEntry.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'">
-                  {{ dcaMultiEntry.avg_profit_pct >= 0 ? '+' : '' }}{{ dcaMultiEntry.avg_profit_pct.toFixed(2) }}% avg
+                <div
+                  class="mt-1 font-mono text-sm"
+                  :class="dcaMultiEntry.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'"
+                >
+                  {{ dcaMultiEntry.avg_profit_pct >= 0 ? '+' : ''
+                  }}{{ dcaMultiEntry.avg_profit_pct.toFixed(2) }}% avg
                 </div>
-                <div class="font-mono text-xs" :class="dcaMultiEntry.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'">
+                <div
+                  class="font-mono text-xs"
+                  :class="dcaMultiEntry.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'"
+                >
                   {{ dcaMultiEntry.win_rate_pct.toFixed(1) }}% win rate
                 </div>
               </div>
@@ -5484,16 +6101,27 @@ onMounted(async () => {
                 <div class="text-xs text-surface-400 mb-1">DCA vs single edge</div>
                 <div
                   class="text-lg font-bold font-mono"
-                  :class="dcaMultiEntry.avg_profit_pct - dcaSingleEntry.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'"
+                  :class="
+                    dcaMultiEntry.avg_profit_pct - dcaSingleEntry.avg_profit_pct >= 0
+                      ? 'text-green-400'
+                      : 'text-red-400'
+                  "
                 >
-                  {{ (dcaMultiEntry.avg_profit_pct - dcaSingleEntry.avg_profit_pct) >= 0 ? '+' : '' }}{{ (dcaMultiEntry.avg_profit_pct - dcaSingleEntry.avg_profit_pct).toFixed(2) }}%
+                  {{ dcaMultiEntry.avg_profit_pct - dcaSingleEntry.avg_profit_pct >= 0 ? '+' : ''
+                  }}{{ (dcaMultiEntry.avg_profit_pct - dcaSingleEntry.avg_profit_pct).toFixed(2) }}%
                 </div>
                 <div class="text-xs text-surface-400">avg profit diff</div>
                 <div
                   class="font-mono text-xs"
-                  :class="(dcaMultiEntry.win_rate_pct - dcaSingleEntry.win_rate_pct) >= 0 ? 'text-green-400' : 'text-red-400'"
+                  :class="
+                    dcaMultiEntry.win_rate_pct - dcaSingleEntry.win_rate_pct >= 0
+                      ? 'text-green-400'
+                      : 'text-red-400'
+                  "
                 >
-                  {{ (dcaMultiEntry.win_rate_pct - dcaSingleEntry.win_rate_pct) >= 0 ? '+' : '' }}{{ (dcaMultiEntry.win_rate_pct - dcaSingleEntry.win_rate_pct).toFixed(1) }}% win rate diff
+                  {{ dcaMultiEntry.win_rate_pct - dcaSingleEntry.win_rate_pct >= 0 ? '+' : ''
+                  }}{{ (dcaMultiEntry.win_rate_pct - dcaSingleEntry.win_rate_pct).toFixed(1) }}% win
+                  rate diff
                 </div>
               </div>
             </div>
@@ -5514,38 +6142,83 @@ onMounted(async () => {
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="dcaSortCol === 'order_count' ? 'text-primary-400' : ''"
-                      @click="dcaSortCol === 'order_count' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'order_count'), (dcaSortAsc = true))"
-                    >Buy orders {{ dcaSortCol === 'order_count' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        dcaSortCol === 'order_count'
+                          ? (dcaSortAsc = !dcaSortAsc)
+                          : ((dcaSortCol = 'order_count'), (dcaSortAsc = true))
+                      "
+                    >
+                      Buy orders {{ dcaSortCol === 'order_count' ? (dcaSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="dcaSortCol === 'trades' ? 'text-primary-400' : ''"
-                      @click="dcaSortCol === 'trades' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'trades'), (dcaSortAsc = false))"
-                    >Trades {{ dcaSortCol === 'trades' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        dcaSortCol === 'trades'
+                          ? (dcaSortAsc = !dcaSortAsc)
+                          : ((dcaSortCol = 'trades'), (dcaSortAsc = false))
+                      "
+                    >
+                      Trades {{ dcaSortCol === 'trades' ? (dcaSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="dcaSortCol === 'wins' ? 'text-primary-400' : ''"
-                      @click="dcaSortCol === 'wins' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'wins'), (dcaSortAsc = false))"
-                    >Wins {{ dcaSortCol === 'wins' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        dcaSortCol === 'wins'
+                          ? (dcaSortAsc = !dcaSortAsc)
+                          : ((dcaSortCol = 'wins'), (dcaSortAsc = false))
+                      "
+                    >
+                      Wins {{ dcaSortCol === 'wins' ? (dcaSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="dcaSortCol === 'win_rate_pct' ? 'text-primary-400' : ''"
-                      @click="dcaSortCol === 'win_rate_pct' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'win_rate_pct'), (dcaSortAsc = false))"
-                    >Win rate {{ dcaSortCol === 'win_rate_pct' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        dcaSortCol === 'win_rate_pct'
+                          ? (dcaSortAsc = !dcaSortAsc)
+                          : ((dcaSortCol = 'win_rate_pct'), (dcaSortAsc = false))
+                      "
+                    >
+                      Win rate {{ dcaSortCol === 'win_rate_pct' ? (dcaSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="dcaSortCol === 'avg_profit_pct' ? 'text-primary-400' : ''"
-                      @click="dcaSortCol === 'avg_profit_pct' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'avg_profit_pct'), (dcaSortAsc = false))"
-                    >Avg profit {{ dcaSortCol === 'avg_profit_pct' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        dcaSortCol === 'avg_profit_pct'
+                          ? (dcaSortAsc = !dcaSortAsc)
+                          : ((dcaSortCol = 'avg_profit_pct'), (dcaSortAsc = false))
+                      "
+                    >
+                      Avg profit
+                      {{ dcaSortCol === 'avg_profit_pct' ? (dcaSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="dcaSortCol === 'avg_duration_hours' ? 'text-primary-400' : ''"
-                      @click="dcaSortCol === 'avg_duration_hours' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'avg_duration_hours'), (dcaSortAsc = false))"
-                    >Avg duration {{ dcaSortCol === 'avg_duration_hours' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        dcaSortCol === 'avg_duration_hours'
+                          ? (dcaSortAsc = !dcaSortAsc)
+                          : ((dcaSortCol = 'avg_duration_hours'), (dcaSortAsc = false))
+                      "
+                    >
+                      Avg duration
+                      {{ dcaSortCol === 'avg_duration_hours' ? (dcaSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 cursor-pointer select-none whitespace-nowrap"
                       :class="dcaSortCol === 'total_profit_abs' ? 'text-primary-400' : ''"
-                      @click="dcaSortCol === 'total_profit_abs' ? (dcaSortAsc = !dcaSortAsc) : ((dcaSortCol = 'total_profit_abs'), (dcaSortAsc = false))"
-                    >Total profit {{ dcaSortCol === 'total_profit_abs' ? (dcaSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        dcaSortCol === 'total_profit_abs'
+                          ? (dcaSortAsc = !dcaSortAsc)
+                          : ((dcaSortCol = 'total_profit_abs'), (dcaSortAsc = false))
+                      "
+                    >
+                      Total profit
+                      {{ dcaSortCol === 'total_profit_abs' ? (dcaSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5571,12 +6244,15 @@ onMounted(async () => {
                       </span>
                     </td>
                     <td class="py-2 pe-3 text-right font-mono text-xs">
-                      <span v-if="row.avg_duration_hours !== null">{{ row.avg_duration_hours.toFixed(1) }}h</span>
+                      <span v-if="row.avg_duration_hours !== null"
+                        >{{ row.avg_duration_hours.toFixed(1) }}h</span
+                      >
                       <span v-else class="text-surface-500">—</span>
                     </td>
                     <td class="py-2 text-right font-mono text-xs">
                       <span :class="row.total_profit_abs >= 0 ? 'text-green-400' : 'text-red-400'">
-                        {{ row.total_profit_abs >= 0 ? '+' : '' }}{{ row.total_profit_abs.toFixed(2) }}
+                        {{ row.total_profit_abs >= 0 ? '+' : ''
+                        }}{{ row.total_profit_abs.toFixed(2) }}
                       </span>
                     </td>
                   </tr>
@@ -5623,26 +6299,42 @@ onMounted(async () => {
                 <!-- Match filter toggle -->
                 <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
                   <button
-                    v-for="mf in [{ key: 'all', label: 'All' }, { key: 'matched', label: 'Matched' }, { key: 'unmatched', label: 'Unmatched' }]"
+                    v-for="mf in [
+                      { key: 'all', label: 'All' },
+                      { key: 'matched', label: 'Matched' },
+                      { key: 'unmatched', label: 'Unmatched' },
+                    ]"
                     :key="mf.key"
                     class="px-2 py-1 transition-colors"
-                    :class="signalIndMatchFilter === mf.key
-                      ? 'bg-primary-600 text-white'
-                      : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                    :class="
+                      signalIndMatchFilter === mf.key
+                        ? 'bg-primary-600 text-white'
+                        : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'
+                    "
                     @click="signalIndMatchFilter = mf.key as 'all' | 'matched' | 'unmatched'"
-                  >{{ mf.label }}</button>
+                  >
+                    {{ mf.label }}
+                  </button>
                 </div>
                 <!-- Side filter toggle -->
                 <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
                   <button
-                    v-for="sf in [{ key: 'both', label: 'Both' }, { key: 'long', label: 'Long' }, { key: 'short', label: 'Short' }]"
+                    v-for="sf in [
+                      { key: 'both', label: 'Both' },
+                      { key: 'long', label: 'Long' },
+                      { key: 'short', label: 'Short' },
+                    ]"
                     :key="sf.key"
                     class="px-2 py-1 transition-colors"
-                    :class="signalIndSideFilter === sf.key
-                      ? 'bg-primary-600 text-white'
-                      : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                    :class="
+                      signalIndSideFilter === sf.key
+                        ? 'bg-primary-600 text-white'
+                        : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'
+                    "
                     @click="signalIndSideFilter = sf.key as 'both' | 'long' | 'short'"
-                  >{{ sf.label }}</button>
+                  >
+                    {{ sf.label }}
+                  </button>
                 </div>
                 <Button
                   label="Load"
@@ -5657,8 +6349,8 @@ onMounted(async () => {
 
             <!-- Coverage note -->
             <div v-if="signalIndLoaded && signalIndData" class="text-xs text-surface-400">
-              {{ signalIndData.matched_trades }} of {{ signalIndData.total_trades }} trades
-              have indicator snapshots (closed trades only)
+              {{ signalIndData.matched_trades }} of {{ signalIndData.total_trades }} trades have
+              indicator snapshots (closed trades only)
               <span v-if="signalIndData.total_trades > 0">
                 ({{ signalIndData.match_rate_pct.toFixed(0) }}% match rate)
               </span>
@@ -5673,7 +6365,10 @@ onMounted(async () => {
                   <div class="text-lg font-bold">{{ signalIndData.matched_trades }}</div>
                   <div class="text-xs text-surface-400">Matched trades</div>
                 </div>
-                <div v-if="signalIndAvgProfit !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
+                <div
+                  v-if="signalIndAvgProfit !== null"
+                  class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center"
+                >
                   <div
                     class="text-lg font-bold font-mono"
                     :class="signalIndAvgProfit >= 0 ? 'text-green-400' : 'text-red-400'"
@@ -5682,37 +6377,66 @@ onMounted(async () => {
                   </div>
                   <div class="text-xs text-surface-400">Avg profit</div>
                 </div>
-                <div v-if="signalIndAvgDuration !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
-                  <div class="text-lg font-bold font-mono">{{ signalIndAvgDuration.toFixed(1) }}h</div>
+                <div
+                  v-if="signalIndAvgDuration !== null"
+                  class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center"
+                >
+                  <div class="text-lg font-bold font-mono">
+                    {{ signalIndAvgDuration.toFixed(1) }}h
+                  </div>
                   <div class="text-xs text-surface-400">Avg duration</div>
                 </div>
-                <div v-if="signalIndAvgQuality !== null" class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
-                  <div class="text-lg font-bold font-mono">{{ signalIndAvgQuality.toFixed(1) }}</div>
+                <div
+                  v-if="signalIndAvgQuality !== null"
+                  class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center"
+                >
+                  <div class="text-lg font-bold font-mono">
+                    {{ signalIndAvgQuality.toFixed(1) }}
+                  </div>
                   <div class="text-xs text-surface-400">Avg quality score</div>
                 </div>
               </div>
               <!-- Unmatched row -->
-              <div v-if="signalIndUnmatchedItems.length > 0" class="flex flex-wrap gap-3 text-sm items-center">
+              <div
+                v-if="signalIndUnmatchedItems.length > 0"
+                class="flex flex-wrap gap-3 text-sm items-center"
+              >
                 <span class="text-xs text-surface-500 w-20 shrink-0">Unmatched:</span>
                 <div class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center">
-                  <div class="text-lg font-bold text-surface-300">{{ signalIndUnmatchedItems.length }}</div>
+                  <div class="text-lg font-bold text-surface-300">
+                    {{ signalIndUnmatchedItems.length }}
+                  </div>
                   <div class="text-xs text-surface-500">No snapshot</div>
                 </div>
-                <div v-if="signalIndUnmatchedAvgProfit !== null" class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center">
+                <div
+                  v-if="signalIndUnmatchedAvgProfit !== null"
+                  class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center"
+                >
                   <div
                     class="text-lg font-bold font-mono"
                     :class="signalIndUnmatchedAvgProfit >= 0 ? 'text-green-400' : 'text-red-400'"
                   >
-                    {{ signalIndUnmatchedAvgProfit >= 0 ? '+' : '' }}{{ signalIndUnmatchedAvgProfit.toFixed(2) }}%
+                    {{ signalIndUnmatchedAvgProfit >= 0 ? '+' : ''
+                    }}{{ signalIndUnmatchedAvgProfit.toFixed(2) }}%
                   </div>
                   <div class="text-xs text-surface-500">Avg profit</div>
                 </div>
-                <div v-if="signalIndUnmatchedWinRate !== null" class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center">
-                  <div class="text-lg font-bold font-mono text-surface-300">{{ signalIndUnmatchedWinRate.toFixed(0) }}%</div>
+                <div
+                  v-if="signalIndUnmatchedWinRate !== null"
+                  class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center"
+                >
+                  <div class="text-lg font-bold font-mono text-surface-300">
+                    {{ signalIndUnmatchedWinRate.toFixed(0) }}%
+                  </div>
                   <div class="text-xs text-surface-500">Win rate</div>
                 </div>
-                <div v-if="signalIndUnmatchedAvgDuration !== null" class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center">
-                  <div class="text-lg font-bold font-mono text-surface-300">{{ signalIndUnmatchedAvgDuration.toFixed(1) }}h</div>
+                <div
+                  v-if="signalIndUnmatchedAvgDuration !== null"
+                  class="rounded border border-surface-600/50 px-3 py-2 min-w-28 text-center"
+                >
+                  <div class="text-lg font-bold font-mono text-surface-300">
+                    {{ signalIndUnmatchedAvgDuration.toFixed(1) }}h
+                  </div>
                   <div class="text-xs text-surface-500">Avg duration</div>
                 </div>
               </div>
@@ -5721,335 +6445,561 @@ onMounted(async () => {
             <!-- Tabs: Trades | Analytics -->
             <div class="flex gap-0 border-b border-surface-600">
               <button
-                v-for="tab in [{ key: 'trades', label: 'Trades' }, { key: 'analytics', label: 'Analytics' }]"
+                v-for="tab in [
+                  { key: 'trades', label: 'Trades' },
+                  { key: 'analytics', label: 'Analytics' },
+                ]"
                 :key="tab.key"
                 class="px-4 py-2 text-sm border-b-2 transition-colors"
-                :class="signalIndActiveTab === tab.key
-                  ? 'border-primary-400 text-primary-400'
-                  : 'border-transparent text-surface-400 hover:text-surface-200'"
+                :class="
+                  signalIndActiveTab === tab.key
+                    ? 'border-primary-400 text-primary-400'
+                    : 'border-transparent text-surface-400 hover:text-surface-200'
+                "
                 @click="signalIndActiveTab = tab.key as 'trades' | 'analytics'"
-              >{{ tab.label }}</button>
+              >
+                {{ tab.label }}
+              </button>
             </div>
 
             <!-- Trades tab -->
             <div v-if="signalIndActiveTab === 'trades'" class="space-y-4">
-
-            <!-- Scatter chart -->
-            <div v-if="signalIndChartCoordinates.length > 0" class="space-y-2">
-              <div class="flex flex-wrap items-center gap-3">
-                <div class="flex items-center gap-2">
-                  <span class="text-xs text-surface-400">X axis:</span>
-                  <select
-                    v-model="signalIndChartIndicator"
-                    class="text-xs bg-surface-800 border border-surface-600 rounded px-2 py-1 text-surface-200"
+              <!-- Scatter chart -->
+              <div v-if="signalIndChartCoordinates.length > 0" class="space-y-2">
+                <div class="flex flex-wrap items-center gap-3">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-surface-400">X axis:</span>
+                    <select
+                      v-model="signalIndChartIndicator"
+                      class="text-xs bg-surface-800 border border-surface-600 rounded px-2 py-1 text-surface-200"
+                    >
+                      <option
+                        v-for="opt in signalIndIndicatorOptions"
+                        :key="opt.value"
+                        :value="opt.value"
+                      >
+                        {{ opt.label }}
+                      </option>
+                    </select>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-surface-400">Y axis:</span>
+                    <select
+                      v-model="signalIndChartYAxis"
+                      class="text-xs bg-surface-800 border border-surface-600 rounded px-2 py-1 text-surface-200"
+                    >
+                      <option value="profit_pct">Profit %</option>
+                      <option value="quality_score">Quality score</option>
+                    </select>
+                  </div>
+                  <div class="flex items-center gap-3 text-xs text-surface-400">
+                    <span class="flex items-center gap-1">
+                      <span class="inline-block w-2 h-2 rounded-full bg-green-400"></span> Profit
+                      &gt; 0
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span> Loss
+                    </span>
+                  </div>
+                </div>
+                <svg viewBox="0 0 920 260" class="w-full h-64">
+                  <!-- Y-axis grid + labels -->
+                  <line
+                    v-for="(tick, idx) in signalIndChartYTicks"
+                    :key="`sigy-${idx}`"
+                    x1="46"
+                    :y1="tick.y"
+                    x2="900"
+                    :y2="tick.y"
+                    stroke="#334155"
+                    stroke-width="1"
+                    stroke-dasharray="4 4"
+                  />
+                  <text
+                    v-for="(tick, idx) in signalIndChartYTicks"
+                    :key="`sigty-${idx}`"
+                    :x="42"
+                    :y="tick.y + 4"
+                    text-anchor="end"
+                    fill="#94a3b8"
+                    font-size="10"
                   >
-                    <option v-for="opt in signalIndIndicatorOptions" :key="opt.value" :value="opt.value">
-                      {{ opt.label }}
-                    </option>
-                  </select>
-                </div>
-                <div class="flex items-center gap-2">
-                  <span class="text-xs text-surface-400">Y axis:</span>
-                  <select
-                    v-model="signalIndChartYAxis"
-                    class="text-xs bg-surface-800 border border-surface-600 rounded px-2 py-1 text-surface-200"
+                    {{ tick.label }}
+                  </text>
+                  <!-- Zero line for profit mode -->
+                  <line
+                    v-if="signalIndChartYAxis === 'profit_pct'"
+                    x1="46"
+                    :y1="signalIndChartZeroY"
+                    x2="900"
+                    :y2="signalIndChartZeroY"
+                    stroke="#64748b"
+                    stroke-width="1"
+                  />
+                  <!-- Axes -->
+                  <line x1="46" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
+                  <line x1="46" y1="14" x2="46" y2="230" stroke="#475569" stroke-width="1" />
+                  <!-- X ticks -->
+                  <text
+                    v-for="(tick, idx) in signalIndChartXTicks"
+                    :key="`sigtx-${idx}`"
+                    :x="tick.x"
+                    y="245"
+                    text-anchor="middle"
+                    fill="#94a3b8"
+                    font-size="10"
                   >
-                    <option value="profit_pct">Profit %</option>
-                    <option value="quality_score">Quality score</option>
-                  </select>
-                </div>
-                <div class="flex items-center gap-3 text-xs text-surface-400">
-                  <span class="flex items-center gap-1">
-                    <span class="inline-block w-2 h-2 rounded-full bg-green-400"></span> Profit &gt; 0
-                  </span>
-                  <span class="flex items-center gap-1">
-                    <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span> Loss
-                  </span>
-                </div>
+                    {{ tick.label }}
+                  </text>
+                  <!-- Dots -->
+                  <circle
+                    v-for="(point, idx) in signalIndChartCoordinates"
+                    :key="`sigc-${idx}`"
+                    :cx="point.x"
+                    :cy="point.y"
+                    r="4"
+                    :fill="point.positive ? '#34d399' : '#f87171'"
+                    class="cursor-pointer"
+                    @mousemove="
+                      showChartTooltip($event, [
+                        `${point.pair} (${point.tag})`,
+                        `Profit: ${point.profit !== null ? point.profit.toFixed(2) + '%' : 'n/a'}`,
+                        `Duration: ${point.duration !== null ? point.duration.toFixed(1) + 'h' : 'n/a'}`,
+                        `DCA: ${point.dca} | Score: ${point.quality !== null ? point.quality.toFixed(1) : 'n/a'}`,
+                      ])
+                    "
+                    @mouseleave="hideChartTooltip"
+                  >
+                    <title>{{ point.pair }} {{ point.tag }}</title>
+                  </circle>
+                </svg>
               </div>
-              <svg viewBox="0 0 920 260" class="w-full h-64">
-                <!-- Y-axis grid + labels -->
-                <line
-                  v-for="(tick, idx) in signalIndChartYTicks"
-                  :key="`sigy-${idx}`"
-                  x1="46" :y1="tick.y" x2="900" :y2="tick.y"
-                  stroke="#334155" stroke-width="1" stroke-dasharray="4 4"
-                />
-                <text
-                  v-for="(tick, idx) in signalIndChartYTicks"
-                  :key="`sigty-${idx}`"
-                  :x="42" :y="tick.y + 4"
-                  text-anchor="end" fill="#94a3b8" font-size="10"
-                >{{ tick.label }}</text>
-                <!-- Zero line for profit mode -->
-                <line
-                  v-if="signalIndChartYAxis === 'profit_pct'"
-                  x1="46" :y1="signalIndChartZeroY" x2="900" :y2="signalIndChartZeroY"
-                  stroke="#64748b" stroke-width="1"
-                />
-                <!-- Axes -->
-                <line x1="46" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
-                <line x1="46" y1="14" x2="46" y2="230" stroke="#475569" stroke-width="1" />
-                <!-- X ticks -->
-                <text
-                  v-for="(tick, idx) in signalIndChartXTicks"
-                  :key="`sigtx-${idx}`"
-                  :x="tick.x" y="245"
-                  text-anchor="middle" fill="#94a3b8" font-size="10"
-                >{{ tick.label }}</text>
-                <!-- Dots -->
-                <circle
-                  v-for="(point, idx) in signalIndChartCoordinates"
-                  :key="`sigc-${idx}`"
-                  :cx="point.x" :cy="point.y" r="4"
-                  :fill="point.positive ? '#34d399' : '#f87171'"
-                  class="cursor-pointer"
-                  @mousemove="showChartTooltip($event, [
-                    `${point.pair} (${point.tag})`,
-                    `Profit: ${point.profit !== null ? point.profit.toFixed(2) + '%' : 'n/a'}`,
-                    `Duration: ${point.duration !== null ? point.duration.toFixed(1) + 'h' : 'n/a'}`,
-                    `DCA: ${point.dca} | Score: ${point.quality !== null ? point.quality.toFixed(1) : 'n/a'}`,
-                  ])"
-                  @mouseleave="hideChartTooltip"
-                >
-                  <title>{{ point.pair }} {{ point.tag }}</title>
-                </circle>
-              </svg>
-            </div>
 
-            <!-- Empty state -->
-            <div
-              v-if="signalIndLoaded && signalIndItems.length === 0"
-              class="text-sm text-surface-400 py-4 text-center"
-            >
-              No trades found for the selected filters.
-            </div>
+              <!-- Empty state -->
+              <div
+                v-if="signalIndLoaded && signalIndItems.length === 0"
+                class="text-sm text-surface-400 py-4 text-center"
+              >
+                No trades found for the selected filters.
+              </div>
 
-            <!-- Sortable table -->
-            <div v-if="signalIndItems.length > 0" class="overflow-x-auto w-full">
-              <table class="w-full text-sm border-collapse">
-                <thead>
-                  <tr class="border-b border-surface-600 text-left">
-                    <th class="py-2 pe-3">Bot</th>
-                    <th class="py-2 pe-3">Pair</th>
-                    <th class="py-2 pe-3">Tag</th>
-                    <th class="py-2 pe-3">Side</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'open_date' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('open_date')"
-                    >Open{{ signalIndSortArrow('open_date') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'close_date' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('close_date')"
-                    >Close{{ signalIndSortArrow('close_date') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'profit_pct' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('profit_pct')"
-                    >Profit %{{ signalIndSortArrow('profit_pct') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'duration_hours' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('duration_hours')"
-                    >Duration{{ signalIndSortArrow('duration_hours') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'dca_order_count' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('dca_order_count')"
-                    >DCA{{ signalIndSortArrow('dca_order_count') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'quality_score' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('quality_score')"
-                    >Score{{ signalIndSortArrow('quality_score') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'rsi' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('rsi')"
-                    >RSI{{ signalIndSortArrow('rsi') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'hv' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('hv')"
-                    >HV{{ signalIndSortArrow('hv') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'rocr_1h' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('rocr_1h')"
-                    >ROCR 1h{{ signalIndSortArrow('rocr_1h') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'rocr' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('rocr')"
-                    >ROCR{{ signalIndSortArrow('rocr') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'hh_48_diff' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('hh_48_diff')"
-                    >HH48{{ signalIndSortArrow('hh_48_diff') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'll_48_diff' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('ll_48_diff')"
-                    >LL48{{ signalIndSortArrow('ll_48_diff') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'chop' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('chop')"
-                    >Chop{{ signalIndSortArrow('chop') }}</th>
-                    <th class="py-2 pe-3">BB</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'bbdelta' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('bbdelta')"
-                    >BBΔ{{ signalIndSortArrow('bbdelta') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'closedelta' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('closedelta')"
-                    >CloseΔ{{ signalIndSortArrow('closedelta') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'tail' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('tail')"
-                    >Tail{{ signalIndSortArrow('tail') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'volume' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('volume')"
-                    >Vol{{ signalIndSortArrow('volume') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'fisher' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('fisher')"
-                    >Fisher{{ signalIndSortArrow('fisher') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'regime_score' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('regime_score')"
-                    >Regime{{ signalIndSortArrow('regime_score') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'btc_trend' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('btc_trend')"
-                    >BTC{{ signalIndSortArrow('btc_trend') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'eth_trend' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('eth_trend')"
-                    >ETH{{ signalIndSortArrow('eth_trend') }}</th>
-                    <th
-                      class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
-                      :class="signalIndSortCol === 'rel_str' ? 'text-primary-400' : ''"
-                      @click="toggleSignalIndSort('rel_str')"
-                    >RelStr{{ signalIndSortArrow('rel_str') }}</th>
-                    <th class="py-2 pe-3 whitespace-nowrap text-right">Spread%</th>
-                    <th class="py-2 pe-3 whitespace-nowrap text-right">BidVol</th>
-                    <th class="py-2 pe-3 whitespace-nowrap text-right">AskVol</th>
-                    <th class="py-2 pe-3 whitespace-nowrap text-right">OBImbal</th>
-                    <th class="py-2 pe-3">Exit</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="row in signalIndItems"
-                    :key="row.trade_id"
-                    class="border-b border-surface-700/70"
-                    :class="[row.rsi === null && signalIndMatchFilter !== 'unmatched' ? 'opacity-40' : '', row.is_open ? 'bg-surface-800/50' : '']"
-                  >
-                    <td class="py-2 pe-3 text-xs whitespace-nowrap">
-                      <div class="font-medium">{{ row.vps_name ?? '-' }}</div>
-                      <div class="text-xs text-surface-400">{{ row.container_name ?? '-' }} · ID {{ row.bot_id }}</div>
-                    </td>
-                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.pair ?? '?' }}</td>
-                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.enter_tag ?? '?' }}</td>
-                    <td class="py-2 pe-3 text-xs whitespace-nowrap">
-                      <span
-                        class="px-1.5 py-0.5 rounded text-xs font-medium"
-                        :class="row.is_short ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'"
-                      >{{ row.is_short ? 'Short' : 'Long' }}</span>
-                    </td>
-                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.open_date ? formatDate(row.open_date) : '-' }}</td>
-                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.is_open ? 'Open' : row.close_date ? formatDate(row.close_date) : '-' }}</td>
-                    <td
-                      class="py-2 pe-3 text-right font-mono text-xs"
-                      :class="row.is_open ? 'text-surface-500 italic' : (row.profit_pct ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
-                    >{{ row.is_open ? 'Pending' : row.profit_pct !== null ? (row.profit_pct >= 0 ? '+' : '') + row.profit_pct.toFixed(2) + '%' : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs" :class="row.is_open ? 'text-surface-500 italic' : ''">{{ row.is_open ? 'Pending' : row.duration_hours !== null ? row.duration_hours.toFixed(1) + 'h' : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.dca_order_count }}</td>
-                    <td
-                      class="py-2 pe-3 text-right font-mono text-xs"
-                      :class="row.is_open ? 'text-surface-500 italic' : (row.quality_score ?? -99) >= (signalIndAvgQuality ?? -99) ? 'text-green-400' : ''"
-                    >{{ row.is_open ? 'Pending' : row.quality_score !== null ? row.quality_score.toFixed(1) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rsi !== null ? row.rsi.toFixed(1) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.hv !== null ? row.hv.toFixed(2) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rocr_1h !== null ? row.rocr_1h.toFixed(4) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rocr !== null ? row.rocr.toFixed(4) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.hh_48_diff !== null ? row.hh_48_diff.toFixed(2) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.ll_48_diff !== null ? row.ll_48_diff.toFixed(2) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.chop !== null ? row.chop.toFixed(1) : '-' }}</td>
-                    <td class="py-2 pe-3 font-mono text-xs">{{ row.bb_pos ?? '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.bbdelta !== null ? row.bbdelta.toFixed(4) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.closedelta !== null ? row.closedelta.toFixed(4) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.tail !== null ? row.tail.toFixed(4) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.volume !== null ? row.volume.toFixed(0) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.fisher !== null ? row.fisher.toFixed(4) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.regime_score !== null ? row.regime_score.toFixed(1) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.btc_trend !== null ? row.btc_trend.toFixed(1) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.eth_trend !== null ? row.eth_trend.toFixed(1) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.rel_str !== null ? row.rel_str.toFixed(1) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs" :class="row.ob_spread_pct !== null ? (row.ob_spread_pct < 0.05 ? 'text-green-400' : row.ob_spread_pct < 0.15 ? 'text-yellow-400' : 'text-red-400') : ''">{{ row.ob_spread_pct !== null ? row.ob_spread_pct.toFixed(4) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.ob_bid_vol !== null ? row.ob_bid_vol.toFixed(0) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.ob_ask_vol !== null ? row.ob_ask_vol.toFixed(0) : '-' }}</td>
-                    <td class="py-2 pe-3 text-right font-mono text-xs" :class="row.ob_imbalance !== null ? (row.is_short ? (row.ob_imbalance < 0.5 ? 'text-green-400' : 'text-red-400') : (row.ob_imbalance > 0.5 ? 'text-green-400' : 'text-red-400')) : ''">{{ row.ob_imbalance !== null ? row.ob_imbalance.toFixed(3) : '-' }}</td>
-                    <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">{{ row.is_open ? 'Open' : row.exit_reason ?? '-' }}</td>
-                  </tr>
-                </tbody>
-              </table>
+              <!-- Sortable table -->
+              <div v-if="signalIndItems.length > 0" class="overflow-x-auto w-full">
+                <table class="w-full text-sm border-collapse">
+                  <thead>
+                    <tr class="border-b border-surface-600 text-left">
+                      <th class="py-2 pe-3">Bot</th>
+                      <th class="py-2 pe-3">Pair</th>
+                      <th class="py-2 pe-3">Tag</th>
+                      <th class="py-2 pe-3">Side</th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'open_date' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('open_date')"
+                      >
+                        Open{{ signalIndSortArrow('open_date') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'close_date' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('close_date')"
+                      >
+                        Close{{ signalIndSortArrow('close_date') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'profit_pct' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('profit_pct')"
+                      >
+                        Profit %{{ signalIndSortArrow('profit_pct') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'duration_hours' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('duration_hours')"
+                      >
+                        Duration{{ signalIndSortArrow('duration_hours') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'dca_order_count' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('dca_order_count')"
+                      >
+                        DCA{{ signalIndSortArrow('dca_order_count') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'quality_score' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('quality_score')"
+                      >
+                        Score{{ signalIndSortArrow('quality_score') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'rsi' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('rsi')"
+                      >
+                        RSI{{ signalIndSortArrow('rsi') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'hv' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('hv')"
+                      >
+                        HV{{ signalIndSortArrow('hv') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'rocr_1h' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('rocr_1h')"
+                      >
+                        ROCR 1h{{ signalIndSortArrow('rocr_1h') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'rocr' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('rocr')"
+                      >
+                        ROCR{{ signalIndSortArrow('rocr') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'hh_48_diff' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('hh_48_diff')"
+                      >
+                        HH48{{ signalIndSortArrow('hh_48_diff') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'll_48_diff' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('ll_48_diff')"
+                      >
+                        LL48{{ signalIndSortArrow('ll_48_diff') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'chop' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('chop')"
+                      >
+                        Chop{{ signalIndSortArrow('chop') }}
+                      </th>
+                      <th class="py-2 pe-3">BB</th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'bbdelta' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('bbdelta')"
+                      >
+                        BBΔ{{ signalIndSortArrow('bbdelta') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'closedelta' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('closedelta')"
+                      >
+                        CloseΔ{{ signalIndSortArrow('closedelta') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'tail' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('tail')"
+                      >
+                        Tail{{ signalIndSortArrow('tail') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'volume' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('volume')"
+                      >
+                        Vol{{ signalIndSortArrow('volume') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'fisher' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('fisher')"
+                      >
+                        Fisher{{ signalIndSortArrow('fisher') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'regime_score' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('regime_score')"
+                      >
+                        Regime{{ signalIndSortArrow('regime_score') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'btc_trend' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('btc_trend')"
+                      >
+                        BTC{{ signalIndSortArrow('btc_trend') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'eth_trend' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('eth_trend')"
+                      >
+                        ETH{{ signalIndSortArrow('eth_trend') }}
+                      </th>
+                      <th
+                        class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                        :class="signalIndSortCol === 'rel_str' ? 'text-primary-400' : ''"
+                        @click="toggleSignalIndSort('rel_str')"
+                      >
+                        RelStr{{ signalIndSortArrow('rel_str') }}
+                      </th>
+                      <th class="py-2 pe-3 whitespace-nowrap text-right">Spread%</th>
+                      <th class="py-2 pe-3 whitespace-nowrap text-right">BidVol</th>
+                      <th class="py-2 pe-3 whitespace-nowrap text-right">AskVol</th>
+                      <th class="py-2 pe-3 whitespace-nowrap text-right">OBImbal</th>
+                      <th class="py-2 pe-3">Exit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="row in signalIndItems"
+                      :key="row.trade_id"
+                      class="border-b border-surface-700/70"
+                      :class="[
+                        row.rsi === null && signalIndMatchFilter !== 'unmatched'
+                          ? 'opacity-40'
+                          : '',
+                        row.is_open ? 'bg-surface-800/50' : '',
+                      ]"
+                    >
+                      <td class="py-2 pe-3 text-xs whitespace-nowrap">
+                        <div class="font-medium">{{ row.vps_name ?? '-' }}</div>
+                        <div class="text-xs text-surface-400">
+                          {{ row.container_name ?? '-' }} · ID {{ row.bot_id }}
+                        </div>
+                      </td>
+                      <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">
+                        {{ row.pair ?? '?' }}
+                      </td>
+                      <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">
+                        {{ row.enter_tag ?? '?' }}
+                      </td>
+                      <td class="py-2 pe-3 text-xs whitespace-nowrap">
+                        <span
+                          class="px-1.5 py-0.5 rounded text-xs font-medium"
+                          :class="
+                            row.is_short
+                              ? 'bg-red-900/50 text-red-300'
+                              : 'bg-green-900/50 text-green-300'
+                          "
+                          >{{ row.is_short ? 'Short' : 'Long' }}</span
+                        >
+                      </td>
+                      <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">
+                        {{ row.open_date ? formatDate(row.open_date) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">
+                        {{
+                          row.is_open ? 'Open' : row.close_date ? formatDate(row.close_date) : '-'
+                        }}
+                      </td>
+                      <td
+                        class="py-2 pe-3 text-right font-mono text-xs"
+                        :class="
+                          row.is_open
+                            ? 'text-surface-500 italic'
+                            : (row.profit_pct ?? 0) >= 0
+                              ? 'text-green-400'
+                              : 'text-red-400'
+                        "
+                      >
+                        {{
+                          row.is_open
+                            ? 'Pending'
+                            : row.profit_pct !== null
+                              ? (row.profit_pct >= 0 ? '+' : '') + row.profit_pct.toFixed(2) + '%'
+                              : '-'
+                        }}
+                      </td>
+                      <td
+                        class="py-2 pe-3 text-right font-mono text-xs"
+                        :class="row.is_open ? 'text-surface-500 italic' : ''"
+                      >
+                        {{
+                          row.is_open
+                            ? 'Pending'
+                            : row.duration_hours !== null
+                              ? row.duration_hours.toFixed(1) + 'h'
+                              : '-'
+                        }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.dca_order_count }}
+                      </td>
+                      <td
+                        class="py-2 pe-3 text-right font-mono text-xs"
+                        :class="
+                          row.is_open
+                            ? 'text-surface-500 italic'
+                            : (row.quality_score ?? -99) >= (signalIndAvgQuality ?? -99)
+                              ? 'text-green-400'
+                              : ''
+                        "
+                      >
+                        {{
+                          row.is_open
+                            ? 'Pending'
+                            : row.quality_score !== null
+                              ? row.quality_score.toFixed(1)
+                              : '-'
+                        }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.rsi !== null ? row.rsi.toFixed(1) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.hv !== null ? row.hv.toFixed(2) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.rocr_1h !== null ? row.rocr_1h.toFixed(4) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.rocr !== null ? row.rocr.toFixed(4) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.hh_48_diff !== null ? row.hh_48_diff.toFixed(2) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.ll_48_diff !== null ? row.ll_48_diff.toFixed(2) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.chop !== null ? row.chop.toFixed(1) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 font-mono text-xs">{{ row.bb_pos ?? '-' }}</td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.bbdelta !== null ? row.bbdelta.toFixed(4) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.closedelta !== null ? row.closedelta.toFixed(4) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.tail !== null ? row.tail.toFixed(4) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.volume !== null ? row.volume.toFixed(0) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.fisher !== null ? row.fisher.toFixed(4) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.regime_score !== null ? row.regime_score.toFixed(1) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.btc_trend !== null ? row.btc_trend.toFixed(1) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.eth_trend !== null ? row.eth_trend.toFixed(1) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.rel_str !== null ? row.rel_str.toFixed(1) : '-' }}
+                      </td>
+                      <td
+                        class="py-2 pe-3 text-right font-mono text-xs"
+                        :class="
+                          row.ob_spread_pct !== null
+                            ? row.ob_spread_pct < 0.05
+                              ? 'text-green-400'
+                              : row.ob_spread_pct < 0.15
+                                ? 'text-yellow-400'
+                                : 'text-red-400'
+                            : ''
+                        "
+                      >
+                        {{ row.ob_spread_pct !== null ? row.ob_spread_pct.toFixed(4) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.ob_bid_vol !== null ? row.ob_bid_vol.toFixed(0) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.ob_ask_vol !== null ? row.ob_ask_vol.toFixed(0) : '-' }}
+                      </td>
+                      <td
+                        class="py-2 pe-3 text-right font-mono text-xs"
+                        :class="
+                          row.ob_imbalance !== null
+                            ? row.is_short
+                              ? row.ob_imbalance < 0.5
+                                ? 'text-green-400'
+                                : 'text-red-400'
+                              : row.ob_imbalance > 0.5
+                                ? 'text-green-400'
+                                : 'text-red-400'
+                            : ''
+                        "
+                      >
+                        {{ row.ob_imbalance !== null ? row.ob_imbalance.toFixed(3) : '-' }}
+                      </td>
+                      <td class="py-2 pe-3 font-mono text-xs whitespace-nowrap">
+                        {{ row.is_open ? 'Open' : (row.exit_reason ?? '-') }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-
-            </div><!-- /Trades tab -->
+            <!-- /Trades tab -->
 
             <!-- Analytics tab -->
             <div v-else class="space-y-4 pt-2">
-
               <!-- Empty state -->
               <div
                 v-if="signalIndAnalyticsData === null"
                 class="text-sm text-surface-400 py-4 text-center"
               >
-                Load data to see analytics. Trades must have indicator snapshots (closed trades matched to [SIGNAL_FLASH] logs).
+                Load data to see analytics. Trades must have indicator snapshots (closed trades
+                matched to [SIGNAL_FLASH] logs).
               </div>
 
               <template v-else>
                 <!-- Summary + legend row -->
                 <div class="flex flex-wrap items-center gap-4 text-xs text-surface-400">
                   <span class="text-surface-200 font-medium">
-                    {{ signalIndAnalyticsData.tradeCount }} trades
-                    &mdash; threshold: score &le; <span class="font-mono">{{ signalIndAvgQuality !== null ? signalIndAvgQuality.toFixed(1) : '?' }}</span>
+                    {{ signalIndAnalyticsData.tradeCount }} trades &mdash; threshold: score &le;
+                    <span class="font-mono">{{
+                      signalIndAvgQuality !== null ? signalIndAvgQuality.toFixed(1) : '?'
+                    }}</span>
                   </span>
-                  <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-green-400"></span> Good: {{ signalIndAnalyticsData.goodCount }}</span>
-                  <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-red-400"></span> Bad: {{ signalIndAnalyticsData.tradeCount - signalIndAnalyticsData.goodCount }}</span>
-                  <span class="text-surface-500">All bots combined &mdash; green = where good entries cluster</span>
+                  <span class="flex items-center gap-1"
+                    ><span class="inline-block w-3 h-3 rounded-sm bg-green-400"></span> Good:
+                    {{ signalIndAnalyticsData.goodCount }}</span
+                  >
+                  <span class="flex items-center gap-1"
+                    ><span class="inline-block w-3 h-3 rounded-sm bg-red-400"></span> Bad:
+                    {{ signalIndAnalyticsData.tradeCount - signalIndAnalyticsData.goodCount }}</span
+                  >
+                  <span class="text-surface-500"
+                    >All bots combined &mdash; green = where good entries cluster</span
+                  >
                   <!-- Side toggle -->
-                  <div class="ml-auto flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
+                  <div
+                    class="ml-auto flex gap-0 rounded border border-surface-600 overflow-hidden text-xs"
+                  >
                     <button
-                      v-for="s in [{ key: 'all', label: 'All' }, { key: 'long', label: 'Long' }, { key: 'short', label: 'Short' }]"
+                      v-for="s in [
+                        { key: 'all', label: 'All' },
+                        { key: 'long', label: 'Long' },
+                        { key: 'short', label: 'Short' },
+                      ]"
                       :key="s.key"
                       class="px-3 py-1 transition-colors"
-                      :class="signalIndAnalyticsSide === s.key
-                        ? 'bg-primary-600 text-white'
-                        : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'"
+                      :class="
+                        signalIndAnalyticsSide === s.key
+                          ? 'bg-primary-600 text-white'
+                          : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700'
+                      "
                       @click="signalIndAnalyticsSide = s.key as 'all' | 'long' | 'short'"
-                    >{{ s.label }}</button>
+                    >
+                      {{ s.label }}
+                    </button>
                   </div>
                 </div>
 
                 <!-- Indicator histograms grid -->
                 <div class="grid grid-cols-2 xl:grid-cols-4 gap-3">
-
                   <!-- Numeric indicator histogram -->
                   <div
                     v-for="hist in signalIndAnalyticsData.histograms"
@@ -6059,33 +7009,50 @@ onMounted(async () => {
                     <div class="text-xs font-medium text-surface-200 mb-1">{{ hist.label }}</div>
                     <svg viewBox="0 0 274 160" class="w-full">
                       <!-- X axis line -->
-                      <line x1="6" y1="122" x2="268" y2="122" stroke="#475569" stroke-width="1"/>
+                      <line x1="6" y1="122" x2="268" y2="122" stroke="#475569" stroke-width="1" />
                       <!-- Bars -->
                       <template v-for="(bar, i) in hist.svgBars" :key="i">
                         <rect
                           v-if="bar.goodH > 0.5"
-                          :x="bar.goodX" :y="bar.goodY" :width="13" :height="bar.goodH"
-                          fill="#34d399" rx="1"
+                          :x="bar.goodX"
+                          :y="bar.goodY"
+                          :width="13"
+                          :height="bar.goodH"
+                          fill="#34d399"
+                          rx="1"
                         />
                         <rect
                           v-if="bar.badH > 0.5"
-                          :x="bar.badX" :y="bar.badY" :width="13" :height="bar.badH"
-                          fill="#f87171" rx="1"
+                          :x="bar.badX"
+                          :y="bar.badY"
+                          :width="13"
+                          :height="bar.badH"
+                          fill="#f87171"
+                          rx="1"
                         />
                       </template>
                       <!-- X boundary labels — staggered to avoid overlap -->
                       <text
                         v-for="(lbl, i) in hist.svgXLabels"
                         :key="i"
-                        :x="lbl.x" :y="lbl.stagger ? 148 : 134"
-                        text-anchor="middle" fill="#94a3b8" font-size="8"
-                      >{{ lbl.val }}</text>
+                        :x="lbl.x"
+                        :y="lbl.stagger ? 148 : 134"
+                        text-anchor="middle"
+                        fill="#94a3b8"
+                        font-size="8"
+                      >
+                        {{ lbl.val }}
+                      </text>
                       <!-- Tick marks at each boundary -->
                       <line
                         v-for="(lbl, i) in hist.svgXLabels"
                         :key="`t${i}`"
-                        :x1="lbl.x" y1="122" :x2="lbl.x" :y2="lbl.stagger ? 130 : 126"
-                        stroke="#475569" stroke-width="1"
+                        :x1="lbl.x"
+                        y1="122"
+                        :x2="lbl.x"
+                        :y2="lbl.stagger ? 130 : 126"
+                        stroke="#475569"
+                        stroke-width="1"
                       />
                     </svg>
                   </div>
@@ -6105,24 +7072,32 @@ onMounted(async () => {
                         <div class="flex h-2.5 gap-0.5">
                           <div
                             class="bg-green-400 rounded-sm h-full min-w-0"
-                            :style="{ width: (cat.good / signalIndAnalyticsData!.bbMaxTotal * 100) + '%' }"
+                            :style="{
+                              width: (cat.good / signalIndAnalyticsData!.bbMaxTotal) * 100 + '%',
+                            }"
                             :title="`Good: ${cat.good}`"
                           />
                           <div
                             class="bg-red-400 rounded-sm h-full min-w-0"
-                            :style="{ width: (cat.bad / signalIndAnalyticsData!.bbMaxTotal * 100) + '%' }"
+                            :style="{
+                              width: (cat.bad / signalIndAnalyticsData!.bbMaxTotal) * 100 + '%',
+                            }"
                             :title="`Bad: ${cat.bad}`"
                           />
                         </div>
                       </div>
                     </div>
                   </div>
-
                 </div>
 
                 <!-- Unmatched breakdown section -->
-                <div v-if="signalIndUnmatchedBreakdown" class="space-y-3 pt-3 border-t border-surface-700/50">
-                  <div class="text-xs font-medium text-surface-300">Unmatched Trade Breakdown (closed trades without indicator snapshot)</div>
+                <div
+                  v-if="signalIndUnmatchedBreakdown"
+                  class="space-y-3 pt-3 border-t border-surface-700/50"
+                >
+                  <div class="text-xs font-medium text-surface-300">
+                    Unmatched Trade Breakdown (closed trades without indicator snapshot)
+                  </div>
                   <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
                     <!-- By Bot -->
                     <div>
@@ -6146,8 +7121,24 @@ onMounted(async () => {
                             <td class="py-1 pr-2 text-surface-300 font-mono">{{ brow.label }}</td>
                             <td class="py-1 text-right text-surface-400">{{ brow.total }}</td>
                             <td class="py-1 text-right text-green-500">{{ brow.matched }}</td>
-                            <td class="py-1 text-right" :class="brow.unmatched > 0 ? 'text-yellow-400' : 'text-surface-500'">{{ brow.unmatched }}</td>
-                            <td class="py-1 text-right font-mono" :class="brow.rate >= 80 ? 'text-green-400' : brow.rate >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ brow.rate }}%</td>
+                            <td
+                              class="py-1 text-right"
+                              :class="brow.unmatched > 0 ? 'text-yellow-400' : 'text-surface-500'"
+                            >
+                              {{ brow.unmatched }}
+                            </td>
+                            <td
+                              class="py-1 text-right font-mono"
+                              :class="
+                                brow.rate >= 80
+                                  ? 'text-green-400'
+                                  : brow.rate >= 50
+                                    ? 'text-yellow-400'
+                                    : 'text-red-400'
+                              "
+                            >
+                              {{ brow.rate }}%
+                            </td>
                           </tr>
                         </tbody>
                       </table>
@@ -6174,122 +7165,228 @@ onMounted(async () => {
                             <td class="py-1 pr-2 text-surface-300 font-mono">{{ trow.tag }}</td>
                             <td class="py-1 text-right text-surface-400">{{ trow.total }}</td>
                             <td class="py-1 text-right text-green-500">{{ trow.matched }}</td>
-                            <td class="py-1 text-right" :class="trow.unmatched > 0 ? 'text-yellow-400' : 'text-surface-500'">{{ trow.unmatched }}</td>
-                            <td class="py-1 text-right font-mono" :class="trow.rate >= 80 ? 'text-green-400' : trow.rate >= 50 ? 'text-yellow-400' : 'text-red-400'">{{ trow.rate }}%</td>
+                            <td
+                              class="py-1 text-right"
+                              :class="trow.unmatched > 0 ? 'text-yellow-400' : 'text-surface-500'"
+                            >
+                              {{ trow.unmatched }}
+                            </td>
+                            <td
+                              class="py-1 text-right font-mono"
+                              :class="
+                                trow.rate >= 80
+                                  ? 'text-green-400'
+                                  : trow.rate >= 50
+                                    ? 'text-yellow-400'
+                                    : 'text-red-400'
+                              "
+                            >
+                              {{ trow.rate }}%
+                            </td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
                   </div>
                 </div>
-
               </template>
-
-            </div><!-- /Analytics tab -->
-
+            </div>
+            <!-- /Analytics tab -->
           </div>
 
-          <div v-if="selectedSubCategory === 'trade-duration'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'trade-duration'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h5 class="font-semibold">Trade Duration vs Profit</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 2</span>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded"
+                  >Tier 2</span
+                >
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputNumber
+                  v-model="stubFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
                 <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
               Scatter plot of trade duration (hours) vs profit_ratio, colored by exit reason.
-              Answers: <em>do short trades outperform long ones? Are long-held trades more likely to stop-loss?</em>
+              Answers:
+              <em
+                >do short trades outperform long ones? Are long-held trades more likely to
+                stop-loss?</em
+              >
             </p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• SVG scatter: x = duration (h), y = profit_ratio, color = exit_reason</div>
-                <div class="text-surface-400">• Buckets: &lt;1h | 1–4h | 4–12h | 12–24h | &gt;24h → avg profit per bucket</div>
+                <div class="text-surface-400">
+                  • SVG scatter: x = duration (h), y = profit_ratio, color = exit_reason
+                </div>
+                <div class="text-surface-400">
+                  • Buckets: &lt;1h | 1–4h | 4–12h | 12–24h | &gt;24h → avg profit per bucket
+                </div>
                 <div class="text-surface-400">• Filter by bot, pair, date range, exit reason</div>
               </div>
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Backend: return (open_date, close_date, profit_ratio, exit_reason) — duration computed client-side</div>
-                <div class="text-surface-400">• <code class="bg-surface-800 px-1 rounded">duration_h = (close_date - open_date).seconds / 3600</code></div>
-                <div class="text-surface-400">• Frontend: SVG scatter reusing coordinate system from existing charts</div>
-                <div class="text-surface-400">• Color map: trailing_stop=green, stop_loss=red, roi=blue, other=gray</div>
+                <div class="text-surface-400">
+                  • Backend: return (open_date, close_date, profit_ratio, exit_reason) — duration
+                  computed client-side
+                </div>
+                <div class="text-surface-400">
+                  •
+                  <code class="bg-surface-800 px-1 rounded"
+                    >duration_h = (close_date - open_date).seconds / 3600</code
+                  >
+                </div>
+                <div class="text-surface-400">
+                  • Frontend: SVG scatter reusing coordinate system from existing charts
+                </div>
+                <div class="text-surface-400">
+                  • Color map: trailing_stop=green, stop_loss=red, roi=blue, other=gray
+                </div>
               </div>
             </div>
           </div>
 
-          <div v-if="selectedSubCategory === 'slippage-quality'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'slippage-quality'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h5 class="font-semibold">Slippage & Fill Quality</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 2</span>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded"
+                  >Tier 2</span
+                >
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputNumber
+                  v-model="stubFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
                 <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
-              Compares <code class="bg-surface-700 px-1 rounded">dwh_orders.average</code> (actual fill) vs <code class="bg-surface-700 px-1 rounded">dwh_trades.open_rate</code> (signal price) per pair/bot.
-              Answers: <em>are we getting filled near the signal price, or is slippage eating into profits?</em>
+              Compares <code class="bg-surface-700 px-1 rounded">dwh_orders.average</code> (actual
+              fill) vs <code class="bg-surface-700 px-1 rounded">dwh_trades.open_rate</code> (signal
+              price) per pair/bot. Answers:
+              <em
+                >are we getting filled near the signal price, or is slippage eating into
+                profits?</em
+              >
             </p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• Table: pair | avg slippage% | max slippage% | trade count</div>
-                <div class="text-surface-400">• slippage% = (fill_price - signal_price) / signal_price × 100</div>
+                <div class="text-surface-400">
+                  • Table: pair | avg slippage% | max slippage% | trade count
+                </div>
+                <div class="text-surface-400">
+                  • slippage% = (fill_price - signal_price) / signal_price × 100
+                </div>
                 <div class="text-surface-400">• Sorted by worst avg slippage</div>
                 <div class="text-surface-400">• Alert: pairs with avg slippage &gt; 0.1%</div>
               </div>
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Join dwh_orders (ft_order_side='buy', status='closed') with dwh_trades on trade_id</div>
-                <div class="text-surface-400">• <code class="bg-surface-800 px-1 rounded">slippage = (orders.average - trades.open_rate) / trades.open_rate</code></div>
-                <div class="text-surface-400">• Check dwh_orders has average column populated before building</div>
+                <div class="text-surface-400">
+                  • Join dwh_orders (ft_order_side='buy', status='closed') with dwh_trades on
+                  trade_id
+                </div>
+                <div class="text-surface-400">
+                  •
+                  <code class="bg-surface-800 px-1 rounded"
+                    >slippage = (orders.average - trades.open_rate) / trades.open_rate</code
+                  >
+                </div>
+                <div class="text-surface-400">
+                  • Check dwh_orders has average column populated before building
+                </div>
                 <div class="text-surface-400">• Backend aggregation; frontend table only</div>
               </div>
             </div>
           </div>
 
-          <div v-if="selectedSubCategory === 'fee-impact'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'fee-impact'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h5 class="font-semibold">Fee Impact</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 2</span>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded"
+                  >Tier 2</span
+                >
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputNumber
+                  v-model="stubFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
-              Sums <code class="bg-surface-700 px-1 rounded">dwh_orders.fee_base</code> per trade and compares against gross <code class="bg-surface-700 px-1 rounded">profit_abs</code>.
-              Answers: <em>what % of gross profit goes to fees? Which bots/pairs pay the most in fees?</em>
+              Sums <code class="bg-surface-700 px-1 rounded">dwh_orders.fee_base</code> per trade
+              and compares against gross
+              <code class="bg-surface-700 px-1 rounded">profit_abs</code>. Answers:
+              <em>what % of gross profit goes to fees? Which bots/pairs pay the most in fees?</em>
             </p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• Summary: total fees paid, total gross profit, net efficiency %</div>
-                <div class="text-surface-400">• Table: bot | total fees | gross PnL | fee % of profit</div>
-                <div class="text-surface-400">• Per-pair breakdown: which pairs cost the most in fees</div>
+                <div class="text-surface-400">
+                  • Summary: total fees paid, total gross profit, net efficiency %
+                </div>
+                <div class="text-surface-400">
+                  • Table: bot | total fees | gross PnL | fee % of profit
+                </div>
+                <div class="text-surface-400">
+                  • Per-pair breakdown: which pairs cost the most in fees
+                </div>
               </div>
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• <code class="bg-surface-800 px-1 rounded">SELECT trade_id, SUM(fee_base) FROM dwh_orders GROUP BY trade_id</code></div>
+                <div class="text-surface-400">
+                  •
+                  <code class="bg-surface-800 px-1 rounded"
+                    >SELECT trade_id, SUM(fee_base) FROM dwh_orders GROUP BY trade_id</code
+                  >
+                </div>
                 <div class="text-surface-400">• Join result with dwh_trades.profit_abs</div>
-                <div class="text-surface-400">• <code class="bg-surface-800 px-1 rounded">fee_pct = total_fees / (profit_abs + total_fees) × 100</code></div>
-                <div class="text-surface-400">• Check fee_base column is populated in dwh_orders before building</div>
+                <div class="text-surface-400">
+                  •
+                  <code class="bg-surface-800 px-1 rounded"
+                    >fee_pct = total_fees / (profit_abs + total_fees) × 100</code
+                  >
+                </div>
+                <div class="text-surface-400">
+                  • Check fee_base column is populated in dwh_orders before building
+                </div>
               </div>
             </div>
           </div>
@@ -6299,7 +7396,10 @@ onMounted(async () => {
           <!-- ============================================================ -->
 
           <!-- ═══ TIME-OF-DAY DURATION ═══ -->
-          <div v-if="selectedSubCategory === 'tod-duration'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'tod-duration'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <!-- Header + filters -->
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Time-of-Day Duration</h5>
@@ -6307,10 +7407,19 @@ onMounted(async () => {
                 <InputText v-model="todDurDateFrom" type="date" size="small" class="w-36" />
                 <span class="text-surface-400 text-xs">to</span>
                 <InputText v-model="todDurDateTo" type="date" size="small" class="w-36" />
-                <InputText v-model="todDurFilterTag" size="small" class="w-44" placeholder="Enter tag (optional)" />
+                <InputText
+                  v-model="todDurFilterTag"
+                  size="small"
+                  class="w-44"
+                  placeholder="Enter tag (optional)"
+                />
                 <Select
                   v-model="todDurFilterDir"
-                  :options="[{label:'All directions',value:'all'},{label:'Long only',value:'long'},{label:'Short only',value:'short'}]"
+                  :options="[
+                    { label: 'All directions', value: 'all' },
+                    { label: 'Long only', value: 'long' },
+                    { label: 'Short only', value: 'short' },
+                  ]"
                   option-label="label"
                   option-value="value"
                   size="small"
@@ -6335,13 +7444,31 @@ onMounted(async () => {
               </div>
               <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
                 <div class="text-lg font-bold">
-                  {{ todDurItems.length > 0 ? String(todDurItems.reduce((best, r) => r.pct_8h_plus < best.pct_8h_plus ? r : best, todDurItems[0]).hour_utc).padStart(2,'0') + ':00' : '—' }}
+                  {{
+                    todDurItems.length > 0
+                      ? String(
+                          todDurItems.reduce(
+                            (best, r) => (r.pct_8h_plus < best.pct_8h_plus ? r : best),
+                            todDurItems[0],
+                          ).hour_utc,
+                        ).padStart(2, '0') + ':00'
+                      : '—'
+                  }}
                 </div>
                 <div class="text-xs text-surface-400">Best hour (lowest 8h+%)</div>
               </div>
               <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
                 <div class="text-lg font-bold text-red-400">
-                  {{ todDurItems.length > 0 ? String(todDurItems.reduce((worst, r) => r.pct_8h_plus > worst.pct_8h_plus ? r : worst, todDurItems[0]).hour_utc).padStart(2,'0') + ':00' : '—' }}
+                  {{
+                    todDurItems.length > 0
+                      ? String(
+                          todDurItems.reduce(
+                            (worst, r) => (r.pct_8h_plus > worst.pct_8h_plus ? r : worst),
+                            todDurItems[0],
+                          ).hour_utc,
+                        ).padStart(2, '0') + ':00'
+                      : '—'
+                  }}
                 </div>
                 <div class="text-xs text-surface-400">Worst hour (highest 8h+%)</div>
               </div>
@@ -6355,43 +7482,99 @@ onMounted(async () => {
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
                       :class="todDurSortCol === 'hour_utc' ? 'text-primary-400' : ''"
-                      @click="todDurSortCol === 'hour_utc' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'hour_utc'), (todDurSortAsc = true))"
-                    >Hour (UTC) {{ todDurSortCol === 'hour_utc' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        todDurSortCol === 'hour_utc'
+                          ? (todDurSortAsc = !todDurSortAsc)
+                          : ((todDurSortCol = 'hour_utc'), (todDurSortAsc = true))
+                      "
+                    >
+                      Hour (UTC)
+                      {{ todDurSortCol === 'hour_utc' ? (todDurSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
                       :class="todDurSortCol === 'total_trades' ? 'text-primary-400' : ''"
-                      @click="todDurSortCol === 'total_trades' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'total_trades'), (todDurSortAsc = false))"
-                    >Trades {{ todDurSortCol === 'total_trades' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        todDurSortCol === 'total_trades'
+                          ? (todDurSortAsc = !todDurSortAsc)
+                          : ((todDurSortCol = 'total_trades'), (todDurSortAsc = false))
+                      "
+                    >
+                      Trades
+                      {{ todDurSortCol === 'total_trades' ? (todDurSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
                       :class="todDurSortCol === 'pct_le_1h' ? 'text-primary-400' : ''"
-                      @click="todDurSortCol === 'pct_le_1h' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'pct_le_1h'), (todDurSortAsc = false))"
-                    >≤1h% {{ todDurSortCol === 'pct_le_1h' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        todDurSortCol === 'pct_le_1h'
+                          ? (todDurSortAsc = !todDurSortAsc)
+                          : ((todDurSortCol = 'pct_le_1h'), (todDurSortAsc = false))
+                      "
+                    >
+                      ≤1h% {{ todDurSortCol === 'pct_le_1h' ? (todDurSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
                       :class="todDurSortCol === 'pct_8h_plus' ? 'text-primary-400' : ''"
-                      @click="todDurSortCol === 'pct_8h_plus' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'pct_8h_plus'), (todDurSortAsc = false))"
-                    >8h+% {{ todDurSortCol === 'pct_8h_plus' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        todDurSortCol === 'pct_8h_plus'
+                          ? (todDurSortAsc = !todDurSortAsc)
+                          : ((todDurSortCol = 'pct_8h_plus'), (todDurSortAsc = false))
+                      "
+                    >
+                      8h+% {{ todDurSortCol === 'pct_8h_plus' ? (todDurSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
                       :class="todDurSortCol === 'avg_duration_min' ? 'text-primary-400' : ''"
-                      @click="todDurSortCol === 'avg_duration_min' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'avg_duration_min'), (todDurSortAsc = false))"
-                    >Avg Dur (min) {{ todDurSortCol === 'avg_duration_min' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        todDurSortCol === 'avg_duration_min'
+                          ? (todDurSortAsc = !todDurSortAsc)
+                          : ((todDurSortCol = 'avg_duration_min'), (todDurSortAsc = false))
+                      "
+                    >
+                      Avg Dur (min)
+                      {{ todDurSortCol === 'avg_duration_min' ? (todDurSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
                       :class="todDurSortCol === 'median_duration_min' ? 'text-primary-400' : ''"
-                      @click="todDurSortCol === 'median_duration_min' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'median_duration_min'), (todDurSortAsc = false))"
-                    >Median Dur (min) {{ todDurSortCol === 'median_duration_min' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        todDurSortCol === 'median_duration_min'
+                          ? (todDurSortAsc = !todDurSortAsc)
+                          : ((todDurSortCol = 'median_duration_min'), (todDurSortAsc = false))
+                      "
+                    >
+                      Median Dur (min)
+                      {{
+                        todDurSortCol === 'median_duration_min' ? (todDurSortAsc ? '↑' : '↓') : ''
+                      }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
                       :class="todDurSortCol === 'avg_profit_pct' ? 'text-primary-400' : ''"
-                      @click="todDurSortCol === 'avg_profit_pct' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'avg_profit_pct'), (todDurSortAsc = false))"
-                    >Avg Profit% {{ todDurSortCol === 'avg_profit_pct' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        todDurSortCol === 'avg_profit_pct'
+                          ? (todDurSortAsc = !todDurSortAsc)
+                          : ((todDurSortCol = 'avg_profit_pct'), (todDurSortAsc = false))
+                      "
+                    >
+                      Avg Profit%
+                      {{ todDurSortCol === 'avg_profit_pct' ? (todDurSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                     <th
                       class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
                       :class="todDurSortCol === 'win_rate_pct' ? 'text-primary-400' : ''"
-                      @click="todDurSortCol === 'win_rate_pct' ? (todDurSortAsc = !todDurSortAsc) : ((todDurSortCol = 'win_rate_pct'), (todDurSortAsc = false))"
-                    >Win Rate% {{ todDurSortCol === 'win_rate_pct' ? (todDurSortAsc ? '↑' : '↓') : '' }}</th>
+                      @click="
+                        todDurSortCol === 'win_rate_pct'
+                          ? (todDurSortAsc = !todDurSortAsc)
+                          : ((todDurSortCol = 'win_rate_pct'), (todDurSortAsc = false))
+                      "
+                    >
+                      Win Rate%
+                      {{ todDurSortCol === 'win_rate_pct' ? (todDurSortAsc ? '↑' : '↓') : '' }}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6400,95 +7583,179 @@ onMounted(async () => {
                     :key="row.hour_utc"
                     class="border-b border-surface-700/70 hover:bg-surface-700/30"
                   >
-                    <td class="py-1.5 pe-3 font-mono text-xs">{{ String(row.hour_utc).padStart(2, '0') }}:00</td>
+                    <td class="py-1.5 pe-3 font-mono text-xs">
+                      {{ String(row.hour_utc).padStart(2, '0') }}:00
+                    </td>
                     <td class="py-1.5 pe-3 text-right">{{ row.total_trades }}</td>
-                    <td class="py-1.5 pe-3 text-right font-mono text-xs"
-                      :class="row.pct_le_1h >= 50 ? 'text-green-400' : row.pct_le_1h < 30 ? 'text-red-400' : 'text-yellow-400'"
-                    >{{ row.pct_le_1h.toFixed(1) }}%</td>
-                    <td class="py-1.5 pe-3 text-right font-mono text-xs"
-                      :class="row.pct_8h_plus <= 5 ? 'text-green-400' : row.pct_8h_plus <= 15 ? 'text-yellow-400' : 'text-red-400'"
-                    >{{ row.pct_8h_plus.toFixed(1) }}%</td>
-                    <td class="py-1.5 pe-3 text-right font-mono text-xs">{{ row.avg_duration_min.toFixed(0) }}</td>
-                    <td class="py-1.5 pe-3 text-right font-mono text-xs">{{ row.median_duration_min.toFixed(0) }}</td>
-                    <td class="py-1.5 pe-3 text-right font-mono text-xs"
+                    <td
+                      class="py-1.5 pe-3 text-right font-mono text-xs"
+                      :class="
+                        row.pct_le_1h >= 50
+                          ? 'text-green-400'
+                          : row.pct_le_1h < 30
+                            ? 'text-red-400'
+                            : 'text-yellow-400'
+                      "
+                    >
+                      {{ row.pct_le_1h.toFixed(1) }}%
+                    </td>
+                    <td
+                      class="py-1.5 pe-3 text-right font-mono text-xs"
+                      :class="
+                        row.pct_8h_plus <= 5
+                          ? 'text-green-400'
+                          : row.pct_8h_plus <= 15
+                            ? 'text-yellow-400'
+                            : 'text-red-400'
+                      "
+                    >
+                      {{ row.pct_8h_plus.toFixed(1) }}%
+                    </td>
+                    <td class="py-1.5 pe-3 text-right font-mono text-xs">
+                      {{ row.avg_duration_min.toFixed(0) }}
+                    </td>
+                    <td class="py-1.5 pe-3 text-right font-mono text-xs">
+                      {{ row.median_duration_min.toFixed(0) }}
+                    </td>
+                    <td
+                      class="py-1.5 pe-3 text-right font-mono text-xs"
                       :class="row.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'"
-                    >{{ row.avg_profit_pct.toFixed(2) }}%</td>
-                    <td class="py-1.5 pe-3 text-right font-mono text-xs"
+                    >
+                      {{ row.avg_profit_pct.toFixed(2) }}%
+                    </td>
+                    <td
+                      class="py-1.5 pe-3 text-right font-mono text-xs"
                       :class="row.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'"
-                    >{{ row.win_rate_pct.toFixed(1) }}%</td>
+                    >
+                      {{ row.win_rate_pct.toFixed(1) }}%
+                    </td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
             <!-- Empty state -->
-            <div v-else-if="todDurLoaded" class="text-surface-400 text-sm">No data found for selected filters.</div>
+            <div v-else-if="todDurLoaded" class="text-surface-400 text-sm">
+              No data found for selected filters.
+            </div>
           </div>
 
-          <div v-if="selectedSubCategory === 'entry-exit-matrix'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'entry-exit-matrix'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h5 class="font-semibold">Entry Tag × Exit Reason Matrix</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 3</span>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded"
+                  >Tier 3</span
+                >
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputNumber
+                  v-model="stubFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
-              Pivot table: rows = enter_tag, cols = exit_reason, cells = avg profit_ratio and trade count.
-              Answers: <em>which entry tags lead to clean trailing-stop exits vs stop-loss exits?</em>
+              Pivot table: rows = enter_tag, cols = exit_reason, cells = avg profit_ratio and trade
+              count. Answers:
+              <em>which entry tags lead to clean trailing-stop exits vs stop-loss exits?</em>
             </p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">What it will show</div>
                 <div class="text-surface-400">• Pivot grid: enter_tag rows × exit_reason cols</div>
-                <div class="text-surface-400">• Each cell: avg profit% (color coded) + trade count</div>
+                <div class="text-surface-400">
+                  • Each cell: avg profit% (color coded) + trade count
+                </div>
                 <div class="text-surface-400">• Row totals + column totals</div>
-                <div class="text-surface-400">• Empty cells = gray (no trades for that combination)</div>
+                <div class="text-surface-400">
+                  • Empty cells = gray (no trades for that combination)
+                </div>
               </div>
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Backend: <code class="bg-surface-800 px-1 rounded">SELECT enter_tag, exit_reason, AVG(profit_ratio), COUNT(*) FROM dwh_trades WHERE close_date IS NOT NULL GROUP BY 1, 2</code></div>
-                <div class="text-surface-400">• Frontend: pivot client-side — collect unique tags/reasons, build 2D map</div>
-                <div class="text-surface-400">• Render as CSS grid or table; color each cell by avg profit</div>
+                <div class="text-surface-400">
+                  • Backend:
+                  <code class="bg-surface-800 px-1 rounded"
+                    >SELECT enter_tag, exit_reason, AVG(profit_ratio), COUNT(*) FROM dwh_trades
+                    WHERE close_date IS NOT NULL GROUP BY 1, 2</code
+                  >
+                </div>
+                <div class="text-surface-400">
+                  • Frontend: pivot client-side — collect unique tags/reasons, build 2D map
+                </div>
+                <div class="text-surface-400">
+                  • Render as CSS grid or table; color each cell by avg profit
+                </div>
               </div>
             </div>
           </div>
 
-          <div v-if="selectedSubCategory === 'error-trade-correlation'" class="border border-surface-400 rounded-sm p-4 space-y-4">
+          <div
+            v-if="selectedSubCategory === 'error-trade-correlation'"
+            class="border border-surface-400 rounded-sm p-4 space-y-4"
+          >
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h5 class="font-semibold">Error ↔ Trade Correlation</h5>
-                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded">Tier 3</span>
+                <span class="text-xs bg-surface-700 text-surface-300 px-2 py-1 rounded"
+                  >Tier 3</span
+                >
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber v-model="stubFilterBotId" :min="1" size="small" input-class="w-20" placeholder="Bot ID" />
+                <InputNumber
+                  v-model="stubFilterBotId"
+                  :min="1"
+                  size="small"
+                  input-class="w-20"
+                  placeholder="Bot ID"
+                />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
-              Correlates anomaly spikes from <code class="bg-surface-700 px-1 rounded">dwh_anomaly_hourly_rollups</code> with missed signals or bad fills in the same time window.
-              Answers: <em>when bots log lots of errors, do they also miss more trades or fill worse?</em>
+              Correlates anomaly spikes from
+              <code class="bg-surface-700 px-1 rounded">dwh_anomaly_hourly_rollups</code> with
+              missed signals or bad fills in the same time window. Answers:
+              <em>when bots log lots of errors, do they also miss more trades or fill worse?</em>
             </p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">What it will show</div>
-                <div class="text-surface-400">• Dual-axis timeline: error count (red) + missed signal count (blue) per hour</div>
-                <div class="text-surface-400">• Correlation score: Pearson correlation between error rate and missed trade rate</div>
+                <div class="text-surface-400">
+                  • Dual-axis timeline: error count (red) + missed signal count (blue) per hour
+                </div>
+                <div class="text-surface-400">
+                  • Correlation score: Pearson correlation between error rate and missed trade rate
+                </div>
                 <div class="text-surface-400">• Highlight hours where both spike together</div>
               </div>
               <div class="rounded border border-surface-700 p-3 space-y-1">
                 <div class="font-medium text-surface-200 mb-2">How to build</div>
-                <div class="text-surface-400">• Join dwh_anomaly_hourly_rollups with dwh_missed_signals bucketed to the same hour</div>
-                <div class="text-surface-400">• Backend: return hourly series of (hour, error_count, missed_count)</div>
-                <div class="text-surface-400">• Frontend: dual SVG polyline reusing existing timeline chart pattern</div>
-                <div class="text-surface-400">• This report requires both anomaly rollups AND missed_signals to be populated</div>
+                <div class="text-surface-400">
+                  • Join dwh_anomaly_hourly_rollups with dwh_missed_signals bucketed to the same
+                  hour
+                </div>
+                <div class="text-surface-400">
+                  • Backend: return hourly series of (hour, error_count, missed_count)
+                </div>
+                <div class="text-surface-400">
+                  • Frontend: dual SVG polyline reusing existing timeline chart pattern
+                </div>
+                <div class="text-surface-400">
+                  • This report requires both anomaly rollups AND missed_signals to be populated
+                </div>
               </div>
             </div>
           </div>
@@ -6510,10 +7777,30 @@ onMounted(async () => {
                   input-class="w-20"
                   placeholder="Bot ID"
                 />
-                <InputText v-model="drillFilterPair" size="small" class="w-40" placeholder="Pair (e.g. BTC/USDT)" />
-                <InputText v-model="drillFilterStrategy" size="small" class="w-36" placeholder="Strategy" />
-                <InputText v-model="drillFilterEntryReason" size="small" class="w-36" placeholder="Entry tag" />
-                <InputText v-model="drillFilterExitReason" size="small" class="w-36" placeholder="Exit reason" />
+                <InputText
+                  v-model="drillFilterPair"
+                  size="small"
+                  class="w-40"
+                  placeholder="Pair (e.g. BTC/USDT)"
+                />
+                <InputText
+                  v-model="drillFilterStrategy"
+                  size="small"
+                  class="w-36"
+                  placeholder="Strategy"
+                />
+                <InputText
+                  v-model="drillFilterEntryReason"
+                  size="small"
+                  class="w-36"
+                  placeholder="Entry tag"
+                />
+                <InputText
+                  v-model="drillFilterExitReason"
+                  size="small"
+                  class="w-36"
+                  placeholder="Exit reason"
+                />
                 <Select
                   v-model="drillFilterSide"
                   :options="[
@@ -6526,7 +7813,13 @@ onMounted(async () => {
                   size="small"
                   class="w-28"
                 />
-                <Button label="Clear" size="small" severity="secondary" outlined @click="clearDrilldownFilters" />
+                <Button
+                  label="Clear"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  @click="clearDrilldownFilters"
+                />
                 <Button
                   label="Refresh"
                   size="small"
@@ -6540,9 +7833,12 @@ onMounted(async () => {
 
             <!-- Summary tags -->
             <div v-if="drillTradesFiltered.length" class="flex flex-wrap gap-2">
-              <Tag :value="`Showing: ${drillTradesFiltered.length} / ${drillTotal}${botFilterActive ? ' (bot filter active)' : ''}`" severity="contrast" />
               <Tag
-                :value="`Avg profit: ${drillTradesFiltered.filter((t) => t.profit_ratio !== null).length ? (drillTradesFiltered.reduce((s, t) => s + (t.profit_ratio ?? 0), 0) / drillTradesFiltered.filter((t) => t.profit_ratio !== null).length * 100).toFixed(2) + '%' : 'n/a'}`"
+                :value="`Showing: ${drillTradesFiltered.length} / ${drillTotal}${botFilterActive ? ' (bot filter active)' : ''}`"
+                severity="contrast"
+              />
+              <Tag
+                :value="`Avg profit: ${drillTradesFiltered.filter((t) => t.profit_ratio !== null).length ? ((drillTradesFiltered.reduce((s, t) => s + (t.profit_ratio ?? 0), 0) / drillTradesFiltered.filter((t) => t.profit_ratio !== null).length) * 100).toFixed(2) + '%' : 'n/a'}`"
                 severity="warn"
               />
               <Tag
@@ -6583,51 +7879,98 @@ onMounted(async () => {
                   <line
                     v-for="(tick, idx) in drillChartYTicks"
                     :key="`dgy-${idx}`"
-                    x1="46" :y1="tick.y" x2="900" :y2="tick.y"
-                    stroke="#334155" stroke-width="1" stroke-dasharray="4 4"
+                    x1="46"
+                    :y1="tick.y"
+                    x2="900"
+                    :y2="tick.y"
+                    stroke="#334155"
+                    stroke-width="1"
+                    stroke-dasharray="4 4"
                   />
                   <text
                     v-for="(tick, idx) in drillChartYTicks"
                     :key="`dty-${idx}`"
-                    :x="42" :y="tick.y + 4"
-                    text-anchor="end" fill="#94a3b8" font-size="10"
-                  >{{ tick.label }}</text>
+                    :x="42"
+                    :y="tick.y + 4"
+                    text-anchor="end"
+                    fill="#94a3b8"
+                    font-size="10"
+                  >
+                    {{ tick.label }}
+                  </text>
                 </g>
                 <!-- Zero line (profit modes) -->
                 <line
                   v-if="drillChartMetric !== 'duration'"
-                  x1="46" :y1="drillChartZeroY" x2="900" :y2="drillChartZeroY"
-                  stroke="#64748b" stroke-width="1"
+                  x1="46"
+                  :y1="drillChartZeroY"
+                  x2="900"
+                  :y2="drillChartZeroY"
+                  stroke="#64748b"
+                  stroke-width="1"
                 />
                 <!-- Axes -->
                 <line x1="46" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
                 <line x1="46" y1="14" x2="46" y2="230" stroke="#475569" stroke-width="1" />
                 <!-- Axis labels -->
-                <text x="8" y="24" fill="#94a3b8" font-size="11">{{ drillChartMetric === 'profit_pct' ? '%' : drillChartMetric === 'profit_abs' ? 'USDT' : 'min' }}</text>
-                <text x="473" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Trade close date</text>
+                <text x="8" y="24" fill="#94a3b8" font-size="11">
+                  {{
+                    drillChartMetric === 'profit_pct'
+                      ? '%'
+                      : drillChartMetric === 'profit_abs'
+                        ? 'USDT'
+                        : 'min'
+                  }}
+                </text>
+                <text x="473" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">
+                  Trade close date
+                </text>
                 <!-- X ticks -->
                 <text
                   v-for="(tick, idx) in drillChartXTicks"
                   :key="`dtx-${idx}`"
-                  :x="tick.x" y="245"
-                  text-anchor="middle" fill="#94a3b8" font-size="10"
-                >{{ tick.label }}</text>
+                  :x="tick.x"
+                  y="245"
+                  text-anchor="middle"
+                  fill="#94a3b8"
+                  font-size="10"
+                >
+                  {{ tick.label }}
+                </text>
                 <!-- Dots -->
                 <circle
                   v-for="(point, idx) in drillChartCoordinates"
                   :key="`dc-${idx}`"
-                  :cx="point.x" :cy="point.y" r="4"
-                  :fill="point.value === null ? '#475569' : drillChartMetric === 'duration' ? '#60a5fa' : (point.positive ? '#34d399' : '#f87171')"
+                  :cx="point.x"
+                  :cy="point.y"
+                  r="4"
+                  :fill="
+                    point.value === null
+                      ? '#475569'
+                      : drillChartMetric === 'duration'
+                        ? '#60a5fa'
+                        : point.positive
+                          ? '#34d399'
+                          : '#f87171'
+                  "
                   class="cursor-pointer"
-                  @mousemove="showChartTooltip($event, [
-                    `Trade #${point.tradeId} · ${point.pair}`,
-                    point.at,
-                    drillChartMetric === 'profit_pct'
-                      ? (point.value !== null ? `Profit: ${point.value.toFixed(2)}%` : 'Profit: n/a')
-                      : drillChartMetric === 'profit_abs'
-                        ? (point.value !== null ? `Profit: ${point.value.toFixed(2)} USDT` : 'Profit: n/a')
-                        : (point.value !== null ? `Duration: ${point.value.toFixed(1)} min` : 'Duration: n/a'),
-                  ])"
+                  @mousemove="
+                    showChartTooltip($event, [
+                      `Trade #${point.tradeId} · ${point.pair}`,
+                      point.at,
+                      drillChartMetric === 'profit_pct'
+                        ? point.value !== null
+                          ? `Profit: ${point.value.toFixed(2)}%`
+                          : 'Profit: n/a'
+                        : drillChartMetric === 'profit_abs'
+                          ? point.value !== null
+                            ? `Profit: ${point.value.toFixed(2)} USDT`
+                            : 'Profit: n/a'
+                          : point.value !== null
+                            ? `Duration: ${point.value.toFixed(1)} min`
+                            : 'Duration: n/a',
+                    ])
+                  "
                   @mouseleave="hideChartTooltip"
                 >
                   <title>{{ `Trade #${point.tradeId} · ${point.pair}` }}</title>
@@ -6670,36 +8013,86 @@ onMounted(async () => {
                       <td class="py-2 pe-3 whitespace-nowrap">{{ trade.source_trade_id }}</td>
                       <td class="py-2 pe-3 whitespace-nowrap">
                         <div class="font-medium">{{ trade.vps_name ?? '—' }}</div>
-                        <div class="text-xs text-surface-400">{{ trade.container_name ?? '—' }} · ID {{ trade.bot_id }}</div>
+                        <div class="text-xs text-surface-400">
+                          {{ trade.container_name ?? '—' }} · ID {{ trade.bot_id }}
+                        </div>
                       </td>
-                      <td class="py-2 pe-3 whitespace-nowrap font-medium">{{ trade.pair ?? '—' }}</td>
+                      <td class="py-2 pe-3 whitespace-nowrap font-medium">
+                        {{ trade.pair ?? '—' }}
+                      </td>
                       <td class="py-2 pe-3 whitespace-nowrap">
                         <span :class="trade.is_short ? 'text-red-400' : 'text-green-400'">
                           {{ trade.is_short ? 'Short' : 'Long' }}
                         </span>
                       </td>
-                      <td class="py-2 pe-3 whitespace-nowrap text-surface-300">{{ trade.enter_tag ?? '—' }}</td>
-                      <td class="py-2 pe-3 whitespace-nowrap text-surface-300">{{ trade.exit_reason ?? (trade.is_open ? 'Open' : '—') }}</td>
-                      <td class="py-2 pe-3 whitespace-nowrap text-surface-400">{{ trade.open_date ? formatDate(trade.open_date) : '—' }}</td>
-                      <td class="py-2 pe-3 whitespace-nowrap text-surface-400">{{ trade.close_date ? formatDate(trade.close_date) : (trade.is_open ? 'Open' : '—') }}</td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-surface-300">
+                        {{ trade.enter_tag ?? '—' }}
+                      </td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-surface-300">
+                        {{ trade.exit_reason ?? (trade.is_open ? 'Open' : '—') }}
+                      </td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-surface-400">
+                        {{ trade.open_date ? formatDate(trade.open_date) : '—' }}
+                      </td>
+                      <td class="py-2 pe-3 whitespace-nowrap text-surface-400">
+                        {{
+                          trade.close_date
+                            ? formatDate(trade.close_date)
+                            : trade.is_open
+                              ? 'Open'
+                              : '—'
+                        }}
+                      </td>
                       <td class="py-2 pe-3 whitespace-nowrap text-right text-surface-400">
-                        {{ tradeDurationMinutes(trade) !== null ? `${tradeDurationMinutes(trade)!.toFixed(0)} min` : '—' }}
+                        {{
+                          tradeDurationMinutes(trade) !== null
+                            ? `${tradeDurationMinutes(trade)!.toFixed(0)} min`
+                            : '—'
+                        }}
                       </td>
-                      <td class="py-2 pe-3 whitespace-nowrap text-right font-medium"
-                        :class="trade.profit_ratio === null ? 'text-surface-400' : trade.profit_ratio >= 0 ? 'text-green-400' : 'text-red-400'">
-                        {{ trade.profit_ratio !== null ? `${(trade.profit_ratio * 100).toFixed(2)}%` : '—' }}
+                      <td
+                        class="py-2 pe-3 whitespace-nowrap text-right font-medium"
+                        :class="
+                          trade.profit_ratio === null
+                            ? 'text-surface-400'
+                            : trade.profit_ratio >= 0
+                              ? 'text-green-400'
+                              : 'text-red-400'
+                        "
+                      >
+                        {{
+                          trade.profit_ratio !== null
+                            ? `${(trade.profit_ratio * 100).toFixed(2)}%`
+                            : '—'
+                        }}
                       </td>
-                      <td class="py-2 pe-3 whitespace-nowrap text-right"
-                        :class="trade.profit_abs === null ? 'text-surface-400' : trade.profit_abs >= 0 ? 'text-green-400' : 'text-red-400'">
+                      <td
+                        class="py-2 pe-3 whitespace-nowrap text-right"
+                        :class="
+                          trade.profit_abs === null
+                            ? 'text-surface-400'
+                            : trade.profit_abs >= 0
+                              ? 'text-green-400'
+                              : 'text-red-400'
+                        "
+                      >
                         {{ trade.profit_abs !== null ? trade.profit_abs.toFixed(3) : '—' }}
                       </td>
                       <td class="py-2 pe-3 whitespace-nowrap text-right font-mono text-xs">
-                        <span v-if="trade.dca_order_count > 1" class="text-primary-400 font-medium">{{ trade.dca_order_count }}</span>
-                        <span v-else-if="trade.dca_order_count === 1" class="text-surface-400">1</span>
+                        <span
+                          v-if="trade.dca_order_count > 1"
+                          class="text-primary-400 font-medium"
+                          >{{ trade.dca_order_count }}</span
+                        >
+                        <span v-else-if="trade.dca_order_count === 1" class="text-surface-400"
+                          >1</span
+                        >
                         <span v-else class="text-surface-600">—</span>
                       </td>
                       <td class="py-2 pe-3 whitespace-nowrap text-right">
-                        <span v-if="trade.anomaly_count > 0" class="text-yellow-400 font-medium">{{ trade.anomaly_count }}</span>
+                        <span v-if="trade.anomaly_count > 0" class="text-yellow-400 font-medium">{{
+                          trade.anomaly_count
+                        }}</span>
                         <span v-else class="text-surface-600">0</span>
                       </td>
                       <td class="py-2 text-center align-top">
@@ -6708,7 +8101,13 @@ onMounted(async () => {
                           :disabled="drillOrdersLoading.has(drillTradeKey(trade))"
                           @click="toggleDrillTradeExpand(trade)"
                         >
-                          {{ drillOrdersLoading.has(drillTradeKey(trade)) ? '...' : isDrillTradeExpanded(trade) ? 'Hide' : 'Show' }}
+                          {{
+                            drillOrdersLoading.has(drillTradeKey(trade))
+                              ? '...'
+                              : isDrillTradeExpanded(trade)
+                                ? 'Hide'
+                                : 'Show'
+                          }}
                         </button>
                       </td>
                     </tr>
@@ -6718,7 +8117,10 @@ onMounted(async () => {
                     >
                       <td colspan="14" class="py-3 px-2">
                         <div class="space-y-1 max-h-72 overflow-y-auto">
-                          <div v-if="!drillOrdersCache.get(drillTradeKey(trade))?.length" class="text-xs text-surface-400 py-1">
+                          <div
+                            v-if="!drillOrdersCache.get(drillTradeKey(trade))?.length"
+                            class="text-xs text-surface-400 py-1"
+                          >
                             No orders found for this trade.
                           </div>
                           <table v-else class="w-full text-xs border-collapse">
@@ -6741,17 +8143,44 @@ onMounted(async () => {
                                 :key="`drill-order-${order.id}-${oi}`"
                                 class="border-b border-surface-800/50 align-top"
                               >
-                                <td class="py-1 pe-2 whitespace-nowrap">{{ order.order_date ? formatDate(order.order_date) : '—' }}</td>
                                 <td class="py-1 pe-2 whitespace-nowrap">
-                                  <span :class="order.side === 'sell' ? 'text-red-400' : 'text-green-400'">{{ order.side ?? '—' }}</span>
+                                  {{ order.order_date ? formatDate(order.order_date) : '—' }}
                                 </td>
-                                <td class="py-1 pe-2 whitespace-nowrap text-surface-300">{{ order.order_type ?? '—' }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap text-surface-300">{{ order.status ?? '—' }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap text-surface-400">{{ order.order_tag ?? '—' }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap text-right">{{ order.amount !== null ? order.amount.toFixed(4) : '—' }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap text-right">{{ order.filled !== null ? order.filled.toFixed(4) : '—' }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap text-right">{{ order.average !== null ? order.average.toFixed(4) : (order.price !== null ? order.price.toFixed(4) : '—') }}</td>
-                                <td class="py-1 whitespace-nowrap text-right text-surface-400">{{ order.fee_base !== null ? order.fee_base.toFixed(6) : '—' }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  <span
+                                    :class="
+                                      order.side === 'sell' ? 'text-red-400' : 'text-green-400'
+                                    "
+                                    >{{ order.side ?? '—' }}</span
+                                  >
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-surface-300">
+                                  {{ order.order_type ?? '—' }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-surface-300">
+                                  {{ order.status ?? '—' }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-surface-400">
+                                  {{ order.order_tag ?? '—' }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-right">
+                                  {{ order.amount !== null ? order.amount.toFixed(4) : '—' }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-right">
+                                  {{ order.filled !== null ? order.filled.toFixed(4) : '—' }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap text-right">
+                                  {{
+                                    order.average !== null
+                                      ? order.average.toFixed(4)
+                                      : order.price !== null
+                                        ? order.price.toFixed(4)
+                                        : '—'
+                                  }}
+                                </td>
+                                <td class="py-1 whitespace-nowrap text-right text-surface-400">
+                                  {{ order.fee_base !== null ? order.fee_base.toFixed(6) : '—' }}
+                                </td>
                               </tr>
                             </tbody>
                           </table>
@@ -6764,7 +8193,10 @@ onMounted(async () => {
             </div>
 
             <!-- Load more -->
-            <div v-if="drillTrades.length && drillTrades.length < drillTotal" class="flex items-center gap-3">
+            <div
+              v-if="drillTrades.length && drillTrades.length < drillTotal"
+              class="flex items-center gap-3"
+            >
               <Button
                 :label="`Load more (${drillTotal - drillTrades.length} remaining)`"
                 size="small"
@@ -6799,9 +8231,24 @@ onMounted(async () => {
                   input-class="w-20"
                   placeholder="Trade ID"
                 />
-                <InputText v-model="trailingFilterPair" size="small" class="w-40" placeholder="Pair (e.g. BTC/USDT)" />
-                <InputText v-model="trailingFilterVps" size="small" class="w-36" placeholder="VPS" />
-                <InputText v-model="trailingFilterContainer" size="small" class="w-36" placeholder="Container" />
+                <InputText
+                  v-model="trailingFilterPair"
+                  size="small"
+                  class="w-40"
+                  placeholder="Pair (e.g. BTC/USDT)"
+                />
+                <InputText
+                  v-model="trailingFilterVps"
+                  size="small"
+                  class="w-36"
+                  placeholder="VPS"
+                />
+                <InputText
+                  v-model="trailingFilterContainer"
+                  size="small"
+                  class="w-36"
+                  placeholder="Container"
+                />
                 <Select
                   v-model="trailingFilterSide"
                   :options="[
@@ -6851,7 +8298,10 @@ onMounted(async () => {
               <Tag :value="`Log entries: ${trailingTotalLogCount}`" severity="contrast" />
               <Tag :value="`Avg trailing profit: ${trailingAvgProfitPct}`" severity="warn" />
               <Tag :value="`Positive profit share: ${trailingPositiveShare}`" severity="warn" />
-              <Tag :value="`Avg trailing duration: ${trailingAvgDurationMinutes}`" severity="warn" />
+              <Tag
+                :value="`Avg trailing duration: ${trailingAvgDurationMinutes}`"
+                severity="warn"
+              />
               <Tag
                 :value="`Profit <0%: ${trailingProfitBuckets.lossCount} (${trailingProfitBuckets.lossShare}%)`"
                 severity="secondary"
@@ -6934,7 +8384,9 @@ onMounted(async () => {
                     text-anchor="end"
                     fill="#94a3b8"
                     font-size="10"
-                  >{{ tick.label }}</text>
+                  >
+                    {{ tick.label }}
+                  </text>
                 </g>
                 <!-- Zero line (profit mode only) -->
                 <line
@@ -6950,8 +8402,12 @@ onMounted(async () => {
                 <line x1="40" y1="230" x2="900" y2="230" stroke="#475569" stroke-width="1" />
                 <line x1="40" y1="14" x2="40" y2="230" stroke="#475569" stroke-width="1" />
                 <!-- Axis labels -->
-                <text x="8" y="24" fill="#94a3b8" font-size="11">{{ trailingChartMetric === 'profit' ? '%' : 'min' }}</text>
-                <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">Trade open date</text>
+                <text x="8" y="24" fill="#94a3b8" font-size="11">
+                  {{ trailingChartMetric === 'profit' ? '%' : 'min' }}
+                </text>
+                <text x="450" y="252" text-anchor="middle" fill="#94a3b8" font-size="11">
+                  Trade open date
+                </text>
                 <!-- X-axis tick labels -->
                 <text
                   v-for="(tick, idx) in trailingChartXTicks"
@@ -6961,7 +8417,9 @@ onMounted(async () => {
                   text-anchor="middle"
                   fill="#94a3b8"
                   font-size="10"
-                >{{ tick.label }}</text>
+                >
+                  {{ tick.label }}
+                </text>
                 <!-- Dots per trade, colored by positive/negative -->
                 <circle
                   v-for="(point, idx) in trailingChartCoordinates"
@@ -6969,15 +8427,29 @@ onMounted(async () => {
                   :cx="point.x"
                   :cy="point.y"
                   r="4"
-                  :fill="point.value === null ? '#475569' : trailingChartMetric === 'profit' ? (point.positive ? '#34d399' : '#f87171') : '#60a5fa'"
+                  :fill="
+                    point.value === null
+                      ? '#475569'
+                      : trailingChartMetric === 'profit'
+                        ? point.positive
+                          ? '#34d399'
+                          : '#f87171'
+                        : '#60a5fa'
+                  "
                   class="cursor-pointer"
-                  @mousemove="showChartTooltip($event, [
-                    `Trade #${point.tradeId} · ${point.pair}`,
-                    point.at,
-                    trailingChartMetric === 'profit'
-                      ? (point.value !== null ? `Profit: ${point.value.toFixed(2)}%` : 'Profit: n/a')
-                      : (point.value !== null ? `Duration: ${point.value.toFixed(1)} min` : 'Duration: n/a'),
-                  ])"
+                  @mousemove="
+                    showChartTooltip($event, [
+                      `Trade #${point.tradeId} · ${point.pair}`,
+                      point.at,
+                      trailingChartMetric === 'profit'
+                        ? point.value !== null
+                          ? `Profit: ${point.value.toFixed(2)}%`
+                          : 'Profit: n/a'
+                        : point.value !== null
+                          ? `Duration: ${point.value.toFixed(1)} min`
+                          : 'Duration: n/a',
+                    ])
+                  "
                   @mouseleave="hideChartTooltip"
                 >
                   <title>{{ `Trade #${point.tradeId} · ${point.pair} · ${point.at}` }}</title>
@@ -6986,7 +8458,11 @@ onMounted(async () => {
             </div>
 
             <div v-if="!filteredTrailingTradeRows.length" class="text-sm text-surface-400">
-              {{ loadingTrailingBenefit ? 'Loading trailing benefit report...' : 'No trailing trades found for current filters.' }}
+              {{
+                loadingTrailingBenefit
+                  ? 'Loading trailing benefit report...'
+                  : 'No trailing trades found for current filters.'
+              }}
             </div>
 
             <div v-else class="overflow-x-auto w-full">
@@ -7020,19 +8496,63 @@ onMounted(async () => {
                       <td class="py-2 pe-2 whitespace-nowrap">{{ row.tradeId }}</td>
                       <td class="py-2 pe-2 align-top whitespace-nowrap">
                         <div class="font-medium">{{ getBotVpsName(row.botId) }}</div>
-                        <div class="text-xs text-surface-400">{{ getBotContainerName(row.botId) }} · ID {{ row.botId }}</div>
+                        <div class="text-xs text-surface-400">
+                          {{ getBotContainerName(row.botId) }} · ID {{ row.botId }}
+                        </div>
                       </td>
                       <td class="py-2 pe-2 whitespace-nowrap">{{ row.pair }}</td>
                       <td class="py-2 pe-2 whitespace-nowrap">{{ row.side }}</td>
                       <td class="py-2 pe-2 whitespace-nowrap">{{ row.enterTag ?? '—' }}</td>
-                      <td class="py-2 pe-2 whitespace-nowrap">{{ row.openDate ? formatDate(row.openDate) : '—' }}</td>
-                      <td class="py-2 pe-2 whitespace-nowrap">{{ row.snapshotProfitPct === null ? '—' : `${row.snapshotProfitPct.toFixed(2)}%` }}</td>
-                      <td class="py-2 pe-2 whitespace-nowrap">{{ row.snapshotOffsetPct === null ? '—' : `${row.snapshotOffsetPct.toFixed(2)}%` }}</td>
-                      <td class="py-2 pe-2 whitespace-nowrap">{{ row.snapshotDurationMinutes === null ? '—' : row.snapshotDurationMinutes.toFixed(1) }}</td>
-                      <td class="py-2 pe-2 whitespace-nowrap">{{ row.snapshotStartValue === null ? '—' : row.snapshotStartValue.toFixed(4) }}</td>
-                      <td class="py-2 pe-2 whitespace-nowrap">{{ row.snapshotCurrentValue === null ? '—' : row.snapshotCurrentValue.toFixed(4) }}</td>
-                      <td class="py-2 pe-2 whitespace-nowrap">{{ row.snapshotLowLimitValue === null ? '—' : row.snapshotLowLimitValue.toFixed(4) }}</td>
-                      <td class="py-2 pe-2 whitespace-nowrap">{{ row.snapshotUpLimitValue === null ? '—' : row.snapshotUpLimitValue.toFixed(4) }}</td>
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        {{ row.openDate ? formatDate(row.openDate) : '—' }}
+                      </td>
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        {{
+                          row.snapshotProfitPct === null
+                            ? '—'
+                            : `${row.snapshotProfitPct.toFixed(2)}%`
+                        }}
+                      </td>
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        {{
+                          row.snapshotOffsetPct === null
+                            ? '—'
+                            : `${row.snapshotOffsetPct.toFixed(2)}%`
+                        }}
+                      </td>
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        {{
+                          row.snapshotDurationMinutes === null
+                            ? '—'
+                            : row.snapshotDurationMinutes.toFixed(1)
+                        }}
+                      </td>
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        {{
+                          row.snapshotStartValue === null ? '—' : row.snapshotStartValue.toFixed(4)
+                        }}
+                      </td>
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        {{
+                          row.snapshotCurrentValue === null
+                            ? '—'
+                            : row.snapshotCurrentValue.toFixed(4)
+                        }}
+                      </td>
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        {{
+                          row.snapshotLowLimitValue === null
+                            ? '—'
+                            : row.snapshotLowLimitValue.toFixed(4)
+                        }}
+                      </td>
+                      <td class="py-2 pe-2 whitespace-nowrap">
+                        {{
+                          row.snapshotUpLimitValue === null
+                            ? '—'
+                            : row.snapshotUpLimitValue.toFixed(4)
+                        }}
+                      </td>
                       <td class="py-2 pe-2 whitespace-nowrap">{{ row.matchSource }}</td>
                       <td class="py-2 pe-2 whitespace-nowrap">{{ row.logCount }}</td>
                       <td class="py-2 pe-2 text-center align-top">
@@ -7074,13 +8594,41 @@ onMounted(async () => {
                                 class="border-b border-surface-800/50 align-top"
                               >
                                 <td class="py-1 pe-2 whitespace-nowrap">{{ log.at }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap">{{ log.profitPct === null ? '—' : `${log.profitPct.toFixed(2)}%` }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap">{{ log.offsetPct === null ? '—' : `${log.offsetPct.toFixed(2)}%` }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap">{{ log.durationMinutes === null ? '—' : log.durationMinutes.toFixed(1) }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap">{{ log.startValue === null ? '—' : log.startValue.toFixed(4) }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap">{{ log.currentValue === null ? '—' : log.currentValue.toFixed(4) }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap">{{ log.lowLimitValue === null ? '—' : log.lowLimitValue.toFixed(4) }}</td>
-                                <td class="py-1 pe-2 whitespace-nowrap">{{ log.upLimitValue === null ? '—' : log.upLimitValue.toFixed(4) }}</td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  {{
+                                    log.profitPct === null ? '—' : `${log.profitPct.toFixed(2)}%`
+                                  }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  {{
+                                    log.offsetPct === null ? '—' : `${log.offsetPct.toFixed(2)}%`
+                                  }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  {{
+                                    log.durationMinutes === null
+                                      ? '—'
+                                      : log.durationMinutes.toFixed(1)
+                                  }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  {{ log.startValue === null ? '—' : log.startValue.toFixed(4) }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  {{
+                                    log.currentValue === null ? '—' : log.currentValue.toFixed(4)
+                                  }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  {{
+                                    log.lowLimitValue === null ? '—' : log.lowLimitValue.toFixed(4)
+                                  }}
+                                </td>
+                                <td class="py-1 pe-2 whitespace-nowrap">
+                                  {{
+                                    log.upLimitValue === null ? '—' : log.upLimitValue.toFixed(4)
+                                  }}
+                                </td>
                                 <td class="py-1 pe-2 whitespace-nowrap">{{ log.matchSource }}</td>
                                 <td class="py-1 break-words">{{ log.message }}</td>
                               </tr>
@@ -7144,7 +8692,10 @@ onMounted(async () => {
                 </div>
                 <div class="text-xs text-surface-400">Total PnL</div>
               </div>
-              <div v-if="botPerfBestBot" class="rounded border border-primary-700 px-3 py-2 min-w-40 text-center">
+              <div
+                v-if="botPerfBestBot"
+                class="rounded border border-primary-700 px-3 py-2 min-w-40 text-center"
+              >
                 <div class="text-sm font-bold text-primary-400 truncate">
                   {{ botPerfBestBot.container_name ?? `Bot ${botPerfBestBot.bot_id}` }}
                 </div>
@@ -7158,7 +8709,10 @@ onMounted(async () => {
             <div v-if="botPerfLoaded && botPerfItems.length > 0" class="space-y-4">
               <div class="flex gap-0 border-b border-surface-600">
                 <button
-                  v-for="tab in [{ key: 'performance', label: 'Performance' }, { key: 'history', label: 'History' }]"
+                  v-for="tab in [
+                    { key: 'performance', label: 'Performance' },
+                    { key: 'history', label: 'History' },
+                  ]"
                   :key="tab.key"
                   class="px-4 py-2 text-sm border-b-2 transition-colors"
                   :class="
@@ -7183,66 +8737,131 @@ onMounted(async () => {
                       <th
                         class="py-2 pe-3 whitespace-nowrap text-right cursor-pointer select-none"
                         :class="botPerfSortCol === 'total_closed_trades' ? 'text-primary-400' : ''"
-                        @click="botPerfSortCol === 'total_closed_trades' ? (botPerfSortAsc = !botPerfSortAsc) : ((botPerfSortCol = 'total_closed_trades'), (botPerfSortAsc = false))"
+                        @click="
+                          botPerfSortCol === 'total_closed_trades'
+                            ? (botPerfSortAsc = !botPerfSortAsc)
+                            : ((botPerfSortCol = 'total_closed_trades'), (botPerfSortAsc = false))
+                        "
                       >
-                        Closed {{ botPerfSortCol === 'total_closed_trades' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
+                        Closed
+                        {{
+                          botPerfSortCol === 'total_closed_trades'
+                            ? botPerfSortAsc
+                              ? '↑'
+                              : '↓'
+                            : ''
+                        }}
                       </th>
                       <th class="py-2 pe-3 whitespace-nowrap text-right">Open</th>
                       <th
                         class="py-2 pe-3 whitespace-nowrap text-right cursor-pointer select-none"
                         :class="botPerfSortCol === 'win_rate_pct' ? 'text-primary-400' : ''"
-                        @click="botPerfSortCol === 'win_rate_pct' ? (botPerfSortAsc = !botPerfSortAsc) : ((botPerfSortCol = 'win_rate_pct'), (botPerfSortAsc = false))"
+                        @click="
+                          botPerfSortCol === 'win_rate_pct'
+                            ? (botPerfSortAsc = !botPerfSortAsc)
+                            : ((botPerfSortCol = 'win_rate_pct'), (botPerfSortAsc = false))
+                        "
                       >
-                        Win% {{ botPerfSortCol === 'win_rate_pct' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
+                        Win%
+                        {{ botPerfSortCol === 'win_rate_pct' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
                       </th>
                       <th
                         class="py-2 pe-3 whitespace-nowrap text-right cursor-pointer select-none"
                         :class="botPerfSortCol === 'avg_profit_pct' ? 'text-primary-400' : ''"
-                        @click="botPerfSortCol === 'avg_profit_pct' ? (botPerfSortAsc = !botPerfSortAsc) : ((botPerfSortCol = 'avg_profit_pct'), (botPerfSortAsc = false))"
+                        @click="
+                          botPerfSortCol === 'avg_profit_pct'
+                            ? (botPerfSortAsc = !botPerfSortAsc)
+                            : ((botPerfSortCol = 'avg_profit_pct'), (botPerfSortAsc = false))
+                        "
                       >
-                        Avg Profit% {{ botPerfSortCol === 'avg_profit_pct' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
+                        Avg Profit%
+                        {{
+                          botPerfSortCol === 'avg_profit_pct' ? (botPerfSortAsc ? '↑' : '↓') : ''
+                        }}
                       </th>
                       <th
                         class="py-2 pe-3 whitespace-nowrap text-right cursor-pointer select-none"
                         :class="botPerfSortCol === 'total_profit_abs' ? 'text-primary-400' : ''"
-                        @click="botPerfSortCol === 'total_profit_abs' ? (botPerfSortAsc = !botPerfSortAsc) : ((botPerfSortCol = 'total_profit_abs'), (botPerfSortAsc = false))"
+                        @click="
+                          botPerfSortCol === 'total_profit_abs'
+                            ? (botPerfSortAsc = !botPerfSortAsc)
+                            : ((botPerfSortCol = 'total_profit_abs'), (botPerfSortAsc = false))
+                        "
                       >
-                        Total PnL {{ botPerfSortCol === 'total_profit_abs' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
+                        Total PnL
+                        {{
+                          botPerfSortCol === 'total_profit_abs' ? (botPerfSortAsc ? '↑' : '↓') : ''
+                        }}
                       </th>
                       <th
                         class="py-2 pe-3 whitespace-nowrap text-right cursor-pointer select-none"
                         :class="botPerfSortCol === 'avg_duration_hours' ? 'text-primary-400' : ''"
-                        @click="botPerfSortCol === 'avg_duration_hours' ? (botPerfSortAsc = !botPerfSortAsc) : ((botPerfSortCol = 'avg_duration_hours'), (botPerfSortAsc = false))"
+                        @click="
+                          botPerfSortCol === 'avg_duration_hours'
+                            ? (botPerfSortAsc = !botPerfSortAsc)
+                            : ((botPerfSortCol = 'avg_duration_hours'), (botPerfSortAsc = false))
+                        "
                       >
-                        Avg Dur {{ botPerfSortCol === 'avg_duration_hours' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
+                        Avg Dur
+                        {{
+                          botPerfSortCol === 'avg_duration_hours'
+                            ? botPerfSortAsc
+                              ? '↑'
+                              : '↓'
+                            : ''
+                        }}
                       </th>
                       <th
                         class="py-2 pe-3 whitespace-nowrap text-right cursor-pointer select-none"
                         :class="botPerfSortCol === 'avg_dca_orders' ? 'text-primary-400' : ''"
-                        @click="botPerfSortCol === 'avg_dca_orders' ? (botPerfSortAsc = !botPerfSortAsc) : ((botPerfSortCol = 'avg_dca_orders'), (botPerfSortAsc = false))"
+                        @click="
+                          botPerfSortCol === 'avg_dca_orders'
+                            ? (botPerfSortAsc = !botPerfSortAsc)
+                            : ((botPerfSortCol = 'avg_dca_orders'), (botPerfSortAsc = false))
+                        "
                       >
-                        Avg DCA {{ botPerfSortCol === 'avg_dca_orders' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
+                        Avg DCA
+                        {{
+                          botPerfSortCol === 'avg_dca_orders' ? (botPerfSortAsc ? '↑' : '↓') : ''
+                        }}
                       </th>
                       <th
                         class="py-2 pe-3 whitespace-nowrap text-right cursor-pointer select-none"
                         :class="botPerfSortCol === 'trades_per_day' ? 'text-primary-400' : ''"
-                        @click="botPerfSortCol === 'trades_per_day' ? (botPerfSortAsc = !botPerfSortAsc) : ((botPerfSortCol = 'trades_per_day'), (botPerfSortAsc = false))"
+                        @click="
+                          botPerfSortCol === 'trades_per_day'
+                            ? (botPerfSortAsc = !botPerfSortAsc)
+                            : ((botPerfSortCol = 'trades_per_day'), (botPerfSortAsc = false))
+                        "
                       >
-                        /day {{ botPerfSortCol === 'trades_per_day' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
+                        /day
+                        {{
+                          botPerfSortCol === 'trades_per_day' ? (botPerfSortAsc ? '↑' : '↓') : ''
+                        }}
                       </th>
                       <th
                         class="py-2 pe-3 whitespace-nowrap text-right cursor-pointer select-none"
                         :class="botPerfSortCol === 'days_active' ? 'text-primary-400' : ''"
-                        @click="botPerfSortCol === 'days_active' ? (botPerfSortAsc = !botPerfSortAsc) : ((botPerfSortCol = 'days_active'), (botPerfSortAsc = false))"
+                        @click="
+                          botPerfSortCol === 'days_active'
+                            ? (botPerfSortAsc = !botPerfSortAsc)
+                            : ((botPerfSortCol = 'days_active'), (botPerfSortAsc = false))
+                        "
                       >
-                        Days active {{ botPerfSortCol === 'days_active' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
+                        Days active
+                        {{ botPerfSortCol === 'days_active' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
                       </th>
                       <th
                         class="py-2 pe-3 whitespace-nowrap text-right cursor-pointer select-none"
                         :class="botPerfSortCol === 'perf_score' ? 'text-primary-400' : ''"
-                        @click="botPerfSortCol === 'perf_score' ? (botPerfSortAsc = !botPerfSortAsc) : ((botPerfSortCol = 'perf_score'), (botPerfSortAsc = false))"
+                        @click="
+                          botPerfSortCol === 'perf_score'
+                            ? (botPerfSortAsc = !botPerfSortAsc)
+                            : ((botPerfSortCol = 'perf_score'), (botPerfSortAsc = false))
+                        "
                       >
-                        Score {{ botPerfSortCol === 'perf_score' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
+                        Score
+                        {{ botPerfSortCol === 'perf_score' ? (botPerfSortAsc ? '↑' : '↓') : '' }}
                       </th>
                     </tr>
                   </thead>
@@ -7259,14 +8878,26 @@ onMounted(async () => {
                         </div>
                         <div v-if="row.best_pair" class="text-xs text-surface-400 mt-0.5">
                           Best: {{ row.best_pair }}
-                          <span v-if="row.best_pair_profit_abs !== null" :class="row.best_pair_profit_abs >= 0 ? 'text-green-500' : 'text-red-400'">
-                            ({{ row.best_pair_profit_abs >= 0 ? '+' : '' }}{{ row.best_pair_profit_abs.toFixed(2) }})
+                          <span
+                            v-if="row.best_pair_profit_abs !== null"
+                            :class="
+                              row.best_pair_profit_abs >= 0 ? 'text-green-500' : 'text-red-400'
+                            "
+                          >
+                            ({{ row.best_pair_profit_abs >= 0 ? '+' : ''
+                            }}{{ row.best_pair_profit_abs.toFixed(2) }})
                           </span>
                         </div>
                       </td>
-                      <td class="py-2 pe-3 font-mono text-xs text-surface-300">{{ row.strategy ?? '—' }}</td>
-                      <td class="py-2 pe-3 font-mono text-xs text-surface-300">{{ row.exchange ?? '—' }}</td>
-                      <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.total_closed_trades }}</td>
+                      <td class="py-2 pe-3 font-mono text-xs text-surface-300">
+                        {{ row.strategy ?? '—' }}
+                      </td>
+                      <td class="py-2 pe-3 font-mono text-xs text-surface-300">
+                        {{ row.exchange ?? '—' }}
+                      </td>
+                      <td class="py-2 pe-3 text-right font-mono text-xs">
+                        {{ row.total_closed_trades }}
+                      </td>
                       <td class="py-2 pe-3 text-right font-mono text-xs text-surface-400">
                         {{ row.total_open_trades > 0 ? row.total_open_trades : '—' }}
                       </td>
@@ -7275,7 +8906,9 @@ onMounted(async () => {
                         :class="row.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'"
                       >
                         {{ row.win_rate_pct.toFixed(1) }}%
-                        <div class="text-surface-500 font-normal">{{ row.wins }}/{{ row.losses }}</div>
+                        <div class="text-surface-500 font-normal">
+                          {{ row.wins }}/{{ row.losses }}
+                        </div>
                       </td>
                       <td
                         class="py-2 pe-3 text-right font-mono text-xs"
@@ -7287,14 +8920,25 @@ onMounted(async () => {
                         class="py-2 pe-3 text-right font-mono text-xs font-semibold"
                         :class="row.total_profit_abs >= 0 ? 'text-green-400' : 'text-red-400'"
                       >
-                        {{ row.total_profit_abs >= 0 ? '+' : '' }}{{ row.total_profit_abs.toFixed(2) }}
+                        {{ row.total_profit_abs >= 0 ? '+' : ''
+                        }}{{ row.total_profit_abs.toFixed(2) }}
                       </td>
                       <td class="py-2 pe-3 text-right font-mono text-xs text-surface-300">
-                        {{ row.avg_duration_hours !== null ? `${Math.floor(row.avg_duration_hours)}:${String(Math.round((row.avg_duration_hours % 1) * 60)).padStart(2, '0')}h` : '—' }}
+                        {{
+                          row.avg_duration_hours !== null
+                            ? `${Math.floor(row.avg_duration_hours)}:${String(Math.round((row.avg_duration_hours % 1) * 60)).padStart(2, '0')}h`
+                            : '—'
+                        }}
                       </td>
                       <td
                         class="py-2 pe-3 text-right font-mono text-xs"
-                        :class="row.avg_dca_orders <= 1.2 ? 'text-green-400' : row.avg_dca_orders <= 2.0 ? 'text-yellow-400' : 'text-red-400'"
+                        :class="
+                          row.avg_dca_orders <= 1.2
+                            ? 'text-green-400'
+                            : row.avg_dca_orders <= 2.0
+                              ? 'text-yellow-400'
+                              : 'text-red-400'
+                        "
                       >
                         {{ row.avg_dca_orders.toFixed(2) }}x
                       </td>
@@ -7324,8 +8968,8 @@ onMounted(async () => {
                   </tbody>
                 </table>
                 <p class="text-xs text-surface-500 mt-2">
-                  Score = avg profit% × 2 − avg duration × 0.1 − (avg DCA − 1) × 1. Higher is better.
-                  Green ≥ 8 · Yellow ≥ 3 · Red &lt; 3.
+                  Score = avg profit% × 2 − avg duration × 0.1 − (avg DCA − 1) × 1. Higher is
+                  better. Green ≥ 8 · Yellow ≥ 3 · Red &lt; 3.
                 </p>
               </div>
 
@@ -7335,36 +8979,68 @@ onMounted(async () => {
                   <p class="text-xs text-surface-400 italic">
                     <template v-if="botPerfProjectionMode === 'usdt'">
                       Linear extrapolation from closed trade history within the selected date range.
-                      Based on total PnL ÷ days active. Past performance does not predict future results.
+                      Based on total PnL ÷ days active. Past performance does not predict future
+                      results.
                     </template>
                     <template v-else-if="botPerfProjectionMode === 'pct'">
-                      Daily PnL as % of starting capital. Linear extrapolation. Past performance does not predict future results.
+                      Daily PnL as % of starting capital. Linear extrapolation. Past performance
+                      does not predict future results.
                     </template>
                     <template v-else>
-                      Compounded daily rate: (1 + daily%)^N − 1. Assumes profits reinvested. Past performance does not predict future results.
+                      Compounded daily rate: (1 + daily%)^N − 1. Assumes profits reinvested. Past
+                      performance does not predict future results.
                     </template>
                   </p>
                   <div class="flex items-center gap-2 shrink-0">
-                    <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
+                    <div
+                      class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs"
+                    >
                       <button
                         class="px-3 py-1 transition-colors"
-                        :class="botPerfProjectionMode === 'usdt' ? 'bg-surface-600 text-white' : 'text-surface-400 hover:text-surface-200'"
+                        :class="
+                          botPerfProjectionMode === 'usdt'
+                            ? 'bg-surface-600 text-white'
+                            : 'text-surface-400 hover:text-surface-200'
+                        "
                         @click="botPerfProjectionMode = 'usdt'"
-                      >USDT</button>
+                      >
+                        USDT
+                      </button>
                       <button
                         class="px-3 py-1 transition-colors"
-                        :class="botPerfProjectionMode === 'pct' ? 'bg-surface-600 text-white' : 'text-surface-400 hover:text-surface-200'"
+                        :class="
+                          botPerfProjectionMode === 'pct'
+                            ? 'bg-surface-600 text-white'
+                            : 'text-surface-400 hover:text-surface-200'
+                        "
                         @click="botPerfProjectionMode = 'pct'"
-                      >%</button>
+                      >
+                        %
+                      </button>
                       <button
                         class="px-3 py-1 transition-colors"
-                        :class="botPerfProjectionMode === 'compounded' ? 'bg-surface-600 text-white' : 'text-surface-400 hover:text-surface-200'"
+                        :class="
+                          botPerfProjectionMode === 'compounded'
+                            ? 'bg-surface-600 text-white'
+                            : 'text-surface-400 hover:text-surface-200'
+                        "
                         @click="botPerfProjectionMode = 'compounded'"
-                      >Compounded</button>
+                      >
+                        Compounded
+                      </button>
                     </div>
-                    <div v-if="botPerfProjectionMode !== 'usdt'" class="flex items-center gap-1 text-xs">
+                    <div
+                      v-if="botPerfProjectionMode !== 'usdt'"
+                      class="flex items-center gap-1 text-xs"
+                    >
                       <span class="text-surface-400">Capital:</span>
-                      <InputNumber v-model="botPerfCapital" :min="1" size="small" input-class="w-20" suffix=" USDT" />
+                      <InputNumber
+                        v-model="botPerfCapital"
+                        :min="1"
+                        size="small"
+                        input-class="w-20"
+                        suffix=" USDT"
+                      />
                     </div>
                   </div>
                 </div>
@@ -7386,13 +9062,21 @@ onMounted(async () => {
                         <th class="py-2 pe-3 whitespace-nowrap text-right">Days active</th>
                         <th class="py-2 pe-3 whitespace-nowrap text-right">Score</th>
                         <th class="py-2 pe-3 whitespace-nowrap text-right">
-                          {{ botPerfProjectionMode === 'usdt' ? 'Daily est. USDT' : 'Daily est. %' }}
+                          {{
+                            botPerfProjectionMode === 'usdt' ? 'Daily est. USDT' : 'Daily est. %'
+                          }}
                         </th>
                         <th class="py-2 pe-3 whitespace-nowrap text-right">
-                          {{ botPerfProjectionMode === 'usdt' ? 'Monthly est. USDT' : 'Monthly est. %' }}
+                          {{
+                            botPerfProjectionMode === 'usdt'
+                              ? 'Monthly est. USDT'
+                              : 'Monthly est. %'
+                          }}
                         </th>
                         <th class="py-2 pe-3 whitespace-nowrap text-right">
-                          {{ botPerfProjectionMode === 'usdt' ? 'Yearly est. USDT' : 'Yearly est. %' }}
+                          {{
+                            botPerfProjectionMode === 'usdt' ? 'Yearly est. USDT' : 'Yearly est. %'
+                          }}
                         </th>
                       </tr>
                     </thead>
@@ -7408,9 +9092,15 @@ onMounted(async () => {
                           </div>
                           <div class="text-xs text-surface-500">{{ row.vps_name }}</div>
                         </td>
-                        <td class="py-2 pe-3 font-mono text-xs text-surface-300">{{ row.strategy ?? '—' }}</td>
-                        <td class="py-2 pe-3 font-mono text-xs text-surface-300">{{ row.exchange ?? '—' }}</td>
-                        <td class="py-2 pe-3 text-right font-mono text-xs">{{ row.total_closed_trades }}</td>
+                        <td class="py-2 pe-3 font-mono text-xs text-surface-300">
+                          {{ row.strategy ?? '—' }}
+                        </td>
+                        <td class="py-2 pe-3 font-mono text-xs text-surface-300">
+                          {{ row.exchange ?? '—' }}
+                        </td>
+                        <td class="py-2 pe-3 text-right font-mono text-xs">
+                          {{ row.total_closed_trades }}
+                        </td>
                         <td class="py-2 pe-3 text-right font-mono text-xs text-surface-400">
                           {{ row.total_open_trades > 0 ? row.total_open_trades : '—' }}
                         </td>
@@ -7419,30 +9109,46 @@ onMounted(async () => {
                           :class="row.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'"
                         >
                           {{ row.win_rate_pct.toFixed(1) }}%
-                          <div class="text-surface-500 font-normal">{{ row.wins }}/{{ row.losses }}</div>
+                          <div class="text-surface-500 font-normal">
+                            {{ row.wins }}/{{ row.losses }}
+                          </div>
                         </td>
                         <td
                           class="py-2 pe-3 text-right font-mono text-xs"
                           :class="row.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'"
                         >
-                          {{ row.avg_profit_pct >= 0 ? '+' : '' }}{{ row.avg_profit_pct.toFixed(2) }}%
+                          {{ row.avg_profit_pct >= 0 ? '+' : ''
+                          }}{{ row.avg_profit_pct.toFixed(2) }}%
                         </td>
                         <td
                           class="py-2 pe-3 text-right font-mono text-xs font-semibold"
                           :class="row.total_profit_abs >= 0 ? 'text-green-400' : 'text-red-400'"
                         >
-                          {{ row.total_profit_abs >= 0 ? '+' : '' }}{{ row.total_profit_abs.toFixed(2) }}
+                          {{ row.total_profit_abs >= 0 ? '+' : ''
+                          }}{{ row.total_profit_abs.toFixed(2) }}
                         </td>
                         <td class="py-2 pe-3 text-right font-mono text-xs text-surface-300">
-                          {{ row.avg_duration_hours !== null ? `${Math.floor(row.avg_duration_hours)}:${String(Math.round((row.avg_duration_hours % 1) * 60)).padStart(2, '0')}h` : '—' }}
+                          {{
+                            row.avg_duration_hours !== null
+                              ? `${Math.floor(row.avg_duration_hours)}:${String(Math.round((row.avg_duration_hours % 1) * 60)).padStart(2, '0')}h`
+                              : '—'
+                          }}
                         </td>
                         <td
                           class="py-2 pe-3 text-right font-mono text-xs"
-                          :class="row.avg_dca_orders <= 1.2 ? 'text-green-400' : row.avg_dca_orders <= 2.0 ? 'text-yellow-400' : 'text-red-400'"
+                          :class="
+                            row.avg_dca_orders <= 1.2
+                              ? 'text-green-400'
+                              : row.avg_dca_orders <= 2.0
+                                ? 'text-yellow-400'
+                                : 'text-red-400'
+                          "
                         >
                           {{ row.avg_dca_orders.toFixed(2) }}x
                         </td>
-                        <td class="py-2 pe-3 text-right font-mono text-xs text-surface-300">{{ row.trades_per_day.toFixed(1) }}</td>
+                        <td class="py-2 pe-3 text-right font-mono text-xs text-surface-300">
+                          {{ row.trades_per_day.toFixed(1) }}
+                        </td>
                         <td class="py-2 pe-3 text-right font-mono text-xs text-surface-300">
                           {{ row.days_active !== null ? `${row.days_active.toFixed(1)}d` : '—' }}
                         </td>
@@ -7466,63 +9172,151 @@ onMounted(async () => {
                         <template v-if="botPerfProjectionMode === 'usdt'">
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs"
-                            :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                            :class="
+                              (row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            "
                           >
-                            {{ row.daily_profit_usdt !== null ? `${row.daily_profit_usdt >= 0 ? '+' : ''}${row.daily_profit_usdt.toFixed(2)}` : '—' }}
+                            {{
+                              row.daily_profit_usdt !== null
+                                ? `${row.daily_profit_usdt >= 0 ? '+' : ''}${row.daily_profit_usdt.toFixed(2)}`
+                                : '—'
+                            }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs font-semibold"
-                            :class="(row.monthly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                            :class="
+                              (row.monthly_projected_usdt ?? 0) >= 0
+                                ? 'text-green-400'
+                                : 'text-red-400'
+                            "
                           >
-                            {{ row.monthly_projected_usdt !== null ? `${row.monthly_projected_usdt >= 0 ? '+' : ''}${row.monthly_projected_usdt.toFixed(2)}` : '—' }}
+                            {{
+                              row.monthly_projected_usdt !== null
+                                ? `${row.monthly_projected_usdt >= 0 ? '+' : ''}${row.monthly_projected_usdt.toFixed(2)}`
+                                : '—'
+                            }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs"
-                            :class="(row.yearly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                            :class="
+                              (row.yearly_projected_usdt ?? 0) >= 0
+                                ? 'text-green-400'
+                                : 'text-red-400'
+                            "
                           >
-                            {{ row.yearly_projected_usdt !== null ? `${row.yearly_projected_usdt >= 0 ? '+' : ''}${row.yearly_projected_usdt.toFixed(2)}` : '—' }}
+                            {{
+                              row.yearly_projected_usdt !== null
+                                ? `${row.yearly_projected_usdt >= 0 ? '+' : ''}${row.yearly_projected_usdt.toFixed(2)}`
+                                : '—'
+                            }}
                           </td>
                         </template>
                         <!-- % columns: daily_profit_usdt / capital × 100 -->
                         <template v-else-if="botPerfProjectionMode === 'pct'">
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs"
-                            :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                            :class="
+                              (row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            "
                           >
-                            {{ row.daily_profit_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const v = row.daily_profit_usdt / c * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; })() : '—' }}
+                            {{
+                              row.daily_profit_usdt !== null
+                                ? (() => {
+                                    const c = Math.max(botPerfCapital, 1);
+                                    const v = (row.daily_profit_usdt / c) * 100;
+                                    return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+                                  })()
+                                : '—'
+                            }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs font-semibold"
-                            :class="(row.monthly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                            :class="
+                              (row.monthly_projected_usdt ?? 0) >= 0
+                                ? 'text-green-400'
+                                : 'text-red-400'
+                            "
                           >
-                            {{ row.monthly_projected_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const v = row.monthly_projected_usdt / c * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; })() : '—' }}
+                            {{
+                              row.monthly_projected_usdt !== null
+                                ? (() => {
+                                    const c = Math.max(botPerfCapital, 1);
+                                    const v = (row.monthly_projected_usdt / c) * 100;
+                                    return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+                                  })()
+                                : '—'
+                            }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs"
-                            :class="(row.yearly_projected_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                            :class="
+                              (row.yearly_projected_usdt ?? 0) >= 0
+                                ? 'text-green-400'
+                                : 'text-red-400'
+                            "
                           >
-                            {{ row.yearly_projected_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const v = row.yearly_projected_usdt / c * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`; })() : '—' }}
+                            {{
+                              row.yearly_projected_usdt !== null
+                                ? (() => {
+                                    const c = Math.max(botPerfCapital, 1);
+                                    const v = (row.yearly_projected_usdt / c) * 100;
+                                    return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`;
+                                  })()
+                                : '—'
+                            }}
                           </td>
                         </template>
                         <!-- Compounded columns: (1 + daily_rate)^N - 1 -->
                         <template v-else>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs"
-                            :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                            :class="
+                              (row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            "
                           >
-                            {{ row.daily_profit_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const v = row.daily_profit_usdt / c * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; })() : '—' }}
+                            {{
+                              row.daily_profit_usdt !== null
+                                ? (() => {
+                                    const c = Math.max(botPerfCapital, 1);
+                                    const v = (row.daily_profit_usdt / c) * 100;
+                                    return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+                                  })()
+                                : '—'
+                            }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs font-semibold"
-                            :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                            :class="
+                              (row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            "
                           >
-                            {{ row.daily_profit_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const d = row.daily_profit_usdt / c; const v = (Math.pow(1 + d, 30) - 1) * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`; })() : '—' }}
+                            {{
+                              row.daily_profit_usdt !== null
+                                ? (() => {
+                                    const c = Math.max(botPerfCapital, 1);
+                                    const d = row.daily_profit_usdt / c;
+                                    const v = (Math.pow(1 + d, 30) - 1) * 100;
+                                    return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+                                  })()
+                                : '—'
+                            }}
                           </td>
                           <td
                             class="py-2 pe-3 text-right font-mono text-xs"
-                            :class="(row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'"
+                            :class="
+                              (row.daily_profit_usdt ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                            "
                           >
-                            {{ row.daily_profit_usdt !== null ? (() => { const c = Math.max(botPerfCapital, 1); const d = row.daily_profit_usdt / c; const v = (Math.pow(1 + d, 365) - 1) * 100; return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`; })() : '—' }}
+                            {{
+                              row.daily_profit_usdt !== null
+                                ? (() => {
+                                    const c = Math.max(botPerfCapital, 1);
+                                    const d = row.daily_profit_usdt / c;
+                                    const v = (Math.pow(1 + d, 365) - 1) * 100;
+                                    return `${v >= 0 ? '+' : ''}${v.toFixed(0)}%`;
+                                  })()
+                                : '—'
+                            }}
                           </td>
                         </template>
                       </tr>
@@ -7538,18 +9332,36 @@ onMounted(async () => {
                   <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
                     <button
                       class="px-3 py-1 transition-colors"
-                      :class="botHistChartMode === 'equity' ? 'bg-primary-600 text-white' : 'text-surface-400 hover:text-surface-200'"
+                      :class="
+                        botHistChartMode === 'equity'
+                          ? 'bg-primary-600 text-white'
+                          : 'text-surface-400 hover:text-surface-200'
+                      "
                       @click="botHistChartMode = 'equity'"
-                    >Equity curve</button>
+                    >
+                      Equity curve
+                    </button>
                     <button
                       class="px-3 py-1 transition-colors border-l border-surface-600"
-                      :class="botHistChartMode === 'score' ? 'bg-primary-600 text-white' : 'text-surface-400 hover:text-surface-200'"
+                      :class="
+                        botHistChartMode === 'score'
+                          ? 'bg-primary-600 text-white'
+                          : 'text-surface-400 hover:text-surface-200'
+                      "
                       @click="botHistChartMode = 'score'"
-                    >Rolling 7d score</button>
+                    >
+                      Rolling 7d score
+                    </button>
                   </div>
                   <p class="text-xs text-surface-400 italic">
-                    <template v-if="botHistChartMode === 'equity'">Cumulative closed-trade PnL per bot. Steeper slope = better recent performance.</template>
-                    <template v-else>Score = avg profit% × 2 − avg duration × 0.1 − (avg DCA − 1) × 1, computed over the trailing 7 days of closed trades.</template>
+                    <template v-if="botHistChartMode === 'equity'"
+                      >Cumulative closed-trade PnL per bot. Steeper slope = better recent
+                      performance.</template
+                    >
+                    <template v-else
+                      >Score = avg profit% × 2 − avg duration × 0.1 − (avg DCA − 1) × 1, computed
+                      over the trailing 7 days of closed trades.</template
+                    >
                   </p>
                 </div>
 
@@ -7557,7 +9369,7 @@ onMounted(async () => {
                   <svg
                     :viewBox="`0 0 ${BH_W} ${BH_H}`"
                     class="w-full"
-                    style="max-height: 320px;"
+                    style="max-height: 320px"
                     @mousemove="botHistOnMouseMove"
                     @mouseleave="botHistOnMouseLeave"
                   >
@@ -7565,29 +9377,52 @@ onMounted(async () => {
                     <line
                       v-for="tick in botHistChartData.yTicks"
                       :key="`hy-${tick.value}`"
-                      :x1="BH_ML" :y1="tick.y" :x2="BH_W - BH_MR" :y2="tick.y"
-                      stroke="#334155" stroke-width="1"
+                      :x1="BH_ML"
+                      :y1="tick.y"
+                      :x2="BH_W - BH_MR"
+                      :y2="tick.y"
+                      stroke="#334155"
+                      stroke-width="1"
                     />
                     <!-- Y-axis tick labels -->
                     <text
                       v-for="tick in botHistChartData.yTicks"
                       :key="`hyl-${tick.value}`"
-                      :x="BH_ML - 6" :y="tick.y + 4"
-                      text-anchor="end" fill="#94a3b8" font-size="10"
-                    >{{ tick.value >= 0 ? `+${tick.value.toFixed(botHistChartMode === 'score' ? 1 : 0)}` : tick.value.toFixed(botHistChartMode === 'score' ? 1 : 0) }}</text>
+                      :x="BH_ML - 6"
+                      :y="tick.y + 4"
+                      text-anchor="end"
+                      fill="#94a3b8"
+                      font-size="10"
+                    >
+                      {{
+                        tick.value >= 0
+                          ? `+${tick.value.toFixed(botHistChartMode === 'score' ? 1 : 0)}`
+                          : tick.value.toFixed(botHistChartMode === 'score' ? 1 : 0)
+                      }}
+                    </text>
                     <!-- Zero line -->
                     <line
                       v-if="botHistChartData.showZero"
-                      :x1="BH_ML" :y1="botHistChartData.zeroY" :x2="BH_W - BH_MR" :y2="botHistChartData.zeroY"
-                      stroke="#64748b" stroke-width="1.5" stroke-dasharray="4 3"
+                      :x1="BH_ML"
+                      :y1="botHistChartData.zeroY"
+                      :x2="BH_W - BH_MR"
+                      :y2="botHistChartData.zeroY"
+                      stroke="#64748b"
+                      stroke-width="1.5"
+                      stroke-dasharray="4 3"
                     />
                     <!-- X-axis tick labels -->
                     <text
                       v-for="tick in botHistChartData.xTicks"
                       :key="`hxl-${tick.date}`"
-                      :x="tick.x" :y="BH_H - BH_MB + 14"
-                      text-anchor="middle" fill="#94a3b8" font-size="10"
-                    >{{ tick.label }}</text>
+                      :x="tick.x"
+                      :y="BH_H - BH_MB + 14"
+                      text-anchor="middle"
+                      fill="#94a3b8"
+                      font-size="10"
+                    >
+                      {{ tick.label }}
+                    </text>
                     <!-- Lines per bot -->
                     <polyline
                       v-for="series in botHistChartData.series"
@@ -7602,22 +9437,44 @@ onMounted(async () => {
                     <!-- Hover crosshair -->
                     <line
                       v-if="botHistHoverX !== null"
-                      :x1="botHistHoverX" :y1="BH_MT"
-                      :x2="botHistHoverX" :y2="BH_H - BH_MB"
-                      stroke="#94a3b8" stroke-width="1" stroke-dasharray="3 3" pointer-events="none"
+                      :x1="botHistHoverX"
+                      :y1="BH_MT"
+                      :x2="botHistHoverX"
+                      :y2="BH_H - BH_MB"
+                      stroke="#94a3b8"
+                      stroke-width="1"
+                      stroke-dasharray="3 3"
+                      pointer-events="none"
                     />
                     <!-- Hover dots -->
                     <circle
                       v-for="pt in botHistHoverPoints"
                       :key="`bhpt-${pt.name}`"
-                      :cx="pt.x" :cy="pt.y" r="4"
+                      :cx="pt.x"
+                      :cy="pt.y"
+                      r="4"
                       :fill="pt.color"
-                      stroke="#0f172a" stroke-width="1.5"
+                      stroke="#0f172a"
+                      stroke-width="1.5"
                       pointer-events="none"
                     />
                     <!-- Axes -->
-                    <line :x1="BH_ML" :y1="BH_MT" :x2="BH_ML" :y2="BH_H - BH_MB" stroke="#475569" stroke-width="1" />
-                    <line :x1="BH_ML" :y1="BH_H - BH_MB" :x2="BH_W - BH_MR" :y2="BH_H - BH_MB" stroke="#475569" stroke-width="1" />
+                    <line
+                      :x1="BH_ML"
+                      :y1="BH_MT"
+                      :x2="BH_ML"
+                      :y2="BH_H - BH_MB"
+                      stroke="#475569"
+                      stroke-width="1"
+                    />
+                    <line
+                      :x1="BH_ML"
+                      :y1="BH_H - BH_MB"
+                      :x2="BH_W - BH_MR"
+                      :y2="BH_H - BH_MB"
+                      stroke="#475569"
+                      stroke-width="1"
+                    />
                   </svg>
 
                   <!-- Clickable legend with VPS name -->

@@ -27,7 +27,7 @@ export function useTableSort<T extends Record<string, any>>(
       }
       const av = (a[col] as number | null) ?? (asc ? Infinity : -Infinity);
       const bv = (b[col] as number | null) ?? (asc ? Infinity : -Infinity);
-      return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0);
+      return asc ? (av < bv ? -1 : av > bv ? 1 : 0) : av > bv ? -1 : av < bv ? 1 : 0;
     });
   });
 }

@@ -95,10 +95,11 @@ watch(
 );
 
 // ---- Category ordering ----
-const orderedCategories = computed(() =>
-  workingCategoryOrder.value
-    .map((val) => props.categoryDefs.find((c) => c.value === val))
-    .filter(Boolean) as ReportCategoryDef[],
+const orderedCategories = computed(
+  () =>
+    workingCategoryOrder.value
+      .map((val) => props.categoryDefs.find((c) => c.value === val))
+      .filter(Boolean) as ReportCategoryDef[],
 );
 
 function moveCategoryUp(index: number) {

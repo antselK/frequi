@@ -95,7 +95,9 @@ watch(
         </div>
       </div>
       <div class="flex flex-col gap-2">
-        <label for="vps-private-key">{{ mode === 'edit' ? 'Private Key (optional)' : 'Private Key' }}</label>
+        <label for="vps-private-key">{{
+          mode === 'edit' ? 'Private Key (optional)' : 'Private Key'
+        }}</label>
         <Textarea id="vps-private-key" v-model="form.private_key" rows="8" auto-resize />
       </div>
     </div>

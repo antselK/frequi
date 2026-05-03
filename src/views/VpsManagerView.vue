@@ -48,7 +48,9 @@ function permissionSeverity(permission: string) {
   return 'info';
 }
 
-const selectedVps = computed(() => vpsStore.servers.find((item) => item.id === selectedVpsId.value));
+const selectedVps = computed(() =>
+  vpsStore.servers.find((item) => item.id === selectedVpsId.value),
+);
 const vpsNameById = computed<Map<string, string>>(
   () => new Map(vpsStore.servers.map((server) => [String(server.id), server.name])),
 );
@@ -169,10 +171,15 @@ function auditTimeMatches(createdAt: string, selectedRange: string): boolean {
 
 const filteredAuditEntries = computed<AuditLogEntry[]>(() => {
   return auditEntries.value.filter((entry) => {
-    const actorMatches = selectedAuditActor.value === 'all' || entry.actor === selectedAuditActor.value;
-    const resultMatches = selectedAuditResult.value === 'all' || entry.result === selectedAuditResult.value;
-    const actionMatches = selectedAuditAction.value === 'all' || entry.action === selectedAuditAction.value;
-    const targetIdMatches = selectedAuditTargetId.value === 'all' || resolveAuditTarget(entry) === selectedAuditTargetId.value;
+    const actorMatches =
+      selectedAuditActor.value === 'all' || entry.actor === selectedAuditActor.value;
+    const resultMatches =
+      selectedAuditResult.value === 'all' || entry.result === selectedAuditResult.value;
+    const actionMatches =
+      selectedAuditAction.value === 'all' || entry.action === selectedAuditAction.value;
+    const targetIdMatches =
+      selectedAuditTargetId.value === 'all' ||
+      resolveAuditTarget(entry) === selectedAuditTargetId.value;
     const timeMatches = auditTimeMatches(entry.created_at, selectedAuditTime.value);
     return actorMatches && resultMatches && actionMatches && targetIdMatches && timeMatches;
   });
@@ -259,7 +266,9 @@ function connectStatusStream() {
 }
 
 async function handleActorChange(newActorValue: string) {
-  const actor = String(newActorValue || '').trim().toLowerCase();
+  const actor = String(newActorValue || '')
+    .trim()
+    .toLowerCase();
   if (!actor || actor === getControlPlaneActor()) {
     return;
   }
@@ -351,10 +360,7 @@ async function handleShowContainers(item: VpsServer) {
   }
 }
 
-async function runContainerActionForVps(
-  item: VpsServer,
-  action: 'start' | 'restart' | 'stop',
-) {
+async function runContainerActionForVps(item: VpsServer, action: 'start' | 'restart' | 'stop') {
   try {
     await vpsStore.loadContainers(item.id);
     const containers = vpsStore.getContainersForVps(item.id);
@@ -493,7 +499,11 @@ async function handleToggleEnabled(containerName: string, currentEnabled: boolea
     return;
   }
   try {
-    const result = await vpsStore.setContainerEnabled(selectedVpsId.value, containerName, !currentEnabled);
+    const result = await vpsStore.setContainerEnabled(
+      selectedVpsId.value,
+      containerName,
+      !currentEnabled,
+    );
     handleActionToast(
       `${!currentEnabled ? 'Enable' : 'Disable'} ${containerName}`,
       result.message,
@@ -519,7 +529,11 @@ async function refreshLogs() {
   }
   logsLoading.value = true;
   try {
-    const result = await vpsStore.loadContainerLogs(selectedVpsId.value, selectedContainerName.value, 200);
+    const result = await vpsStore.loadContainerLogs(
+      selectedVpsId.value,
+      selectedContainerName.value,
+      200,
+    );
     logsText.value = result.logs;
   } catch (error) {
     logsText.value = '[Error] Failed to fetch logs. Check VPS connectivity.';
@@ -663,16 +677,44 @@ onBeforeUnmount(() => {
           class="text-sm"
           :loading="vpsStore.loadingAudit"
         >
-          <Column header="Time" header-style="width: 11rem" body-class="align-top whitespace-normal break-words">
+          <Column
+            header="Time"
+            header-style="width: 11rem"
+            body-class="align-top whitespace-normal break-words"
+          >
             <template #body="slotProps">
               {{ timestampmsWithTimezone(new Date(slotProps.data.created_at)) }}
             </template>
           </Column>
-          <Column field="actor" header="Actor" header-style="width: 6rem" body-class="align-top whitespace-nowrap" />
-          <Column field="source_ip" header="Source IP" header-style="width: 7rem" body-class="align-top whitespace-nowrap" />
-          <Column field="action" header="Action" header-style="width: 12rem" body-class="align-top whitespace-normal break-words" />
-          <Column field="target_type" header="Target" header-style="width: 5rem" body-class="align-top whitespace-nowrap" />
-          <Column header="Target ID" header-style="width: 8rem" body-class="align-top whitespace-normal break-words">
+          <Column
+            field="actor"
+            header="Actor"
+            header-style="width: 6rem"
+            body-class="align-top whitespace-nowrap"
+          />
+          <Column
+            field="source_ip"
+            header="Source IP"
+            header-style="width: 7rem"
+            body-class="align-top whitespace-nowrap"
+          />
+          <Column
+            field="action"
+            header="Action"
+            header-style="width: 12rem"
+            body-class="align-top whitespace-normal break-words"
+          />
+          <Column
+            field="target_type"
+            header="Target"
+            header-style="width: 5rem"
+            body-class="align-top whitespace-nowrap"
+          />
+          <Column
+            header="Target ID"
+            header-style="width: 8rem"
+            body-class="align-top whitespace-normal break-words"
+          >
             <template #body="slotProps">
               {{ resolveAuditTarget(slotProps.data) }}
             </template>
@@ -685,9 +727,15 @@ onBeforeUnmount(() => {
               />
             </template>
           </Column>
-          <Column field="message" header="Message" body-class="align-top whitespace-normal break-words">
+          <Column
+            field="message"
+            header="Message"
+            body-class="align-top whitespace-normal break-words"
+          >
             <template #body="slotProps">
-              <span class="block whitespace-normal break-words">{{ slotProps.data.message || '—' }}</span>
+              <span class="block whitespace-normal break-words">{{
+                slotProps.data.message || '—'
+              }}</span>
             </template>
           </Column>
         </DataTable>
@@ -767,8 +815,14 @@ onBeforeUnmount(() => {
                   size="small"
                   :severity="slotProps.data.enabled ? 'warn' : 'success'"
                   outlined
-                  :title="slotProps.data.enabled ? 'Exclude from DWH ingestion and Console' : 'Include in DWH ingestion and Console'"
-                  @click="handleToggleEnabled(slotProps.data.container_name, slotProps.data.enabled)"
+                  :title="
+                    slotProps.data.enabled
+                      ? 'Exclude from DWH ingestion and Console'
+                      : 'Include in DWH ingestion and Console'
+                  "
+                  @click="
+                    handleToggleEnabled(slotProps.data.container_name, slotProps.data.enabled)
+                  "
                 />
                 <Button
                   v-if="slotProps.data.is_freqtrade"

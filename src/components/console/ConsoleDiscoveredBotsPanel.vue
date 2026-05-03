@@ -220,7 +220,9 @@ async function importSelected() {
         continue;
       }
 
-      const urlExists = Object.values(botStore.availableBots).some((bot) => bot.botUrl === row.suggestedUrl);
+      const urlExists = Object.values(botStore.availableBots).some(
+        (bot) => bot.botUrl === row.suggestedUrl,
+      );
       if (urlExists) {
         skippedByUrl += 1;
         continue;
@@ -311,9 +313,7 @@ async function loadData() {
   try {
     await vpsStore.loadServers();
     await Promise.all(
-      vpsStore.servers.map((server) =>
-        vpsStore.loadContainers(server.id).catch(() => undefined),
-      ),
+      vpsStore.servers.map((server) => vpsStore.loadContainers(server.id).catch(() => undefined)),
     );
   } catch (err) {
     toast.add({
@@ -394,7 +394,13 @@ onMounted(async () => {
       </div>
     </template>
     <template #content>
-      <DataTable :value="filteredRows" data-key="key" size="small" show-gridlines :loading="loading">
+      <DataTable
+        :value="filteredRows"
+        data-key="key"
+        size="small"
+        show-gridlines
+        :loading="loading"
+      >
         <Column header="Select">
           <template #body="slotProps">
             <BaseCheckbox
@@ -412,7 +418,10 @@ onMounted(async () => {
         <Column field="pairlist" header="Pairlist" />
         <Column header="Imported">
           <template #body="slotProps">
-            <Tag :value="isImported(slotProps.data) ? 'Yes' : 'No'" :severity="isImported(slotProps.data) ? 'success' : 'secondary'" />
+            <Tag
+              :value="isImported(slotProps.data) ? 'Yes' : 'No'"
+              :severity="isImported(slotProps.data) ? 'success' : 'secondary'"
+            />
           </template>
         </Column>
         <Column header="Freqtrade">
@@ -439,7 +448,10 @@ onMounted(async () => {
         </Column>
         <Column header="Login">
           <template #body="slotProps">
-            <Tag :value="loginStatusLabel(slotProps.data)" :severity="loginStatusSeverity(slotProps.data)" />
+            <Tag
+              :value="loginStatusLabel(slotProps.data)"
+              :severity="loginStatusSeverity(slotProps.data)"
+            />
           </template>
         </Column>
         <Column field="eligibilityReason" header="Reason" />

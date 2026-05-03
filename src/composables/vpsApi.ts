@@ -93,7 +93,9 @@ function readStoredActor(): ControlPlaneActor | null {
   return normalizeActor(stored);
 }
 
-let controlPlaneActor: ControlPlaneActor = normalizeActor(import.meta.env.VITE_CONTROL_PLANE_ACTOR || 'admin');
+let controlPlaneActor: ControlPlaneActor = normalizeActor(
+  import.meta.env.VITE_CONTROL_PLANE_ACTOR || 'admin',
+);
 const storedActor = readStoredActor();
 if (storedActor) {
   controlPlaneActor = storedActor;
@@ -238,7 +240,11 @@ export const vpsApi = {
     );
     return data;
   },
-  async setContainerEnabled(vpsId: number, containerName: string, enabled: boolean): Promise<VpsContainer> {
+  async setContainerEnabled(
+    vpsId: number,
+    containerName: string,
+    enabled: boolean,
+  ): Promise<VpsContainer> {
     const { data } = await vpsApiClient.patch<VpsContainer>(
       `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/enabled`,
       { enabled },
@@ -273,37 +279,48 @@ export const vpsApi = {
     });
     return data;
   },
-  async dwhAuditMessages(params: {
-    hours?: number;
-    bot_id?: number;
-    logger?: string;
-    level?: string;
-    q?: string;
-    limit?: number;
-    offset?: number;
-  } = {}): Promise<DwhAuditMessageList> {
+  async dwhAuditMessages(
+    params: {
+      hours?: number;
+      bot_id?: number;
+      logger?: string;
+      level?: string;
+      q?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<DwhAuditMessageList> {
     const { data } = await vpsApiClient.get<DwhAuditMessageList>('/dwh/audit/messages', { params });
     return data;
   },
-  async dwhLogsCumulative(params: {
-    hours?: number;
-    bot_id?: number;
-    logger?: string;
-    level?: string;
-  } = {}): Promise<DwhLogCumulativePoint[]> {
-    const { data } = await vpsApiClient.get<DwhLogCumulativePoint[]>('/dwh/reports/logs-cumulative', { params });
+  async dwhLogsCumulative(
+    params: {
+      hours?: number;
+      bot_id?: number;
+      logger?: string;
+      level?: string;
+    } = {},
+  ): Promise<DwhLogCumulativePoint[]> {
+    const { data } = await vpsApiClient.get<DwhLogCumulativePoint[]>(
+      '/dwh/reports/logs-cumulative',
+      { params },
+    );
     return data;
   },
-  async dwhLogCauseSummary(params: {
-    from_ts?: string;
-    to_ts?: string;
-    hours?: number;
-    bot_id?: number;
-    logger?: string;
-    levels?: string;
-    limit?: number;
-  } = {}): Promise<DwhLogCauseSummary> {
-    const { data } = await vpsApiClient.get<DwhLogCauseSummary>('/dwh/reports/log-causes', { params });
+  async dwhLogCauseSummary(
+    params: {
+      from_ts?: string;
+      to_ts?: string;
+      hours?: number;
+      bot_id?: number;
+      logger?: string;
+      levels?: string;
+      limit?: number;
+    } = {},
+  ): Promise<DwhLogCauseSummary> {
+    const { data } = await vpsApiClient.get<DwhLogCauseSummary>('/dwh/reports/log-causes', {
+      params,
+    });
     return data;
   },
   async dwhAuditRules(): Promise<DwhLogCaptureRule[]> {
@@ -335,16 +352,22 @@ export const vpsApi = {
     return data;
   },
   async unstickDwhIngestion(staleMinutes = 15, force = false): Promise<DwhIngestionUnstickResult> {
-    const { data } = await vpsApiClient.post<DwhIngestionUnstickResult>('/dwh/ingestion/unstick', undefined, {
-      params: { stale_minutes: staleMinutes, force },
-    });
+    const { data } = await vpsApiClient.post<DwhIngestionUnstickResult>(
+      '/dwh/ingestion/unstick',
+      undefined,
+      {
+        params: { stale_minutes: staleMinutes, force },
+      },
+    );
     return data;
   },
   async dwhIngestionConfig(): Promise<DwhIngestionConfig> {
     const { data } = await vpsApiClient.get<DwhIngestionConfig>('/dwh/ingestion/config');
     return data;
   },
-  async updateDwhIngestionConfig(payload: { log_fetch_timeout_seconds: number }): Promise<DwhIngestionConfig> {
+  async updateDwhIngestionConfig(payload: {
+    log_fetch_timeout_seconds: number;
+  }): Promise<DwhIngestionConfig> {
     const { data } = await vpsApiClient.post<DwhIngestionConfig>('/dwh/ingestion/config', payload);
     return data;
   },
@@ -353,30 +376,45 @@ export const vpsApi = {
     return data;
   },
   async dwhIngestionRuns(limit = 20, days = 0): Promise<DwhIngestionRun[]> {
-    const { data } = await vpsApiClient.get<DwhIngestionRun[]>('/dwh/ingestion/runs', { params: { limit, days } });
+    const { data } = await vpsApiClient.get<DwhIngestionRun[]>('/dwh/ingestion/runs', {
+      params: { limit, days },
+    });
     return data;
   },
   async flushDwhIngestionRuns(): Promise<{ ok: boolean; deleted_runs: number }> {
-    const { data } = await vpsApiClient.delete<{ ok: boolean; deleted_runs: number }>('/dwh/ingestion/runs');
+    const { data } = await vpsApiClient.delete<{ ok: boolean; deleted_runs: number }>(
+      '/dwh/ingestion/runs',
+    );
     return data;
   },
   async dwhRunAnomalies(runId: number, limit = 20): Promise<DwhRunAnomaly[]> {
-    const { data } = await vpsApiClient.get<DwhRunAnomaly[]>(`/dwh/ingestion/runs/${runId}/anomalies`, {
-      params: { limit },
-    });
+    const { data } = await vpsApiClient.get<DwhRunAnomaly[]>(
+      `/dwh/ingestion/runs/${runId}/anomalies`,
+      {
+        params: { limit },
+      },
+    );
     return data;
   },
   async runDwhRetention(days = 180): Promise<DwhRetentionRunResult> {
-    const { data } = await vpsApiClient.post<DwhRetentionRunResult>('/dwh/retention/run', undefined, {
-      params: { days },
-      timeout: 120000,
-    });
+    const { data } = await vpsApiClient.post<DwhRetentionRunResult>(
+      '/dwh/retention/run',
+      undefined,
+      {
+        params: { days },
+        timeout: 120000,
+      },
+    );
     return data;
   },
   async purgeExcludedDwhLogs(): Promise<DwhPurgeExcludedResult> {
-    const { data } = await vpsApiClient.post<DwhPurgeExcludedResult>('/dwh/ingestion/purge-excluded', undefined, {
-      timeout: 120000,
-    });
+    const { data } = await vpsApiClient.post<DwhPurgeExcludedResult>(
+      '/dwh/ingestion/purge-excluded',
+      undefined,
+      {
+        timeout: 120000,
+      },
+    );
     return data;
   },
   async dwhRetentionConfig(): Promise<DwhRetentionConfig> {
@@ -408,15 +446,21 @@ export const vpsApi = {
     return data;
   },
   async dwhAnomalyTrend(signatureHash: string, days = 7): Promise<DwhAnomalyTrendPoint[]> {
-    const { data } = await vpsApiClient.get<DwhAnomalyTrendPoint[]>(`/dwh/anomalies/${signatureHash}/trend`, {
-      params: { days },
-    });
+    const { data } = await vpsApiClient.get<DwhAnomalyTrendPoint[]>(
+      `/dwh/anomalies/${signatureHash}/trend`,
+      {
+        params: { days },
+      },
+    );
     return data;
   },
   async dwhAnomalySamples(signatureHash: string, limit = 20): Promise<DwhAnomalySample[]> {
-    const { data } = await vpsApiClient.get<DwhAnomalySample[]>(`/dwh/anomalies/${signatureHash}/samples`, {
-      params: { limit },
-    });
+    const { data } = await vpsApiClient.get<DwhAnomalySample[]>(
+      `/dwh/anomalies/${signatureHash}/samples`,
+      {
+        params: { limit },
+      },
+    );
     return data;
   },
   async dwhMissedTrades(
@@ -442,18 +486,24 @@ export const vpsApi = {
     compactLogDays = 14,
     messageMaxLen = 240,
   ): Promise<DwhRollupCompactionRunResult> {
-    const { data } = await vpsApiClient.post<DwhRollupCompactionRunResult>('/dwh/rollup-compaction/run', undefined, {
-      params: {
-        rollup_days: rollupDays,
-        compact_log_days: compactLogDays,
-        message_max_len: messageMaxLen,
+    const { data } = await vpsApiClient.post<DwhRollupCompactionRunResult>(
+      '/dwh/rollup-compaction/run',
+      undefined,
+      {
+        params: {
+          rollup_days: rollupDays,
+          compact_log_days: compactLogDays,
+          message_max_len: messageMaxLen,
+        },
+        timeout: 180000,
       },
-      timeout: 180000,
-    });
+    );
     return data;
   },
   async dwhRollupCompactionConfig(): Promise<DwhRollupCompactionConfig> {
-    const { data } = await vpsApiClient.get<DwhRollupCompactionConfig>('/dwh/rollup-compaction/config');
+    const { data } = await vpsApiClient.get<DwhRollupCompactionConfig>(
+      '/dwh/rollup-compaction/config',
+    );
     return data;
   },
   async dwhAlertStatus(): Promise<DwhAlertStatus> {
@@ -541,16 +591,13 @@ export const vpsApi = {
     dateTo?: string,
     botId?: number,
   ): Promise<DwhDcaAnalysisList> {
-    const { data } = await vpsApiClient.get<DwhDcaAnalysisList>(
-      '/dwh/reports/dca-analysis',
-      {
-        params: {
-          date_from: dateFrom,
-          date_to: dateTo,
-          bot_id: botId,
-        },
+    const { data } = await vpsApiClient.get<DwhDcaAnalysisList>('/dwh/reports/dca-analysis', {
+      params: {
+        date_from: dateFrom,
+        date_to: dateTo,
+        bot_id: botId,
       },
-    );
+    });
     return data;
   },
 
@@ -576,26 +623,17 @@ export const vpsApi = {
     return data;
   },
 
-  async dwhBotPerformance(
-    dateFrom?: string,
-    dateTo?: string,
-  ): Promise<DwhBotPerfRead> {
-    const { data } = await vpsApiClient.get<DwhBotPerfRead>(
-      '/dwh/reports/bot-performance',
-      {
-        params: {
-          date_from: dateFrom,
-          date_to: dateTo,
-        },
+  async dwhBotPerformance(dateFrom?: string, dateTo?: string): Promise<DwhBotPerfRead> {
+    const { data } = await vpsApiClient.get<DwhBotPerfRead>('/dwh/reports/bot-performance', {
+      params: {
+        date_from: dateFrom,
+        date_to: dateTo,
       },
-    );
+    });
     return data;
   },
 
-  async dwhBotPerfHistory(
-    dateFrom?: string,
-    dateTo?: string,
-  ): Promise<DwhBotPerfHistoryRead> {
+  async dwhBotPerfHistory(dateFrom?: string, dateTo?: string): Promise<DwhBotPerfHistoryRead> {
     const { data } = await vpsApiClient.get<DwhBotPerfHistoryRead>(
       '/dwh/reports/bot-performance-history',
       {

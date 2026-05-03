@@ -208,7 +208,11 @@ export const useVpsStore = defineStore('vpsStore', {
         this.actionLoading = false;
       }
     },
-    async loadContainerLogs(vpsId: number, containerName: string, tail = 200): Promise<VpsLogsResult> {
+    async loadContainerLogs(
+      vpsId: number,
+      containerName: string,
+      tail = 200,
+    ): Promise<VpsLogsResult> {
       this.actionLoading = true;
       this.lastError = '';
       try {
@@ -220,7 +224,11 @@ export const useVpsStore = defineStore('vpsStore', {
         this.actionLoading = false;
       }
     },
-    async setContainerEnabled(vpsId: number, containerName: string, enabled: boolean): Promise<VpsActionResult> {
+    async setContainerEnabled(
+      vpsId: number,
+      containerName: string,
+      enabled: boolean,
+    ): Promise<VpsActionResult> {
       this.actionLoading = true;
       this.lastError = '';
       try {
