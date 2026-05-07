@@ -400,6 +400,14 @@ function isBotActive(botId: number): boolean {
   return activeBotIds.value.size === 0 || activeBotIds.value.has(botId);
 }
 
+const botSelectOptions = computed(() => [
+  { label: 'All bots', value: null as number | null },
+  ...allManagedBots.value.map((b) => ({
+    label: `${b.container_name} — ${b.vps_name}${b.strategy ? ' · ' + b.strategy : ''}`,
+    value: b.id as number | null,
+  })),
+]);
+
 const categoryOptions = computed(() => {
   if (!reportLayout.value) return _categoryDefs;
   const order = reportLayout.value.categoryOrder;
@@ -4489,12 +4497,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="logsDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="logsDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="logsFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputText
                   v-model="logsFilterLogger"
@@ -4801,12 +4812,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="missedDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="missedDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="missedFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputText
                   v-model="missedFilterPair"
@@ -5124,12 +5138,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="signalOutcomesDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="signalOutcomesDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="signalOutcomesFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputText
                   v-model="signalOutcomesFilterPair"
@@ -5557,12 +5574,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="entryTagDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="entryTagDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="entryTagFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputNumber
                   v-model="entryTagMinTrades"
@@ -5766,12 +5786,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="stubFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
@@ -5834,12 +5857,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="stubFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
@@ -5954,12 +5980,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="stubFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
@@ -6016,12 +6045,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="dcaDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="dcaDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="dcaFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <Button
                   label="Load"
@@ -6274,12 +6306,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="signalIndDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="signalIndDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="signalIndFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputText
                   v-model="signalIndFilterPair"
@@ -7208,12 +7243,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="stubFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
@@ -7274,12 +7312,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="stubFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
@@ -7340,12 +7381,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="stubFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
@@ -7654,12 +7698,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="stubFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
@@ -7714,12 +7761,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="stubFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <Button label="Load" size="small" severity="secondary" outlined disabled />
               </div>
@@ -7770,12 +7820,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="drillDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="drillDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="drillFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputText
                   v-model="drillFilterPair"
@@ -8217,12 +8270,15 @@ onMounted(async () => {
               <div class="flex flex-wrap items-center gap-2">
                 <InputText v-model="trailingDateFrom" type="date" size="small" class="w-36" />
                 <InputText v-model="trailingDateTo" type="date" size="small" class="w-36" />
-                <InputNumber
+                <Select
                   v-model="trailingFilterBotId"
-                  :min="1"
+                  :options="botSelectOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="All bots"
                   size="small"
-                  input-class="w-20"
-                  placeholder="Bot ID"
+                  class="w-56"
+                  show-clear
                 />
                 <InputNumber
                   v-model="trailingFilterTradeId"
