@@ -41,12 +41,6 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import('@/views/MobileView.vue'),
   },
   {
-    path: '/console',
-    alias: ['/custom'],
-    name: 'Console',
-    component: () => import('@/views/ConsoleView.vue'),
-  },
-  {
     path: '/balance',
     name: 'Freqtrade Balance',
     component: () => import('@/components/ftbot/BotBalance.vue'),

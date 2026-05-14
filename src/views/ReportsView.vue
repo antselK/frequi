@@ -4138,35 +4138,31 @@ onMounted(async () => {
 
 <template>
   <div class="mx-auto mt-3 p-4 w-[98vw] max-w-[98vw] flex flex-col gap-4">
-    <Card>
-      <template #title>
+    <UCard>
+      <template #header>
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <span>Reports</span>
-          <Button label="Reports Admin" @click="reportsAdminVisible = true" />
+          <span class="font-semibold">Reports</span>
+          <UButton label="Reports Admin" @click="reportsAdminVisible = true" />
         </div>
       </template>
-      <template #content>
+      <template #default>
         <div class="flex flex-col gap-4">
           <div class="flex flex-wrap gap-3">
             <div class="flex flex-col gap-1 min-w-52">
               <label class="text-sm">Category</label>
-              <Select
+              <USelect
                 v-model="selectedCategory"
-                :options="categoryOptions"
-                option-label="label"
-                option-value="value"
-                size="small"
+                :items="categoryOptions"
+                size="sm"
               />
             </div>
 
             <div class="flex flex-col gap-1 min-w-64">
               <label class="text-sm">Sub category</label>
-              <Select
+              <USelect
                 v-model="selectedSubCategory"
-                :options="availableSubCategories"
-                option-label="label"
-                option-value="value"
-                size="small"
+                :items="availableSubCategories"
+                size="sm"
               />
             </div>
           </div>
@@ -4237,13 +4233,13 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">System Errors Timeline (DWH)</h5>
               <div class="flex items-center gap-2">
-                <InputText v-model="systemDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="systemDateTo" type="date" size="small" class="w-36" />
-                <Button
+                <UInput v-model="systemDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="systemDateTo" type="date" size="sm" class="w-36" />
+                <UButton
                   label="Refresh"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingSystemTimeline"
                   @click="loadSystemErrorsTimeline"
                 />
@@ -4354,43 +4350,43 @@ onMounted(async () => {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <h6 class="font-semibold">Spike Cause Summary</h6>
                   <div class="flex flex-wrap items-center gap-2">
-                    <InputText
+                    <UInput
                       v-model="systemSpikeFromLocal"
                       type="datetime-local"
-                      size="small"
+                      size="sm"
                       class="w-56"
                     />
-                    <InputText
+                    <UInput
                       v-model="systemSpikeToLocal"
                       type="datetime-local"
-                      size="small"
+                      size="sm"
                       class="w-56"
                     />
-                    <InputText
+                    <UInput
                       v-model="systemSpikeLevels"
-                      size="small"
+                      size="sm"
                       class="w-40"
                       placeholder="Levels"
                     />
-                    <InputNumber
+                    <UInputNumber
                       v-model="systemSpikeLimit"
                       :min="1"
                       :max="200"
-                      size="small"
-                      input-class="w-16"
+                      size="sm"
+                      class="w-16"
                     />
-                    <Button
+                    <UButton
                       label="Use Peak"
-                      size="small"
-                      severity="secondary"
-                      outlined
+                      size="sm"
+                      color="neutral"
+                      variant="outline"
                       @click="buildSpikeWindowFromPeak"
                     />
-                    <Button
+                    <UButton
                       label="Analyze"
-                      size="small"
-                      severity="secondary"
-                      outlined
+                      size="sm"
+                      color="neutral"
+                      variant="outline"
                       :loading="loadingSystemSpikeSummary"
                       @click="loadSystemSpikeSummary"
                     />
@@ -4495,35 +4491,32 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Cumulative Logs Generated</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="logsDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="logsDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="logsDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="logsDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="logsFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputText
+                <UInput
                   v-model="logsFilterLogger"
-                  size="small"
+                  size="sm"
                   class="w-40"
                   placeholder="Logger (e.g. Printer)"
                 />
-                <InputText
+                <UInput
                   v-model="logsFilterLevel"
-                  size="small"
+                  size="sm"
                   class="w-28"
                   placeholder="Level"
                 />
-                <Button
+                <UButton
                   label="Refresh"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingLogsCumulative"
                   @click="loadLogsCumulativeChart"
                 />
@@ -4546,12 +4539,10 @@ onMounted(async () => {
 
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-sm text-surface-400">Chart mode</span>
-              <Select
+              <USelect
                 v-model="logsChartMode"
-                :options="logsChartModeOptions"
-                option-label="label"
-                option-value="value"
-                size="small"
+                :items="logsChartModeOptions"
+                size="sm"
                 class="w-40"
               />
             </div>
@@ -4667,43 +4658,43 @@ onMounted(async () => {
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <h6 class="font-semibold">Logs Spike Cause Summary</h6>
                   <div class="flex flex-wrap items-center gap-2">
-                    <InputText
+                    <UInput
                       v-model="logsSpikeFromLocal"
                       type="datetime-local"
-                      size="small"
+                      size="sm"
                       class="w-56"
                     />
-                    <InputText
+                    <UInput
                       v-model="logsSpikeToLocal"
                       type="datetime-local"
-                      size="small"
+                      size="sm"
                       class="w-56"
                     />
-                    <InputText
+                    <UInput
                       v-model="logsSpikeLevels"
-                      size="small"
+                      size="sm"
                       class="w-44"
                       placeholder="Levels"
                     />
-                    <InputNumber
+                    <UInputNumber
                       v-model="logsSpikeLimit"
                       :min="1"
                       :max="200"
-                      size="small"
-                      input-class="w-16"
+                      size="sm"
+                      class="w-16"
                     />
-                    <Button
+                    <UButton
                       label="Use Peak"
-                      size="small"
-                      severity="secondary"
-                      outlined
+                      size="sm"
+                      color="neutral"
+                      variant="outline"
                       @click="buildLogsSpikeWindowFromPeak"
                     />
-                    <Button
+                    <UButton
                       label="Analyze"
-                      size="small"
-                      severity="secondary"
-                      outlined
+                      size="sm"
+                      color="neutral"
+                      variant="outline"
                       :loading="loadingLogsSpikeSummary"
                       @click="loadLogsSpikeSummary"
                     />
@@ -4810,25 +4801,22 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Missed Trades Report (DWH)</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="missedDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="missedDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="missedDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="missedDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="missedFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputText
+                <UInput
                   v-model="missedFilterPair"
-                  size="small"
+                  size="sm"
                   class="w-40"
                   placeholder="Pair (e.g. JTO/USDT)"
                 />
-                <InputText v-model="missedFilterVps" size="small" class="w-32" placeholder="VPS" />
+                <UInput v-model="missedFilterVps" size="sm" class="w-32" placeholder="VPS" />
                 <div class="flex gap-0 rounded border border-surface-600 overflow-hidden text-xs">
                   <button
                     v-for="sf in [
@@ -4848,18 +4836,18 @@ onMounted(async () => {
                     {{ sf.label }}
                   </button>
                 </div>
-                <Button
+                <UButton
                   label="Clear"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   @click="clearMissedTradeFilters"
                 />
-                <Button
+                <UButton
                   label="Refresh"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingMissedTrades"
                   @click="loadMissedTradesReport"
                 />
@@ -4867,27 +4855,27 @@ onMounted(async () => {
             </div>
 
             <div class="flex flex-wrap gap-2">
-              <Button
+              <UButton
                 :label="`Missed trades: ${allMissedGroupStats.total}`"
-                size="small"
-                severity="contrast"
-                outlined
+                size="sm"
+                color="info"
+                variant="outline"
                 @click="selectedReasonFilters = []"
               />
-              <Button
+              <UButton
                 v-for="item in missedTradeReasonButtons"
                 :key="item.reasonCode"
                 :label="`${item.reason}: ${item.count} (${reasonSharePct(item.count)}%)`"
-                size="small"
-                severity="warn"
-                :outlined="!isReasonSelected(item.reasonCode)"
+                size="sm"
+                color="warning"
+                :variant="isReasonSelected(item.reasonCode) ? 'solid' : 'outline'"
                 @click="toggleReasonFilter(item.reasonCode)"
               />
-              <Button
+              <UButton
                 :label="`Trailing-entry misses: ${trailingEntryMissCount} (${trailingEntryMissPct}%)`"
-                size="small"
-                severity="warn"
-                :outlined="!isReasonSelected('trailing_entry')"
+                size="sm"
+                color="warning"
+                :variant="isReasonSelected('trailing_entry') ? 'solid' : 'outline'"
                 @click="toggleReasonFilter('trailing_entry')"
               />
             </div>
@@ -4899,12 +4887,10 @@ onMounted(async () => {
                   <span>{{ missedChartSeriesLabel }}</span>
                   <span>{{ missedChartDateRangeLabel }}</span>
                 </div>
-                <Select
+                <USelect
                   v-model="missedChartMode"
-                  :options="missedChartModeOptions"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  :items="missedChartModeOptions"
+                  size="sm"
                   class="w-36"
                 />
               </div>
@@ -5136,27 +5122,24 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Signal Outcome Analysis</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="signalOutcomesDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="signalOutcomesDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="signalOutcomesDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="signalOutcomesDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="signalOutcomesFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputText
+                <UInput
                   v-model="signalOutcomesFilterPair"
-                  size="small"
+                  size="sm"
                   class="w-40"
                   placeholder="Pair"
                 />
-                <InputText
+                <UInput
                   v-model="signalOutcomesFilterVps"
-                  size="small"
+                  size="sm"
                   class="w-32"
                   placeholder="VPS"
                 />
@@ -5180,38 +5163,34 @@ onMounted(async () => {
                     {{ sf.label }}
                   </button>
                 </div>
-                <Select
+                <USelect
                   v-model="signalOutcomesFilterOutcome"
-                  :options="signalOutcomeFilterOptions"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  :items="signalOutcomeFilterOptions"
+                  size="sm"
                   class="w-32"
                 />
-                <InputNumber
+                <UInputNumber
                   v-model="signalOutcomesProfitThreshold"
                   :min="0.1"
                   :max="100"
                   :step="0.5"
-                  :min-fraction-digits="1"
-                  :max-fraction-digits="1"
-                  size="small"
-                  input-class="w-14"
-                  suffix="%"
-                  title="Win threshold"
+                  :format-options="{ minimumFractionDigits: 1, maximumFractionDigits: 1 }"
+                  size="sm"
+                  class="w-14"
+                  title="Win threshold (%)"
                 />
-                <Button
+                <UButton
                   label="Clear"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   @click="clearSignalOutcomeFilters"
                 />
-                <Button
+                <UButton
                   label="Load"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingSignalOutcomes"
                   @click="loadSignalOutcomes"
                 />
@@ -5220,22 +5199,22 @@ onMounted(async () => {
 
             <!-- Reason buttons -->
             <div v-if="signalOutcomesLoaded" class="flex flex-wrap gap-2">
-              <Button
+              <UButton
                 :label="`Signals: ${signalOutcomeReasonStats.total}`"
-                size="small"
-                severity="contrast"
-                outlined
+                size="sm"
+                color="info"
+                variant="outline"
                 @click="selectedSignalOutcomeReasons = []"
               />
-              <Button
+              <UButton
                 v-for="[code, count] in [...signalOutcomeReasonStats.reasonCounts.entries()].filter(
                   ([c]) => c !== 'trailing_entry',
                 )"
                 :key="code"
                 :label="`${SIGNAL_OUTCOME_REASON_LABELS[code] ?? code}: ${count} (${signalOutcomeReasonSharePct(count)}%)`"
-                size="small"
-                severity="warn"
-                :outlined="!selectedSignalOutcomeReasons.includes(code)"
+                size="sm"
+                color="warning"
+                :variant="selectedSignalOutcomeReasons.includes(code) ? 'solid' : 'outline'"
                 @click="
                   selectedSignalOutcomeReasons.includes(code)
                     ? (selectedSignalOutcomeReasons = selectedSignalOutcomeReasons.filter(
@@ -5244,11 +5223,11 @@ onMounted(async () => {
                     : selectedSignalOutcomeReasons.push(code)
                 "
               />
-              <Button
+              <UButton
                 :label="`Trailing-entry misses: ${signalOutcomeTrailingCount} (${signalOutcomeReasonSharePct(signalOutcomeTrailingCount)}%)`"
-                size="small"
-                severity="warn"
-                :outlined="!selectedSignalOutcomeReasons.includes('trailing_entry')"
+                size="sm"
+                color="warning"
+                :variant="selectedSignalOutcomeReasons.includes('trailing_entry') ? 'solid' : 'outline'"
                 @click="
                   selectedSignalOutcomeReasons.includes('trailing_entry')
                     ? (selectedSignalOutcomeReasons = selectedSignalOutcomeReasons.filter(
@@ -5269,12 +5248,10 @@ onMounted(async () => {
                       : 'Signals (Cumulative)'
                   }}</span>
                 </div>
-                <Select
+                <USelect
                   v-model="signalOutcomesChartMode"
-                  :options="missedChartModeOptions"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  :items="missedChartModeOptions"
+                  size="sm"
                   class="w-36"
                 />
               </div>
@@ -5375,29 +5352,29 @@ onMounted(async () => {
 
             <!-- Admin actions -->
             <div class="flex flex-wrap gap-2 text-xs">
-              <Button
+              <UButton
                 label="Parse signals"
-                size="small"
-                severity="secondary"
-                outlined
+                size="sm"
+                color="neutral"
+                variant="outline"
                 :loading="loadingParseMissedSignals"
                 title="Scan new log events and store as missed signals"
                 @click="runParseMissedSignals(false)"
               />
-              <Button
+              <UButton
                 label="Re-scan all"
-                size="small"
-                severity="secondary"
-                outlined
+                size="sm"
+                color="neutral"
+                variant="outline"
                 :loading="loadingParseMissedSignals"
                 title="Find and process log events not yet captured as missed signals (skips already-analyzed events)"
                 @click="runParseMissedSignals(false, true)"
               />
-              <Button
+              <UButton
                 label="Fetch outcomes"
-                size="small"
-                severity="secondary"
-                outlined
+                size="sm"
+                color="neutral"
+                variant="outline"
                 :loading="loadingFetchOutcomes"
                 title="Fetch OHLCV data for signals older than 48h to compute outcome"
                 @click="runFetchOutcomes"
@@ -5572,30 +5549,27 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Entry Tag Performance</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="entryTagDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="entryTagDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="entryTagDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="entryTagDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="entryTagFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputNumber
+                <UInputNumber
                   v-model="entryTagMinTrades"
                   :min="1"
-                  size="small"
-                  input-class="w-20"
+                  size="sm"
+                  class="w-20"
                   placeholder="Min trades"
                 />
-                <Button
+                <UButton
                   label="Load"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingEntryTag"
                   @click="loadEntryTagPerformance"
                 />
@@ -5784,20 +5758,17 @@ onMounted(async () => {
                 >
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="stubDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="stubDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="stubFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <UInput v-model="stubFilterPair" size="sm" class="w-36" placeholder="Pair" />
+                <UButton label="Load" size="sm" color="neutral" variant="outline" disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
@@ -5855,19 +5826,16 @@ onMounted(async () => {
                 >
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="stubDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="stubDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="stubFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <UButton label="Load" size="sm" color="neutral" variant="outline" disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
@@ -5918,9 +5886,9 @@ onMounted(async () => {
                 >
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <UInput v-model="stubDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="stubDateTo" type="date" size="sm" class="w-36" />
+                <UButton label="Load" size="sm" color="neutral" variant="outline" disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
@@ -5978,20 +5946,17 @@ onMounted(async () => {
                 >
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="stubDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="stubDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="stubFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <UInput v-model="stubFilterPair" size="sm" class="w-36" placeholder="Pair" />
+                <UButton label="Load" size="sm" color="neutral" variant="outline" disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
@@ -6043,23 +6008,20 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">DCA / Multi-Order Analysis</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="dcaDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="dcaDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="dcaDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="dcaDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="dcaFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <Button
+                <UButton
                   label="Load"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingDca"
                   @click="loadDcaAnalysis"
                 />
@@ -6304,30 +6266,25 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Signal Indicator Analysis</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="signalIndDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="signalIndDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="signalIndDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="signalIndDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="signalIndFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputText
+                <UInput
                   v-model="signalIndFilterPair"
-                  size="small"
+                  size="sm"
                   class="w-36"
                   placeholder="Pair"
                 />
-                <Select
+                <USelect
                   v-model="signalIndFilterTag"
-                  :options="signalIndTagOptions"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  :items="signalIndTagOptions"
+                  size="sm"
                   class="w-52"
                   placeholder="All tags"
                 />
@@ -6371,11 +6328,11 @@ onMounted(async () => {
                     {{ sf.label }}
                   </button>
                 </div>
-                <Button
+                <UButton
                   label="Load"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingSignalInd"
                   @click="loadSignalIndicatorAnalysis"
                 />
@@ -7241,20 +7198,17 @@ onMounted(async () => {
                 >
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="stubDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="stubDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="stubFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <UInput v-model="stubFilterPair" size="sm" class="w-36" placeholder="Pair" />
+                <UButton label="Load" size="sm" color="neutral" variant="outline" disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
@@ -7310,20 +7264,17 @@ onMounted(async () => {
                 >
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="stubDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="stubDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="stubFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputText v-model="stubFilterPair" size="small" class="w-36" placeholder="Pair" />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <UInput v-model="stubFilterPair" size="sm" class="w-36" placeholder="Pair" />
+                <UButton label="Load" size="sm" color="neutral" variant="outline" disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
@@ -7379,19 +7330,16 @@ onMounted(async () => {
                 >
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="stubDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="stubDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="stubFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <UButton label="Load" size="sm" color="neutral" variant="outline" disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
@@ -7448,32 +7396,30 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Time-of-Day Duration</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="todDurDateFrom" type="date" size="small" class="w-36" />
+                <UInput v-model="todDurDateFrom" type="date" size="sm" class="w-36" />
                 <span class="text-surface-400 text-xs">to</span>
-                <InputText v-model="todDurDateTo" type="date" size="small" class="w-36" />
-                <InputText
+                <UInput v-model="todDurDateTo" type="date" size="sm" class="w-36" />
+                <UInput
                   v-model="todDurFilterTag"
-                  size="small"
+                  size="sm"
                   class="w-44"
                   placeholder="Enter tag (optional)"
                 />
-                <Select
+                <USelect
                   v-model="todDurFilterDir"
-                  :options="[
+                  :items="[
                     { label: 'All directions', value: 'all' },
                     { label: 'Long only', value: 'long' },
                     { label: 'Short only', value: 'short' },
                   ]"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  size="sm"
                   class="w-36"
                 />
-                <Button
+                <UButton
                   label="Load"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingTodDur"
                   @click="loadTodDuration"
                 />
@@ -7696,19 +7642,16 @@ onMounted(async () => {
                 >
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="stubDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="stubDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="stubFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <UButton label="Load" size="sm" color="neutral" variant="outline" disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
@@ -7759,19 +7702,16 @@ onMounted(async () => {
                 >
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="stubDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="stubDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="stubDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="stubDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="stubFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <Button label="Load" size="small" severity="secondary" outlined disabled />
+                <UButton label="Load" size="sm" color="neutral" variant="outline" disabled />
               </div>
             </div>
             <p class="text-sm text-surface-300">
@@ -7818,66 +7758,61 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Trade Drill-down (DWH)</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="drillDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="drillDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="drillDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="drillDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="drillFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputText
+                <UInput
                   v-model="drillFilterPair"
-                  size="small"
+                  size="sm"
                   class="w-40"
                   placeholder="Pair (e.g. BTC/USDT)"
                 />
-                <InputText
+                <UInput
                   v-model="drillFilterStrategy"
-                  size="small"
+                  size="sm"
                   class="w-36"
                   placeholder="Strategy"
                 />
-                <InputText
+                <UInput
                   v-model="drillFilterEntryReason"
-                  size="small"
+                  size="sm"
                   class="w-36"
                   placeholder="Entry tag"
                 />
-                <InputText
+                <UInput
                   v-model="drillFilterExitReason"
-                  size="small"
+                  size="sm"
                   class="w-36"
                   placeholder="Exit reason"
                 />
-                <Select
+                <USelect
                   v-model="drillFilterSide"
-                  :options="[
+                  :items="[
                     { label: 'All sides', value: 'all' },
                     { label: 'Long', value: 'long' },
                     { label: 'Short', value: 'short' },
                   ]"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  size="sm"
                   class="w-28"
                 />
-                <Button
+                <UButton
                   label="Clear"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   @click="clearDrilldownFilters"
                 />
-                <Button
+                <UButton
                   label="Refresh"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingDrilldown"
                   @click="loadDrilldownReport(false)"
                 />
@@ -7886,21 +7821,21 @@ onMounted(async () => {
 
             <!-- Summary tags -->
             <div v-if="drillTradesFiltered.length" class="flex flex-wrap gap-2">
-              <Tag
-                :value="`Showing: ${drillTradesFiltered.length} / ${drillTotal}${botFilterActive ? ' (bot filter active)' : ''}`"
-                severity="contrast"
+              <UBadge
+                :label="`Showing: ${drillTradesFiltered.length} / ${drillTotal}${botFilterActive ? ' (bot filter active)' : ''}`"
+                color="info"
               />
-              <Tag
-                :value="`Avg profit: ${drillTradesFiltered.filter((t) => t.profit_ratio !== null).length ? ((drillTradesFiltered.reduce((s, t) => s + (t.profit_ratio ?? 0), 0) / drillTradesFiltered.filter((t) => t.profit_ratio !== null).length) * 100).toFixed(2) + '%' : 'n/a'}`"
-                severity="warn"
+              <UBadge
+                :label="`Avg profit: ${drillTradesFiltered.filter((t) => t.profit_ratio !== null).length ? ((drillTradesFiltered.reduce((s, t) => s + (t.profit_ratio ?? 0), 0) / drillTradesFiltered.filter((t) => t.profit_ratio !== null).length) * 100).toFixed(2) + '%' : 'n/a'}`"
+                color="warning"
               />
-              <Tag
-                :value="`Profitable: ${drillTradesFiltered.filter((t) => (t.profit_ratio ?? 0) > 0).length} / ${drillTradesFiltered.filter((t) => t.profit_ratio !== null).length}`"
-                severity="warn"
+              <UBadge
+                :label="`Profitable: ${drillTradesFiltered.filter((t) => (t.profit_ratio ?? 0) > 0).length} / ${drillTradesFiltered.filter((t) => t.profit_ratio !== null).length}`"
+                color="warning"
               />
-              <Tag
-                :value="`Total profit: ${drillTradesFiltered.reduce((s, t) => s + (t.profit_abs ?? 0), 0).toFixed(2)} USDT`"
-                severity="warn"
+              <UBadge
+                :label="`Total profit: ${drillTradesFiltered.reduce((s, t) => s + (t.profit_abs ?? 0), 0).toFixed(2)} USDT`"
+                color="warning"
               />
             </div>
 
@@ -7911,12 +7846,10 @@ onMounted(async () => {
                   <span>{{ drillChartSeriesLabel }}</span>
                   <span>{{ drillChartDateRangeLabel }}</span>
                 </div>
-                <Select
+                <USelect
                   v-model="drillChartMetric"
-                  :options="drillChartMetricOptions"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  :items="drillChartMetricOptions"
+                  size="sm"
                   class="w-40"
                 />
               </div>
@@ -8250,11 +8183,11 @@ onMounted(async () => {
               v-if="drillTrades.length && drillTrades.length < drillTotal"
               class="flex items-center gap-3"
             >
-              <Button
+              <UButton
                 :label="`Load more (${drillTotal - drillTrades.length} remaining)`"
-                size="small"
-                severity="secondary"
-                outlined
+                size="sm"
+                color="neutral"
+                variant="outline"
                 :loading="loadingDrilldown"
                 @click="loadDrilldownReport(true)"
               />
@@ -8268,81 +8201,74 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Trailing Entries Benefit (DWH)</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="trailingDateFrom" type="date" size="small" class="w-36" />
-                <InputText v-model="trailingDateTo" type="date" size="small" class="w-36" />
-                <Select
+                <UInput v-model="trailingDateFrom" type="date" size="sm" class="w-36" />
+                <UInput v-model="trailingDateTo" type="date" size="sm" class="w-36" />
+                <USelect
                   v-model="trailingFilterBotId"
-                  :options="botSelectOptions"
-                  option-label="label"
-                  option-value="value"
+                  :items="botSelectOptions"
                   placeholder="All bots"
-                  size="small"
+                  size="sm"
                   class="w-56"
-                  show-clear
                 />
-                <InputNumber
+                <UInputNumber
                   v-model="trailingFilterTradeId"
                   :min="1"
-                  size="small"
-                  input-class="w-20"
+                  size="sm"
+                  class="w-20"
                   placeholder="Trade ID"
                 />
-                <InputText
+                <UInput
                   v-model="trailingFilterPair"
-                  size="small"
+                  size="sm"
                   class="w-40"
                   placeholder="Pair (e.g. BTC/USDT)"
                 />
-                <InputText
+                <UInput
                   v-model="trailingFilterVps"
-                  size="small"
+                  size="sm"
                   class="w-36"
                   placeholder="VPS"
                 />
-                <InputText
+                <UInput
                   v-model="trailingFilterContainer"
-                  size="small"
+                  size="sm"
                   class="w-36"
                   placeholder="Container"
                 />
-                <Select
+                <USelect
                   v-model="trailingFilterSide"
-                  :options="[
+                  :items="[
                     { label: 'All sides', value: 'all' },
                     { label: 'Long', value: 'long' },
                     { label: 'Short', value: 'short' },
                   ]"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  size="sm"
                   class="w-32"
                 />
-                <Select
+                <USelect
                   v-model="trailingFilterMatchSource"
-                  :options="[
+                  :items="[
                     { label: 'All sources', value: 'all' },
                     { label: 'closed_trail', value: 'closed_trail' },
                     { label: 'trade_fallback', value: 'trade_fallback' },
                     { label: 'rpc_hint', value: 'rpc_hint' },
                     { label: 'trade_only', value: 'trade_only' },
                   ]"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  size="sm"
                   class="w-40"
                 />
-                <Button
+                <UButton
                   label="Clear"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   @click="clearTrailingBenefitFilters"
                 />
-                <Button
+                <UButton
                   label="Refresh"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingTrailingBenefit"
                   @click="loadTrailingBenefitReport"
                 />
@@ -8350,45 +8276,45 @@ onMounted(async () => {
             </div>
 
             <div class="flex flex-wrap gap-2">
-              <Tag :value="`Trades: ${trailingTradeCount}`" severity="contrast" />
-              <Tag :value="`Log entries: ${trailingTotalLogCount}`" severity="contrast" />
-              <Tag :value="`Avg trailing profit: ${trailingAvgProfitPct}`" severity="warn" />
-              <Tag :value="`Positive profit share: ${trailingPositiveShare}`" severity="warn" />
-              <Tag
-                :value="`Avg trailing duration: ${trailingAvgDurationMinutes}`"
-                severity="warn"
+              <UBadge :label="`Trades: ${trailingTradeCount}`" color="info" />
+              <UBadge :label="`Log entries: ${trailingTotalLogCount}`" color="info" />
+              <UBadge :label="`Avg trailing profit: ${trailingAvgProfitPct}`" color="warning" />
+              <UBadge :label="`Positive profit share: ${trailingPositiveShare}`" color="warning" />
+              <UBadge
+                :label="`Avg trailing duration: ${trailingAvgDurationMinutes}`"
+                color="warning"
               />
-              <Tag
-                :value="`Profit <0%: ${trailingProfitBuckets.lossCount} (${trailingProfitBuckets.lossShare}%)`"
-                severity="secondary"
+              <UBadge
+                :label="`Profit <0%: ${trailingProfitBuckets.lossCount} (${trailingProfitBuckets.lossShare}%)`"
+                color="neutral"
               />
-              <Tag
-                :value="`Profit 0-0.2%: ${trailingProfitBuckets.nearFlatCount} (${trailingProfitBuckets.nearFlatShare}%)`"
-                severity="secondary"
+              <UBadge
+                :label="`Profit 0-0.2%: ${trailingProfitBuckets.nearFlatCount} (${trailingProfitBuckets.nearFlatShare}%)`"
+                color="neutral"
               />
-              <Tag
-                :value="`Profit >0.2%: ${trailingProfitBuckets.gainCount} (${trailingProfitBuckets.gainShare}%)`"
-                severity="secondary"
+              <UBadge
+                :label="`Profit >0.2%: ${trailingProfitBuckets.gainCount} (${trailingProfitBuckets.gainShare}%)`"
+                color="neutral"
               />
-              <Tag
+              <UBadge
                 v-if="trailingMatchSourceCounts.closed_trail"
-                :value="`closed_trail: ${trailingMatchSourceCounts.closed_trail}`"
-                severity="secondary"
+                :label="`closed_trail: ${trailingMatchSourceCounts.closed_trail}`"
+                color="neutral"
               />
-              <Tag
+              <UBadge
                 v-if="trailingMatchSourceCounts.trade_fallback"
-                :value="`trade_fallback: ${trailingMatchSourceCounts.trade_fallback}`"
-                severity="secondary"
+                :label="`trade_fallback: ${trailingMatchSourceCounts.trade_fallback}`"
+                color="neutral"
               />
-              <Tag
+              <UBadge
                 v-if="trailingMatchSourceCounts.rpc_hint"
-                :value="`rpc_hint: ${trailingMatchSourceCounts.rpc_hint}`"
-                severity="secondary"
+                :label="`rpc_hint: ${trailingMatchSourceCounts.rpc_hint}`"
+                color="neutral"
               />
-              <Tag
+              <UBadge
                 v-if="trailingMatchSourceCounts.trade_only"
-                :value="`trade_only: ${trailingMatchSourceCounts.trade_only}`"
-                severity="secondary"
+                :label="`trade_only: ${trailingMatchSourceCounts.trade_only}`"
+                color="neutral"
               />
             </div>
 
@@ -8399,12 +8325,10 @@ onMounted(async () => {
                   <span>{{ trailingChartSeriesLabel }}</span>
                   <span>{{ trailingChartDateRangeLabel }}</span>
                 </div>
-                <Select
+                <USelect
                   v-model="trailingChartMetric"
-                  :options="trailingChartMetricOptions"
-                  option-label="label"
-                  option-value="value"
-                  size="small"
+                  :items="trailingChartMetricOptions"
+                  size="sm"
                   class="w-44"
                 />
               </div>
@@ -8708,14 +8632,14 @@ onMounted(async () => {
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h5 class="font-semibold">Bot Performance Analysis</h5>
               <div class="flex flex-wrap items-center gap-2">
-                <InputText v-model="botPerfDateFrom" type="date" size="small" class="w-36" />
+                <UInput v-model="botPerfDateFrom" type="date" size="sm" class="w-36" />
                 <span class="text-surface-400 text-xs">to</span>
-                <InputText v-model="botPerfDateTo" type="date" size="small" class="w-36" />
-                <Button
+                <UInput v-model="botPerfDateTo" type="date" size="sm" class="w-36" />
+                <UButton
                   label="Load"
-                  size="small"
-                  severity="secondary"
-                  outlined
+                  size="sm"
+                  color="neutral"
+                  variant="outline"
                   :loading="loadingBotPerf"
                   @click="loadBotPerf"
                 />
@@ -9089,13 +9013,12 @@ onMounted(async () => {
                       v-if="botPerfProjectionMode !== 'usdt'"
                       class="flex items-center gap-1 text-xs"
                     >
-                      <span class="text-surface-400">Capital:</span>
-                      <InputNumber
+                      <span class="text-surface-400">Capital (USDT):</span>
+                      <UInputNumber
                         v-model="botPerfCapital"
                         :min="1"
-                        size="small"
-                        input-class="w-20"
-                        suffix=" USDT"
+                        size="sm"
+                        class="w-20"
                       />
                     </div>
                   </div>
@@ -9572,7 +9495,7 @@ onMounted(async () => {
           </div>
         </div>
       </template>
-    </Card>
+    </UCard>
 
     <ReportsAdminDialog
       v-model:visible="reportsAdminVisible"

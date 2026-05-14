@@ -13,18 +13,25 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <Dialog
-    :visible="visible"
-    modal
-    :header="title"
-    class="w-full max-w-4xl"
-    @update:visible="emit('update:visible', $event)"
+  <UModal
+    :open="visible"
+    :title="title"
+    :ui="{ content: 'sm:max-w-4xl' }"
+    @update:open="emit('update:visible', $event)"
   >
-    <Textarea :model-value="logs" rows="20" class="w-full font-mono" readonly auto-resize />
+    <template #body>
+      <UTextarea
+        :model-value="logs"
+        :rows="20"
+        class="w-full font-mono"
+        readonly
+        autoresize
+      />
+    </template>
     <template #footer>
-      <div class="flex justify-end gap-2">
-        <Button label="Refresh" :loading="loading" @click="emit('refresh')" />
+      <div class="flex justify-end gap-2 w-full">
+        <UButton label="Refresh" :loading="loading" @click="emit('refresh')" />
       </div>
     </template>
-  </Dialog>
+  </UModal>
 </template>

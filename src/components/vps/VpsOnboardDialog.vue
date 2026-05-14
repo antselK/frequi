@@ -68,44 +68,45 @@ watch(
 </script>
 
 <template>
-  <Dialog
-    :visible="visible"
-    modal
-    :header="mode === 'edit' ? 'Edit VPS' : 'Add VPS'"
-    class="w-full max-w-2xl"
-    @update:visible="emit('update:visible', $event)"
+  <UModal
+    :open="visible"
+    :title="mode === 'edit' ? 'Edit VPS' : 'Add VPS'"
+    :ui="{ content: 'sm:max-w-2xl' }"
+    @update:open="emit('update:visible', $event)"
   >
-    <div class="flex flex-col gap-4">
-      <div class="flex flex-col gap-2">
-        <label for="vps-name">Name</label>
-        <InputText id="vps-name" v-model="form.name" placeholder="vps-main" />
-      </div>
-      <div class="flex flex-col gap-2">
-        <label for="vps-ip">IP</label>
-        <InputText id="vps-ip" v-model="form.ip" placeholder="100.x.y.z" />
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <template #body>
+      <div class="flex flex-col gap-4">
         <div class="flex flex-col gap-2">
-          <label for="vps-user">SSH User</label>
-          <InputText id="vps-user" v-model="form.ssh_user" />
+          <label for="vps-name">Name</label>
+          <UInput id="vps-name" v-model="form.name" placeholder="vps-main" />
         </div>
         <div class="flex flex-col gap-2">
-          <label for="vps-port">SSH Port</label>
-          <InputNumber id="vps-port" v-model="form.ssh_port" :min="1" :max="65535" />
+          <label for="vps-ip">IP</label>
+          <UInput id="vps-ip" v-model="form.ip" placeholder="100.x.y.z" />
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="flex flex-col gap-2">
+            <label for="vps-user">SSH User</label>
+            <UInput id="vps-user" v-model="form.ssh_user" />
+          </div>
+          <div class="flex flex-col gap-2">
+            <label for="vps-port">SSH Port</label>
+            <UInputNumber id="vps-port" v-model="form.ssh_port" :min="1" :max="65535" />
+          </div>
+        </div>
+        <div class="flex flex-col gap-2">
+          <label for="vps-private-key">{{
+            mode === 'edit' ? 'Private Key (optional)' : 'Private Key'
+          }}</label>
+          <UTextarea id="vps-private-key" v-model="form.private_key" :rows="8" autoresize />
         </div>
       </div>
-      <div class="flex flex-col gap-2">
-        <label for="vps-private-key">{{
-          mode === 'edit' ? 'Private Key (optional)' : 'Private Key'
-        }}</label>
-        <Textarea id="vps-private-key" v-model="form.private_key" rows="8" auto-resize />
-      </div>
-    </div>
+    </template>
 
     <template #footer>
-      <div class="flex justify-end gap-2">
-        <Button label="Cancel" severity="secondary" outlined @click="closeDialog" />
-        <Button
+      <div class="flex justify-end gap-2 w-full">
+        <UButton label="Cancel" color="neutral" variant="outline" @click="closeDialog" />
+        <UButton
           label="Save"
           :loading="loading"
           :disabled="
@@ -118,5 +119,5 @@ watch(
         />
       </div>
     </template>
-  </Dialog>
+  </UModal>
 </template>

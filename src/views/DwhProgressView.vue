@@ -811,143 +811,121 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="p-4 md:p-6 space-y-4 min-h-screen bg-black text-surface-100">
+  <main class="mx-auto mt-3 p-4 w-[98vw] max-w-[98vw] flex flex-col gap-4">
     <section class="flex flex-wrap justify-end gap-2">
-      <button
-        class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
+      <UButton
+        label="Recent Ingestion Runs"
+        color="neutral"
+        variant="outline"
+        size="sm"
         @click="showRunsModal = true"
-      >
-        Recent Ingestion Runs
-      </button>
-      <button
-        class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
+      />
+      <UButton
+        label="Bot Checkpoints"
+        color="neutral"
+        variant="outline"
+        size="sm"
         @click="showCheckpointsModal = true"
-      >
-        Bot Checkpoints
-      </button>
-      <button
-        class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
+      />
+      <UButton
+        label="Audit View"
+        color="neutral"
+        variant="outline"
+        size="sm"
         @click="showAuditModal = true"
-      >
-        Audit View
-      </button>
-      <button
-        class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
+      />
+      <UButton
+        label="Anomaly Trends + Samples"
+        color="neutral"
+        variant="outline"
+        size="sm"
         @click="showAnomaliesModal = true"
-      >
-        Anomaly Trends + Samples
-      </button>
-      <button
-        class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800"
+      />
+      <UButton
+        label="Settings"
+        color="neutral"
+        variant="outline"
+        size="sm"
         @click="showSettingsModal = true"
-      >
-        Settings
-      </button>
+      />
     </section>
 
-    <section
+    <UAlert
       v-if="errorText"
-      class="rounded border border-red-700 bg-red-950/40 text-red-300 p-3 text-sm"
-    >
-      {{ errorText }}
-    </section>
+      color="error"
+      variant="subtle"
+      :description="errorText"
+    />
 
     <section class="grid grid-cols-2 lg:grid-cols-6 gap-3">
-      <article
+      <UCard
         v-for="card in cards"
         :key="card.label"
-        class="rounded border border-surface-700 p-3 bg-surface-900"
+        :ui="{ body: 'p-3' }"
       >
         <p class="text-xs text-surface-400">{{ card.label }}</p>
         <p class="text-xl font-semibold">{{ card.value }}</p>
-      </article>
+      </UCard>
     </section>
 
-    <section v-if="retentionResult" class="rounded border border-surface-700 bg-surface-900 p-4">
-      <h2 class="font-semibold mb-2">Retention Result</h2>
+    <UCard v-if="retentionResult">
+      <template #header><span class="font-semibold">Retention Result</span></template>
       <p class="text-sm text-surface-300">
         Deleted trades {{ retentionResult.deleted_trades }}, orders
         {{ retentionResult.deleted_orders }}, logs {{ retentionResult.deleted_log_events }},
         anomalies {{ retentionResult.deleted_anomalies }}, runs {{ retentionResult.deleted_runs }}.
       </p>
-    </section>
+    </UCard>
 
-    <section
-      v-if="rollupCompactionResult"
-      class="rounded border border-surface-700 bg-surface-900 p-4"
-    >
-      <h2 class="font-semibold mb-2">Rollup + Compaction Result</h2>
+    <UCard v-if="rollupCompactionResult">
+      <template #header><span class="font-semibold">Rollup + Compaction Result</span></template>
       <p class="text-sm text-surface-300">
         Upserted rollup rows {{ rollupCompactionResult.upserted_rollup_rows }}, deleted old rollup
         rows {{ rollupCompactionResult.deleted_rollup_rows }}, compacted log events
         {{ rollupCompactionResult.compacted_log_events }}.
       </p>
-    </section>
+    </UCard>
 
-    <section class="rounded border border-surface-700 bg-surface-900 p-4 space-y-3">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <h2 class="font-semibold">Trade Explorer</h2>
-        <p class="text-xs text-surface-400">
-          Showing {{ trades.length }} of {{ tradesTotal }} trades
-        </p>
-      </div>
+    <UCard>
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <span class="font-semibold">Trade Explorer</span>
+          <span class="text-xs text-surface-400">
+            Showing {{ trades.length }} of {{ tradesTotal }} trades
+          </span>
+        </div>
+      </template>
 
-      <div class="grid grid-cols-2 md:grid-cols-7 gap-2">
-        <input
-          v-model.number="tradeDays"
-          type="number"
-          min="0"
-          max="3650"
-          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+      <div class="grid grid-cols-2 md:grid-cols-7 gap-2 mb-3">
+        <UInputNumber
+          v-model="tradeDays"
+          :min="0"
+          :max="3650"
+          size="sm"
           placeholder="Days (0=all)"
         />
-        <input
-          v-model.number="tradeBotId"
-          type="number"
-          min="1"
-          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
-          placeholder="Bot ID"
-        />
-        <input
-          v-model="tradePair"
-          type="text"
-          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
-          placeholder="Pair"
-        />
-        <input
-          v-model="tradeStrategy"
-          type="text"
-          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
-          placeholder="Strategy"
-        />
-        <input
-          v-model="tradeEntryReason"
-          type="text"
-          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
-          placeholder="Entry Reason"
-        />
-        <input
-          v-model="tradeExitReason"
-          type="text"
-          class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
-          placeholder="Exit Reason"
-        />
+        <UInputNumber v-model="tradeBotId" :min="1" size="sm" placeholder="Bot ID" />
+        <UInput v-model="tradePair" size="sm" placeholder="Pair" />
+        <UInput v-model="tradeStrategy" size="sm" placeholder="Strategy" />
+        <UInput v-model="tradeEntryReason" size="sm" placeholder="Entry Reason" />
+        <UInput v-model="tradeExitReason" size="sm" placeholder="Exit Reason" />
         <div class="flex gap-2">
-          <input
-            v-model.number="tradeLimit"
-            type="number"
-            min="0"
-            max="500"
-            class="w-20 px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+          <UInputNumber
+            v-model="tradeLimit"
+            :min="0"
+            :max="500"
+            size="sm"
+            class="w-20"
             placeholder="Limit (0=all)"
           />
-          <button
-            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+          <UButton
+            :label="tradesLoading ? 'Loading...' : 'Apply'"
+            color="neutral"
+            variant="outline"
+            size="sm"
             :disabled="tradesLoading"
             @click="loadTrades"
-          >
-            {{ tradesLoading ? 'Loading...' : 'Apply' }}
-          </button>
+          />
         </div>
       </div>
 
@@ -1003,17 +981,18 @@ onBeforeUnmount(() => {
                 <td class="px-2 py-2 align-top">{{ formatNumber(trade.profit_abs) }}</td>
                 <td class="px-2 py-2 text-center align-top">{{ trade.anomaly_count }}</td>
                 <td class="px-2 py-2 text-center align-top">
-                  <button
-                    class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
+                  <UButton
+                    :label="expandedTradeId === trade.id ? 'Hide' : 'Show'"
+                    color="neutral"
+                    variant="outline"
+                    size="xs"
                     @click="toggleTradeTimeline(trade.id)"
-                  >
-                    {{ expandedTradeId === trade.id ? 'Hide' : 'Show' }}
-                  </button>
+                  />
                 </td>
               </tr>
               <tr
                 v-if="expandedTradeId === trade.id"
-                class="border-b border-surface-800 bg-surface-950/40"
+                class="border-b border-surface-800 bg-surface-100/40 dark:bg-surface-800/40"
               >
                 <td colspan="12" class="py-3 px-2">
                   <p v-if="loadingTradeTimeline[trade.id]" class="text-sm text-surface-400">
@@ -1055,35 +1034,29 @@ onBeforeUnmount(() => {
           </tbody>
         </table>
       </div>
-    </section>
+    </UCard>
 
-    <div
-      v-if="showAuditModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      @click.self="showAuditModal = false"
+    <UModal
+      :open="showAuditModal"
+      title="Audit View"
+      :ui="{ content: 'sm:max-w-[95vw]' }"
+      @update:open="showAuditModal = $event"
     >
-      <section
-        class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto"
-      >
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Audit View</h2>
-          <button
-            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
-            @click="showAuditModal = false"
-          >
-            Close
-          </button>
-        </div>
-
+      <template #body>
+        <div class="space-y-4">
         <div class="flex items-center gap-2 text-sm">
           <span class="text-surface-300">Full audit capture:</span>
-          <button
-            class="px-2 py-0.5 rounded border text-xs disabled:opacity-50 transition-colors"
-            :class="
-              auditMode?.enabled
-                ? 'border-orange-600 text-orange-300 hover:bg-orange-950/30'
-                : 'border-surface-600 text-surface-400 hover:bg-surface-800'
+          <UButton
+            :label="
+              auditModeToggling
+                ? '...'
+                : auditMode?.enabled
+                  ? 'ON (override exclude rules)'
+                  : 'OFF (exclude rules active)'
             "
+            size="xs"
+            :color="auditMode?.enabled ? 'warning' : 'neutral'"
+            variant="outline"
             :disabled="auditModeToggling || auditMode === null"
             :title="
               auditMode?.enabled
@@ -1091,41 +1064,26 @@ onBeforeUnmount(() => {
                 : 'Normal mode — exclude rules active. Click to enable full audit capture.'
             "
             @click="toggleAuditMode"
-          >
-            {{
-              auditModeToggling
-                ? '...'
-                : auditMode?.enabled
-                  ? 'ON (override exclude rules)'
-                  : 'OFF (exclude rules active)'
-            }}
-          </button>
+          />
         </div>
 
         <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
-          <input
-            v-model.number="auditHours"
-            type="number"
-            min="1"
-            max="168"
-            class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
-            placeholder="Hours"
-          />
-          <input
-            v-model.number="auditBotId"
-            type="number"
-            min="1"
-            class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+          <UInputNumber v-model="auditHours" :min="1" :max="168" size="sm" placeholder="Hours" />
+          <UInputNumber
+            v-model="auditBotId"
+            :min="1"
+            size="sm"
             placeholder="Bot ID (optional)"
           />
           <div class="col-span-2 md:col-span-3 flex items-center gap-2">
-            <button
-              class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+            <UButton
+              :label="auditLoading ? 'Loading...' : 'Refresh Audit Data'"
+              color="neutral"
+              variant="outline"
+              size="sm"
               :disabled="auditLoading"
               @click="loadAuditData"
-            >
-              {{ auditLoading ? 'Loading...' : 'Refresh Audit Data' }}
-            </button>
+            />
             <p v-if="auditSummary" class="text-xs text-surface-400">
               Total events in range: {{ auditSummary.total_events }}
             </p>
@@ -1163,20 +1121,22 @@ onBeforeUnmount(() => {
                   <td class="py-2 pe-2">{{ bucket.excluded ? 'yes' : 'no' }}</td>
                   <td class="py-2">
                     <div class="flex items-center gap-2">
-                      <button
-                        class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800 disabled:opacity-50"
+                      <UButton
+                        :label="bucket.selected ? 'Included' : 'Include'"
+                        color="neutral"
+                        variant="outline"
+                        size="xs"
                         :disabled="auditRuleSaving || bucket.selected"
                         @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'include')"
-                      >
-                        {{ bucket.selected ? 'Included' : 'Include' }}
-                      </button>
-                      <button
-                        class="px-2 py-1 rounded border border-yellow-700 text-yellow-300 text-xs hover:bg-yellow-950/30 disabled:opacity-50"
+                      />
+                      <UButton
+                        :label="bucket.excluded ? 'Excluded' : 'Exclude'"
+                        color="warning"
+                        variant="outline"
+                        size="xs"
                         :disabled="auditRuleSaving || bucket.excluded"
                         @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'exclude')"
-                      >
-                        {{ bucket.excluded ? 'Excluded' : 'Exclude' }}
-                      </button>
+                      />
                     </div>
                   </td>
                 </tr>
@@ -1207,13 +1167,14 @@ onBeforeUnmount(() => {
                   <td class="py-2 pe-2">{{ rule.logger_name || '*' }}</td>
                   <td class="py-2 pe-2">{{ rule.level || '*' }}</td>
                   <td class="py-2">
-                    <button
-                      class="px-2 py-1 rounded border border-red-700 text-red-300 text-xs hover:bg-red-950/40 disabled:opacity-50"
+                    <UButton
+                      label="Remove"
+                      color="error"
+                      variant="outline"
+                      size="xs"
                       :disabled="auditRuleSaving"
                       @click="deleteAuditRule(rule.id)"
-                    >
-                      Remove
-                    </button>
+                    />
                   </td>
                 </tr>
               </tbody>
@@ -1227,13 +1188,14 @@ onBeforeUnmount(() => {
                 permanently to free space. Future ingestions will skip them automatically.
               </p>
               <div class="flex flex-wrap items-center gap-3">
-                <button
-                  class="px-3 py-1 rounded border border-orange-700 text-orange-300 text-sm hover:bg-orange-950/30 disabled:opacity-50"
+                <UButton
+                  :label="purging ? 'Purging...' : 'Purge Excluded Logs'"
+                  color="warning"
+                  variant="outline"
+                  size="sm"
                   :disabled="purging"
                   @click="purgeExcludedLogs"
-                >
-                  {{ purging ? 'Purging...' : 'Purge Excluded Logs' }}
-                </button>
+                />
                 <span v-if="purgeResult" class="text-xs text-surface-300">
                   Done — deleted {{ purgeResult.deleted_log_events.toLocaleString() }} log events,
                   {{ purgeResult.deleted_anomaly_signatures.toLocaleString() }} anomaly signatures
@@ -1256,39 +1218,37 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-6 gap-2">
-            <input
+            <UInput
               v-model="auditMessageLogger"
-              type="text"
-              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+              size="sm"
               placeholder="Logger contains (e.g. Printer)"
             />
-            <input
+            <UInput
               v-model="auditMessageLevel"
-              type="text"
-              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+              size="sm"
               placeholder="Level (optional, e.g. INFO)"
             />
-            <input
+            <UInput
               v-model="auditMessageQuery"
-              type="text"
-              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm md:col-span-2"
+              size="sm"
+              class="md:col-span-2"
               placeholder="Message contains (e.g. skip / blocked)"
             />
-            <input
-              v-model.number="auditMessageLimit"
-              type="number"
-              min="1"
-              max="500"
-              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+            <UInputNumber
+              v-model="auditMessageLimit"
+              :min="1"
+              :max="500"
+              size="sm"
               placeholder="Limit"
             />
-            <button
-              class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+            <UButton
+              :label="auditMessagesLoading ? 'Loading...' : 'Search Messages'"
+              color="neutral"
+              variant="outline"
+              size="sm"
               :disabled="auditMessagesLoading"
               @click="loadAuditMessages"
-            >
-              {{ auditMessagesLoading ? 'Loading...' : 'Search Messages' }}
-            </button>
+            />
           </div>
 
           <p class="text-xs text-surface-400">
@@ -1318,59 +1278,48 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </section>
-      </section>
-    </div>
-
-    <div
-      v-if="showRunsModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      @click.self="showRunsModal = false"
-    >
-      <section
-        class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto"
-      >
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Recent Ingestion Runs</h2>
-          <button
-            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
-            @click="showRunsModal = false"
-          >
-            Close
-          </button>
         </div>
+      </template>
+    </UModal>
 
+    <UModal
+      :open="showRunsModal"
+      title="Recent Ingestion Runs"
+      :ui="{ content: 'sm:max-w-[95vw]' }"
+      @update:open="showRunsModal = $event"
+    >
+      <template #body>
+        <div class="space-y-4">
         <section class="rounded border border-surface-700 p-4">
           <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
             <h3 class="font-semibold">Recent Ingestion Runs</h3>
             <div class="flex flex-wrap items-center gap-2">
               <label class="text-sm text-surface-300">Days</label>
-              <input
-                v-model.number="runHistoryDays"
-                type="number"
-                min="0"
-                max="3650"
-                class="w-20 px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+              <UInputNumber
+                v-model="runHistoryDays"
+                :min="0"
+                :max="3650"
+                size="sm"
+                class="w-24"
                 placeholder="0=all"
               />
-              <button
-                class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
+              <UButton
+                label="Apply"
+                color="neutral"
+                variant="outline"
+                size="sm"
                 @click="loadRunHistory"
-              >
-                Apply
-              </button>
-              <label
-                class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap ms-2"
-              >
-                <input v-model="showFailedOnly" type="checkbox" class="accent-primary" />
-                Failed only
-              </label>
-              <button
-                class="px-3 py-1 rounded border border-red-700 text-red-300 text-sm hover:bg-red-950/30 disabled:opacity-50 ms-2"
+              />
+              <UCheckbox v-model="showFailedOnly" label="Failed only" class="ms-2" />
+              <UButton
+                :label="flushingRuns ? 'Flushing...' : 'Flush All Runs'"
+                color="error"
+                variant="outline"
+                size="sm"
+                class="ms-2"
                 :disabled="flushingRuns"
                 @click="flushIngestionRuns"
-              >
-                {{ flushingRuns ? 'Flushing...' : 'Flush All Runs' }}
-              </button>
+              />
             </div>
           </div>
           <div v-if="!visibleRunHistory.length" class="text-sm text-surface-400">
@@ -1410,17 +1359,18 @@ onBeforeUnmount(() => {
                     </td>
                     <td class="py-2 pe-2">{{ run.actor || '—' }}</td>
                     <td class="py-2">
-                      <button
-                        class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
+                      <UButton
+                        :label="expandedRunId === run.id ? 'Hide' : 'Show'"
+                        color="neutral"
+                        variant="outline"
+                        size="xs"
                         @click="toggleRunDetails(run.id)"
-                      >
-                        {{ expandedRunId === run.id ? 'Hide' : 'Show' }}
-                      </button>
+                      />
                     </td>
                   </tr>
                   <tr
                     v-if="expandedRunId === run.id"
-                    class="border-b border-surface-800 bg-surface-950/40"
+                    class="border-b border-surface-800 bg-surface-100/40 dark:bg-surface-800/40"
                   >
                     <td colspan="8" class="py-3 px-2">
                       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
@@ -1502,45 +1452,36 @@ onBeforeUnmount(() => {
             <li v-for="(entry, index) in runErrors" :key="`${index}-${entry}`">{{ entry }}</li>
           </ul>
         </section>
-      </section>
-    </div>
-
-    <div
-      v-if="showAnomaliesModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      @click.self="showAnomaliesModal = false"
-    >
-      <section
-        class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto"
-      >
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Anomaly Trends + Samples</h2>
-          <button
-            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
-            @click="showAnomaliesModal = false"
-          >
-            Close
-          </button>
         </div>
+      </template>
+    </UModal>
 
+    <UModal
+      :open="showAnomaliesModal"
+      title="Anomaly Trends + Samples"
+      :ui="{ content: 'sm:max-w-[95vw]' }"
+      @update:open="showAnomaliesModal = $event"
+    >
+      <template #body>
         <section class="rounded border border-surface-700 p-4 space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-semibold">Anomaly Trends + Samples</h3>
             <div class="flex items-center gap-2">
-              <input
-                v-model.number="anomaliesDays"
-                type="number"
-                min="1"
-                max="3650"
-                class="w-20 px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+              <UInputNumber
+                v-model="anomaliesDays"
+                :min="1"
+                :max="3650"
+                size="sm"
+                class="w-24"
               />
-              <button
-                class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+              <UButton
+                :label="anomaliesLoading ? 'Loading...' : 'Refresh'"
+                color="neutral"
+                variant="outline"
+                size="sm"
                 :disabled="anomaliesLoading"
                 @click="loadAnomalies"
-              >
-                {{ anomaliesLoading ? 'Loading...' : 'Refresh' }}
-              </button>
+              />
             </div>
           </div>
 
@@ -1571,12 +1512,13 @@ onBeforeUnmount(() => {
                     <td class="py-2 pe-2">{{ item.occurrences }}</td>
                     <td class="py-2 pe-2">{{ item.signature }}</td>
                     <td class="py-2">
-                      <button
-                        class="px-2 py-1 rounded border border-surface-600 text-xs hover:bg-surface-800"
+                      <UButton
+                        :label="selectedAnomalyHash === item.signature_hash ? 'Selected' : 'Show'"
+                        color="neutral"
+                        variant="outline"
+                        size="xs"
                         @click="loadAnomalyDetail(item.signature_hash)"
-                      >
-                        {{ selectedAnomalyHash === item.signature_hash ? 'Selected' : 'Show' }}
-                      </button>
+                      />
                     </td>
                   </tr>
                 </tbody>
@@ -1627,29 +1569,17 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </section>
-      </section>
-    </div>
+      </template>
+    </UModal>
 
-    <div
-      v-if="showCheckpointsModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      @click.self="showCheckpointsModal = false"
+    <UModal
+      :open="showCheckpointsModal"
+      title="Bot Checkpoints"
+      :ui="{ content: 'sm:max-w-[95vw]' }"
+      @update:open="showCheckpointsModal = $event"
     >
-      <section
-        class="w-[98vw] max-w-[98vw] rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[92vh] overflow-y-auto"
-      >
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">Bot Checkpoints</h2>
-          <button
-            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
-            @click="showCheckpointsModal = false"
-          >
-            Close
-          </button>
-        </div>
-
+      <template #body>
         <section class="rounded border border-surface-700 p-4">
-          <h3 class="font-semibold mb-2">Bot Checkpoints</h3>
           <div v-if="!summary?.checkpoints?.length" class="text-sm text-surface-400">
             No checkpoints yet.
           </div>
@@ -1691,27 +1621,17 @@ onBeforeUnmount(() => {
             </table>
           </div>
         </section>
-      </section>
-    </div>
+      </template>
+    </UModal>
 
-    <div
-      v-if="showSettingsModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      @click.self="showSettingsModal = false"
+    <UModal
+      :open="showSettingsModal"
+      title="DWH Settings"
+      :ui="{ content: 'sm:max-w-4xl' }"
+      @update:open="showSettingsModal = $event"
     >
-      <section
-        class="w-full max-w-4xl rounded border border-surface-700 bg-surface-900 p-4 space-y-4 max-h-[90vh] overflow-y-auto"
-      >
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">DWH Settings</h2>
-          <button
-            class="px-3 py-1 rounded border border-surface-600 text-sm hover:bg-surface-800"
-            @click="showSettingsModal = false"
-          >
-            Close
-          </button>
-        </div>
-
+      <template #body>
+        <div class="space-y-4">
         <section class="rounded border border-surface-700 p-3 space-y-2">
           <h3 class="font-semibold">Alerting</h3>
           <p v-if="alertLoading" class="text-sm text-surface-400">Loading alerting status...</p>
@@ -1783,60 +1703,59 @@ onBeforeUnmount(() => {
             </span>
           </p>
           <div class="flex flex-wrap items-center gap-3 pt-1">
-            <label class="flex items-center gap-2 text-sm text-surface-300 whitespace-nowrap">
-              <input
-                v-model="runAsyncMode"
-                type="checkbox"
-                class="accent-primary"
-                :disabled="running"
-              />
-              Run async before start
-            </label>
-            <button
-              class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+            <UCheckbox
+              v-model="runAsyncMode"
+              label="Run async before start"
+              :disabled="running"
+            />
+            <UButton
+              label="Refresh"
+              color="neutral"
+              variant="outline"
+              size="sm"
               :disabled="loading || running"
               @click="refreshAllData"
-            >
-              Refresh
-            </button>
-            <button
-              class="px-3 py-2 rounded bg-primary text-primary-contrast text-sm disabled:opacity-50"
+            />
+            <UButton
+              :label="running ? 'Running...' : 'Run Ingestion Now'"
+              size="sm"
               :disabled="running"
               @click="runIngestion"
-            >
-              {{ running ? 'Running...' : 'Run Ingestion Now' }}
-            </button>
-            <button
-              class="px-3 py-2 rounded border border-yellow-700 text-yellow-300 text-sm hover:bg-yellow-950/30 disabled:opacity-50"
+            />
+            <UButton
+              :label="unstickRunning ? 'Unsticking...' : 'Unstick Stale Ingestion'"
+              color="warning"
+              variant="outline"
+              size="sm"
               :disabled="unstickRunning"
               @click="unstickIngestion"
-            >
-              {{ unstickRunning ? 'Unsticking...' : 'Unstick Stale Ingestion' }}
-            </button>
-            <button
-              class="px-3 py-2 rounded border border-red-700 text-red-300 text-sm hover:bg-red-950/30 disabled:opacity-50"
+            />
+            <UButton
+              :label="unstickRunning ? 'Unsticking...' : 'Force Unstick'"
+              color="error"
+              variant="outline"
+              size="sm"
               :disabled="unstickRunning"
               @click="forceUnstickIngestion"
-            >
-              {{ unstickRunning ? 'Unsticking...' : 'Force Unstick' }}
-            </button>
+            />
           </div>
           <div class="flex flex-wrap items-center gap-2 pt-1">
             <label class="text-sm text-surface-300">Global log fetch timeout (sec)</label>
-            <input
-              v-model.number="ingestionTimeoutSeconds"
-              type="number"
-              min="5"
-              max="300"
-              class="w-24 px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+            <UInputNumber
+              v-model="ingestionTimeoutSeconds"
+              :min="5"
+              :max="300"
+              size="sm"
+              class="w-28"
             />
-            <button
-              class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+            <UButton
+              :label="ingestionConfigSaving ? 'Saving...' : 'Save Timeout'"
+              color="neutral"
+              variant="outline"
+              size="sm"
               :disabled="ingestionConfigSaving || running"
               @click="saveIngestionConfig"
-            >
-              {{ ingestionConfigSaving ? 'Saving...' : 'Save Timeout' }}
-            </button>
+            />
           </div>
           <p class="text-xs text-surface-400">
             Applies globally to all VPS log fetch operations for ingestion.
@@ -1847,20 +1766,21 @@ onBeforeUnmount(() => {
         <section class="rounded border border-surface-700 p-3 space-y-2">
           <h3 class="font-semibold">Retention</h3>
           <div class="flex flex-wrap items-center gap-2">
-            <input
-              v-model.number="retentionDays"
-              type="number"
-              min="1"
-              max="3650"
-              class="w-24 px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+            <UInputNumber
+              v-model="retentionDays"
+              :min="1"
+              :max="3650"
+              size="sm"
+              class="w-28"
             />
-            <button
-              class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+            <UButton
+              :label="retentionRunning ? 'Cleaning...' : 'Run Cleanup'"
+              color="neutral"
+              variant="outline"
+              size="sm"
               :disabled="retentionRunning"
               @click="runRetention"
-            >
-              {{ retentionRunning ? 'Cleaning...' : 'Run Cleanup' }}
-            </button>
+            />
           </div>
           <p class="text-xs text-surface-400">Delete DWH rows older than selected days.</p>
           <p v-if="retentionConfig" class="text-xs text-surface-400">
@@ -1872,37 +1792,35 @@ onBeforeUnmount(() => {
         <section class="rounded border border-surface-700 p-3 space-y-2">
           <h3 class="font-semibold">Rollups + Compaction</h3>
           <div class="grid grid-cols-1 md:grid-cols-4 gap-2">
-            <input
-              v-model.number="rollupDays"
-              type="number"
-              min="1"
-              max="3650"
-              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+            <UInputNumber
+              v-model="rollupDays"
+              :min="1"
+              :max="3650"
+              size="sm"
               placeholder="Rollup days"
             />
-            <input
-              v-model.number="compactLogDays"
-              type="number"
-              min="1"
-              max="3650"
-              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+            <UInputNumber
+              v-model="compactLogDays"
+              :min="1"
+              :max="3650"
+              size="sm"
               placeholder="Compact log days"
             />
-            <input
-              v-model.number="compactMessageMaxLen"
-              type="number"
-              min="50"
-              max="2000"
-              class="px-2 py-1 rounded bg-surface-800 border border-surface-600 text-sm"
+            <UInputNumber
+              v-model="compactMessageMaxLen"
+              :min="50"
+              :max="2000"
+              size="sm"
               placeholder="Max message len"
             />
-            <button
-              class="px-3 py-2 rounded border border-surface-600 text-sm hover:bg-surface-800 disabled:opacity-50"
+            <UButton
+              :label="rollupCompactionRunning ? 'Running...' : 'Run Rollup + Compaction'"
+              color="neutral"
+              variant="outline"
+              size="sm"
               :disabled="rollupCompactionRunning"
               @click="runRollupCompaction"
-            >
-              {{ rollupCompactionRunning ? 'Running...' : 'Run Rollup + Compaction' }}
-            </button>
+            />
           </div>
           <p v-if="rollupCompactionConfig" class="text-xs text-surface-400">
             Auto: {{ rollupCompactionConfig.enabled ? 'on' : 'off' }} · rollup
@@ -1914,7 +1832,8 @@ onBeforeUnmount(() => {
             Rollups store hourly anomaly counts; compaction truncates older long log messages.
           </p>
         </section>
-      </section>
-    </div>
+        </div>
+      </template>
+    </UModal>
   </main>
 </template>

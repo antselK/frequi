@@ -23,14 +23,14 @@ const sortKey = ref<'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker
 );
 const sortDirection = ref<'asc' | 'desc'>('asc');
 
-function severityByStatus(status: string) {
+function colorByStatus(status: string) {
   if (status === 'online') {
     return 'success';
   }
   if (status === 'offline') {
-    return 'danger';
+    return 'error';
   }
-  return 'warn';
+  return 'warning';
 }
 
 function dockerSortValue(item: VpsServer): string {
@@ -149,109 +149,105 @@ const sortedItems = computed(() => {
           <td class="p-2 align-middle">{{ item.ssh_user }}</td>
           <td class="p-2 align-middle">{{ item.ssh_port }}</td>
           <td class="p-2 align-middle">
-            <Tag :value="item.status" :severity="severityByStatus(item.status)" />
+            <UBadge :label="item.status" :color="colorByStatus(item.status)" variant="subtle" />
           </td>
           <td class="p-2 align-middle">
-            <Tag v-if="item.docker_available === true" value="Yes" severity="success" />
-            <Tag v-else-if="item.docker_available === false" value="No" severity="danger" />
-            <Tag v-else value="Unknown" severity="warn" />
+            <UBadge
+              v-if="item.docker_available === true"
+              label="Yes"
+              color="success"
+              variant="subtle"
+            />
+            <UBadge
+              v-else-if="item.docker_available === false"
+              label="No"
+              color="error"
+              variant="subtle"
+            />
+            <UBadge v-else label="Unknown" color="warning" variant="subtle" />
           </td>
           <td class="p-2 align-middle">{{ item.last_error || '' }}</td>
           <td class="p-2 align-middle">
             <div class="flex flex-wrap gap-1">
-              <Button
-                size="small"
-                severity="secondary"
-                outlined
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                square
+                icon="i-mdi-lan-connect"
                 title="Test SSH connection"
                 @click="emit('test', item)"
-              >
-                <template #icon>
-                  <i-mdi-lan-connect />
-                </template>
-              </Button>
-              <Button
-                size="small"
-                severity="secondary"
-                outlined
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                square
+                icon="i-mdi-docker"
                 title="Check Docker availability"
                 @click="emit('checkDocker', item)"
-              >
-                <template #icon>
-                  <i-mdi-docker />
-                </template>
-              </Button>
-              <Button
-                size="small"
-                severity="secondary"
-                outlined
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                square
+                icon="i-mdi-magnify"
                 title="Discover running containers"
                 @click="emit('discover', item)"
-              >
-                <template #icon>
-                  <i-mdi-magnify />
-                </template>
-              </Button>
-              <Button
-                size="small"
-                severity="success"
-                outlined
+              />
+              <UButton
+                size="sm"
+                color="success"
+                variant="outline"
+                square
+                icon="i-mdi-play"
                 title="Start discovered containers"
                 @click="emit('startAll', item)"
-              >
-                <template #icon>
-                  <i-mdi-play />
-                </template>
-              </Button>
-              <Button
-                size="small"
-                severity="secondary"
-                outlined
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                square
+                icon="i-mdi-restart"
                 title="Restart discovered containers"
                 @click="emit('restartAll', item)"
-              >
-                <template #icon>
-                  <i-mdi-restart />
-                </template>
-              </Button>
-              <Button
-                size="small"
-                severity="danger"
-                outlined
+              />
+              <UButton
+                size="sm"
+                color="error"
+                variant="outline"
+                square
+                icon="i-mdi-stop"
                 title="Stop discovered containers"
                 @click="emit('stopAll', item)"
-              >
-                <template #icon>
-                  <i-mdi-stop />
-                </template>
-              </Button>
-              <Button size="small" title="Show containers" @click="emit('showContainers', item)">
-                <template #icon>
-                  <i-mdi-view-list />
-                </template>
-              </Button>
-              <Button
-                size="small"
-                severity="secondary"
-                outlined
+              />
+              <UButton
+                size="sm"
+                square
+                icon="i-mdi-view-list"
+                title="Show containers"
+                @click="emit('showContainers', item)"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                square
+                icon="i-mdi-pencil"
                 title="Edit VPS"
                 @click="emit('edit', item)"
-              >
-                <template #icon>
-                  <i-mdi-pencil />
-                </template>
-              </Button>
-              <Button
-                size="small"
-                severity="danger"
-                outlined
+              />
+              <UButton
+                size="sm"
+                color="error"
+                variant="outline"
+                square
+                icon="i-mdi-delete"
                 title="Delete VPS"
                 @click="emit('delete', item)"
-              >
-                <template #icon>
-                  <i-mdi-delete />
-                </template>
-              </Button>
+              />
             </div>
           </td>
         </tr>

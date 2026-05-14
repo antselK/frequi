@@ -179,114 +179,119 @@ function cancel() {
 </script>
 
 <template>
-  <Dialog
-    :visible="visible"
-    modal
-    header="Reports Admin"
-    class="w-full max-w-2xl"
-    @update:visible="emit('update:visible', $event)"
+  <UModal
+    :open="visible"
+    title="Reports Admin"
+    :ui="{ content: 'sm:max-w-2xl' }"
+    @update:open="emit('update:visible', $event)"
   >
-    <div v-if="loading" class="flex justify-center py-8">
-      <ProgressSpinner style="width: 36px; height: 36px" />
-    </div>
+    <template #body>
+      <div v-if="loading" class="flex justify-center py-8">
+        <UIcon name="i-lucide-loader-circle" class="animate-spin size-9 text-primary-500" />
+      </div>
 
-    <div v-else class="flex flex-col gap-6">
-      <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
+      <div v-else class="flex flex-col gap-6">
+        <UAlert
+          v-if="errorMessage"
+          color="error"
+          variant="subtle"
+          :title="errorMessage"
+        />
 
-      <p class="text-sm text-surface-500">
-        Drag the <strong>↑ ↓</strong> buttons to reorder categories and reports. Use the eye button
-        to hide reports from the navigation (hidden reports can be restored here at any time).
-      </p>
+        <p class="text-sm text-surface-500">
+          Drag the <strong>↑ ↓</strong> buttons to reorder categories and reports. Use the eye button
+          to hide reports from the navigation (hidden reports can be restored here at any time).
+        </p>
 
-      <div
-        v-for="(cat, catIndex) in orderedCategories"
-        :key="cat.value"
-        class="border border-surface-200 dark:border-surface-700 rounded-lg"
-      >
-        <!-- Category header row -->
         <div
-          class="flex items-center justify-between gap-2 px-4 py-2 bg-surface-100 dark:bg-surface-800 rounded-t-lg"
+          v-for="(cat, catIndex) in orderedCategories"
+          :key="cat.value"
+          class="border border-surface-200 dark:border-surface-700 rounded-lg"
         >
-          <span class="font-semibold text-sm">{{ cat.label }}</span>
-          <div class="flex gap-1">
-            <Button
-              size="small"
-              severity="secondary"
-              text
-              title="Move category up"
-              :disabled="catIndex === 0"
-              @click="moveCategoryUp(catIndex)"
-            >
-              <template #icon><i-mdi-arrow-up /></template>
-            </Button>
-            <Button
-              size="small"
-              severity="secondary"
-              text
-              title="Move category down"
-              :disabled="catIndex === orderedCategories.length - 1"
-              @click="moveCategoryDown(catIndex)"
-            >
-              <template #icon><i-mdi-arrow-down /></template>
-            </Button>
-          </div>
-        </div>
-
-        <!-- Subcategory rows -->
-        <div class="divide-y divide-surface-100 dark:divide-surface-700">
+          <!-- Category header row -->
           <div
-            v-for="(subValue, subIndex) in workingSubcategorySettings[cat.value]?.order ?? []"
-            :key="subValue"
-            class="flex items-center justify-between gap-2 px-4 py-2"
-            :class="isHidden(cat.value, subValue) ? 'opacity-40' : ''"
+            class="flex items-center justify-between gap-2 px-4 py-2 bg-surface-100 dark:bg-surface-800 rounded-t-lg"
           >
-            <span class="text-sm truncate flex-1">
-              {{ getSubcategoryDef(cat.value, subValue)?.label ?? subValue }}
-            </span>
-            <div class="flex items-center gap-1 shrink-0">
-              <Button
-                size="small"
-                severity="secondary"
-                text
-                title="Move up"
-                :disabled="subIndex === 0"
-                @click="moveSubUp(cat.value, subIndex)"
-              >
-                <template #icon><i-mdi-arrow-up /></template>
-              </Button>
-              <Button
-                size="small"
-                severity="secondary"
-                text
-                title="Move down"
-                :disabled="
-                  subIndex === (workingSubcategorySettings[cat.value]?.order.length ?? 0) - 1
-                "
-                @click="moveSubDown(cat.value, subIndex)"
-              >
-                <template #icon><i-mdi-arrow-down /></template>
-              </Button>
-              <Button
-                size="small"
-                severity="secondary"
-                text
-                :title="isHidden(cat.value, subValue) ? 'Show in nav' : 'Hide from nav'"
-                @click="toggleHidden(cat.value, subValue)"
-              >
-                <template #icon>
-                  <i-mdi-eye-off v-if="isHidden(cat.value, subValue)" />
-                  <i-mdi-eye v-else />
-                </template>
-              </Button>
+            <span class="font-semibold text-sm">{{ cat.label }}</span>
+            <div class="flex gap-1">
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                square
+                icon="i-mdi-arrow-up"
+                title="Move category up"
+                :disabled="catIndex === 0"
+                @click="moveCategoryUp(catIndex)"
+              />
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="ghost"
+                square
+                icon="i-mdi-arrow-down"
+                title="Move category down"
+                :disabled="catIndex === orderedCategories.length - 1"
+                @click="moveCategoryDown(catIndex)"
+              />
+            </div>
+          </div>
+
+          <!-- Subcategory rows -->
+          <div class="divide-y divide-surface-100 dark:divide-surface-700">
+            <div
+              v-for="(subValue, subIndex) in workingSubcategorySettings[cat.value]?.order ?? []"
+              :key="subValue"
+              class="flex items-center justify-between gap-2 px-4 py-2"
+              :class="isHidden(cat.value, subValue) ? 'opacity-40' : ''"
+            >
+              <span class="text-sm truncate flex-1">
+                {{ getSubcategoryDef(cat.value, subValue)?.label ?? subValue }}
+              </span>
+              <div class="flex items-center gap-1 shrink-0">
+                <UButton
+                  size="sm"
+                  color="neutral"
+                  variant="ghost"
+                  square
+                  icon="i-mdi-arrow-up"
+                  title="Move up"
+                  :disabled="subIndex === 0"
+                  @click="moveSubUp(cat.value, subIndex)"
+                />
+                <UButton
+                  size="sm"
+                  color="neutral"
+                  variant="ghost"
+                  square
+                  icon="i-mdi-arrow-down"
+                  title="Move down"
+                  :disabled="
+                    subIndex === (workingSubcategorySettings[cat.value]?.order.length ?? 0) - 1
+                  "
+                  @click="moveSubDown(cat.value, subIndex)"
+                />
+                <UButton
+                  size="sm"
+                  color="neutral"
+                  variant="ghost"
+                  square
+                  :icon="isHidden(cat.value, subValue) ? 'i-mdi-eye-off' : 'i-mdi-eye'"
+                  :title="isHidden(cat.value, subValue) ? 'Show in nav' : 'Hide from nav'"
+                  @click="toggleHidden(cat.value, subValue)"
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <template #footer>
-      <Button label="Cancel" severity="secondary" @click="cancel" />
-      <Button label="Save" :loading="saving" :disabled="loading" @click="save" />
+      <div class="flex justify-end gap-2 w-full">
+        <UButton label="Cancel" color="neutral" variant="outline" @click="cancel" />
+        <UButton label="Save" :loading="saving" :disabled="loading" @click="save" />
+      </div>
     </template>
-  </Dialog>
+  </UModal>
 </template>

@@ -38,12 +38,12 @@ let statusEventSource: EventSource | null = null;
 let pollTimer: number | null = null;
 let isStreaming = false;
 
-function permissionSeverity(permission: string) {
+function permissionColor(permission: string) {
   if (permission.endsWith(':admin')) {
-    return 'danger';
+    return 'error';
   }
   if (permission.endsWith(':manage')) {
-    return 'warn';
+    return 'warning';
   }
   return 'info';
 }
@@ -190,10 +190,10 @@ async function loadServers() {
     await vpsStore.loadServers();
   } catch (error) {
     toast.add({
-      severity: 'error',
-      summary: 'Load Failed',
-      detail: String(error),
-      life: 5000,
+      color: 'error',
+      title: 'Load Failed',
+      description: String(error),
+      duration: 5000,
     });
   }
 }
@@ -203,10 +203,10 @@ async function loadAudit() {
     await vpsStore.loadAudit(100);
   } catch (error) {
     toast.add({
-      severity: 'error',
-      summary: 'Audit Load Failed',
-      detail: String(error),
-      life: 5000,
+      color: 'error',
+      title: 'Audit Load Failed',
+      description: String(error),
+      duration: 5000,
     });
   }
 }
@@ -291,10 +291,10 @@ async function handleActorChange(newActorValue: string) {
 
 function handleActionToast(summary: string, message: string, ok = true) {
   toast.add({
-    severity: ok ? 'success' : 'warn',
-    summary,
-    detail: message,
-    life: 5000,
+    color: ok ? 'success' : 'warning',
+    title: summary,
+    description: message,
+    duration: 5000,
   });
 }
 
@@ -560,30 +560,35 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="mx-auto mt-3 p-4 w-[98vw] max-w-[98vw] flex flex-col gap-4">
-    <Card>
-      <template #title>
+    <UCard>
+      <template #header>
         <div class="flex flex-col gap-2">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <span>VPS Manager</span>
-            <div class="flex items-center gap-2">
-              <Select
+            <span class="font-semibold">VPS Manager</span>
+            <div class="flex items-center gap-2 flex-wrap">
+              <USelect
                 :model-value="selectedActor"
-                :options="actorOptions"
-                size="small"
+                :items="actorOptions"
+                size="sm"
                 class="min-w-36"
                 @update:model-value="handleActorChange"
               />
-              <Tag
+              <UBadge
                 v-for="permission in actorPermissionBadges"
                 :key="permission"
-                :value="permission"
-                :severity="permissionSeverity(permission)"
+                :label="permission"
+                :color="permissionColor(permission)"
+                variant="subtle"
               />
-              <Tag :value="streamStatusText" :severity="streamConnected ? 'success' : 'warn'" />
-              <Button
+              <UBadge
+                :label="streamStatusText"
+                :color="streamConnected ? 'success' : 'warning'"
+                variant="subtle"
+              />
+              <UButton
                 label="Refresh"
-                severity="secondary"
-                outlined
+                color="neutral"
+                variant="outline"
                 @click="
                   () => {
                     loadServers();
@@ -591,254 +596,236 @@ onBeforeUnmount(() => {
                   }
                 "
               />
-              <Button label="Add VPS" @click="showOnboardDialog = true" />
+              <UButton label="Add VPS" @click="showOnboardDialog = true" />
             </div>
           </div>
           <div class="flex flex-wrap items-center gap-2 text-sm">
             <span>Legend:</span>
-            <Tag value="read" severity="info" />
-            <Tag value="manage" severity="warn" />
-            <Tag value="admin" severity="danger" />
+            <UBadge label="read" color="info" variant="subtle" />
+            <UBadge label="manage" color="warning" variant="subtle" />
+            <UBadge label="admin" color="error" variant="subtle" />
           </div>
         </div>
       </template>
-      <template #content>
-        <VpsTable
-          :items="vpsStore.servers"
-          :loading="vpsStore.loadingServers || vpsStore.actionLoading"
-          @test="handleTest"
-          @check-docker="handleCheckDocker"
-          @discover="handleDiscover"
-          @start-all="handleStartAll"
-          @restart-all="handleRestartAll"
-          @stop-all="handleStopAll"
-          @show-containers="handleShowContainers"
-          @edit="handleEdit"
-          @delete="handleDelete"
-        />
-      </template>
-    </Card>
+      <VpsTable
+        :items="vpsStore.servers"
+        :loading="vpsStore.loadingServers || vpsStore.actionLoading"
+        @test="handleTest"
+        @check-docker="handleCheckDocker"
+        @discover="handleDiscover"
+        @start-all="handleStartAll"
+        @restart-all="handleRestartAll"
+        @stop-all="handleStopAll"
+        @show-containers="handleShowContainers"
+        @edit="handleEdit"
+        @delete="handleDelete"
+      />
+    </UCard>
 
-    <Card>
-      <template #title>
+    <UCard>
+      <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <span>Recent Audit</span>
+          <span class="font-semibold">Recent Audit</span>
           <div class="flex flex-wrap items-center gap-2">
-            <Select
+            <USelect
               v-model="selectedAuditTime"
-              :options="auditTimeOptions"
-              size="small"
+              :items="auditTimeOptions"
+              size="sm"
               class="min-w-40"
             />
-            <Select
+            <USelect
               v-model="selectedAuditActor"
-              :options="auditActorOptions"
-              size="small"
+              :items="auditActorOptions"
+              size="sm"
               class="min-w-36"
             />
-            <Select
+            <USelect
               v-model="selectedAuditResult"
-              :options="auditResultOptions"
-              size="small"
+              :items="auditResultOptions"
+              size="sm"
               class="min-w-36"
             />
-            <Select
+            <USelect
               v-model="selectedAuditAction"
-              :options="auditActionOptions"
-              size="small"
+              :items="auditActionOptions"
+              size="sm"
               class="min-w-44"
             />
-            <Select
+            <USelect
               v-model="selectedAuditTargetId"
-              :options="auditTargetIdOptions"
-              size="small"
+              :items="auditTargetIdOptions"
+              size="sm"
               class="min-w-44"
             />
-            <Button
+            <UButton
               label="Refresh Audit"
-              size="small"
-              severity="secondary"
-              outlined
+              size="sm"
+              color="neutral"
+              variant="outline"
               :loading="vpsStore.loadingAudit"
               @click="loadAudit"
             />
           </div>
         </div>
       </template>
-      <template #content>
-        <DataTable
-          :value="filteredAuditEntries"
-          data-key="id"
-          size="small"
-          show-gridlines
-          scrollable
-          scroll-height="24rem"
-          table-style="table-layout: fixed; width: 100%"
-          class="text-sm"
-          :loading="vpsStore.loadingAudit"
-        >
-          <Column
-            header="Time"
-            header-style="width: 11rem"
-            body-class="align-top whitespace-normal break-words"
-          >
-            <template #body="slotProps">
-              {{ timestampmsWithTimezone(new Date(slotProps.data.created_at)) }}
-            </template>
-          </Column>
-          <Column
-            field="actor"
-            header="Actor"
-            header-style="width: 6rem"
-            body-class="align-top whitespace-nowrap"
-          />
-          <Column
-            field="source_ip"
-            header="Source IP"
-            header-style="width: 7rem"
-            body-class="align-top whitespace-nowrap"
-          />
-          <Column
-            field="action"
-            header="Action"
-            header-style="width: 12rem"
-            body-class="align-top whitespace-normal break-words"
-          />
-          <Column
-            field="target_type"
-            header="Target"
-            header-style="width: 5rem"
-            body-class="align-top whitespace-nowrap"
-          />
-          <Column
-            header="Target ID"
-            header-style="width: 8rem"
-            body-class="align-top whitespace-normal break-words"
-          >
-            <template #body="slotProps">
-              {{ resolveAuditTarget(slotProps.data) }}
-            </template>
-          </Column>
-          <Column header="Result" header-style="width: 6rem" body-class="align-top text-center">
-            <template #body="slotProps">
-              <Tag
-                :value="slotProps.data.result"
-                :severity="slotProps.data.result === 'success' ? 'success' : 'danger'"
-              />
-            </template>
-          </Column>
-          <Column
-            field="message"
-            header="Message"
-            body-class="align-top whitespace-normal break-words"
-          >
-            <template #body="slotProps">
-              <span class="block whitespace-normal break-words">{{
-                slotProps.data.message || '—'
-              }}</span>
-            </template>
-          </Column>
-        </DataTable>
-      </template>
-    </Card>
+      <div class="overflow-auto border border-surface-500 rounded-sm max-h-96">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead class="bg-surface-100 dark:bg-surface-800 sticky top-0">
+            <tr class="border-b border-surface-500">
+              <th class="p-2 w-44 font-semibold">Time</th>
+              <th class="p-2 w-24 font-semibold">Actor</th>
+              <th class="p-2 w-28 font-semibold">Source IP</th>
+              <th class="p-2 w-48 font-semibold">Action</th>
+              <th class="p-2 w-20 font-semibold">Target</th>
+              <th class="p-2 w-32 font-semibold">Target ID</th>
+              <th class="p-2 w-24 font-semibold text-center">Result</th>
+              <th class="p-2 font-semibold">Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="entry in filteredAuditEntries"
+              :key="entry.id"
+              class="border-b border-surface-500"
+            >
+              <td class="p-2 align-top whitespace-normal break-words">
+                {{ timestampmsWithTimezone(new Date(entry.created_at)) }}
+              </td>
+              <td class="p-2 align-top whitespace-nowrap">{{ entry.actor }}</td>
+              <td class="p-2 align-top whitespace-nowrap">{{ entry.source_ip }}</td>
+              <td class="p-2 align-top whitespace-normal break-words">{{ entry.action }}</td>
+              <td class="p-2 align-top whitespace-nowrap">{{ entry.target_type }}</td>
+              <td class="p-2 align-top whitespace-normal break-words">
+                {{ resolveAuditTarget(entry) }}
+              </td>
+              <td class="p-2 align-top text-center">
+                <UBadge
+                  :label="entry.result"
+                  :color="entry.result === 'success' ? 'success' : 'error'"
+                  variant="subtle"
+                />
+              </td>
+              <td class="p-2 align-top whitespace-normal break-words">
+                {{ entry.message || '—' }}
+              </td>
+            </tr>
+            <tr v-if="vpsStore.loadingAudit && !filteredAuditEntries.length">
+              <td colspan="8" class="p-3 text-center text-surface-400">Loading...</td>
+            </tr>
+            <tr v-else-if="!filteredAuditEntries.length">
+              <td colspan="8" class="p-3 text-center text-surface-400">No audit entries</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </UCard>
 
-    <Card v-if="selectedVpsId">
-      <template #title>
-        <div class="text-left">Containers — {{ selectedVps?.name }}</div>
+    <UCard v-if="selectedVpsId">
+      <template #header>
+        <div class="font-semibold">Containers — {{ selectedVps?.name }}</div>
       </template>
-      <template #content>
-        <DataTable
-          :value="selectedContainers"
-          data-key="id"
-          size="small"
-          show-gridlines
-          :loading="vpsStore.loadingContainers || vpsStore.actionLoading"
-        >
-          <Column field="container_name" header="Container" />
-          <Column field="image" header="Image" />
-          <Column field="status" header="Status" />
-          <Column header="Freqtrade">
-            <template #body="slotProps">
-              <Tag
-                :value="slotProps.data.is_freqtrade ? 'Yes' : 'No'"
-                :severity="slotProps.data.is_freqtrade ? 'success' : 'secondary'"
-              />
-            </template>
-          </Column>
-          <Column header="Mismatch">
-            <template #body="slotProps">
-              <Tag
-                :value="slotProps.data.config_mismatch ? 'Mismatch' : 'No mismatch'"
-                :severity="slotProps.data.config_mismatch ? 'warn' : 'success'"
-              />
-            </template>
-          </Column>
-          <Column header="Enabled">
-            <template #body="slotProps">
-              <Tag
-                :value="slotProps.data.enabled ? 'Active' : 'Disabled'"
-                :severity="slotProps.data.enabled ? 'success' : 'secondary'"
-              />
-            </template>
-          </Column>
-          <Column header="Actions" style="min-width: 240px">
-            <template #body="slotProps">
-              <div class="flex gap-2 flex-wrap">
-                <Button
-                  label="Start"
-                  size="small"
-                  severity="success"
-                  outlined
-                  @click="handleStart(slotProps.data.container_name)"
+      <div class="overflow-auto border border-surface-500 rounded-sm">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead class="bg-surface-100 dark:bg-surface-800">
+            <tr class="border-b border-surface-500">
+              <th class="p-2 font-semibold">Container</th>
+              <th class="p-2 font-semibold">Image</th>
+              <th class="p-2 font-semibold">Status</th>
+              <th class="p-2 font-semibold">Freqtrade</th>
+              <th class="p-2 font-semibold">Mismatch</th>
+              <th class="p-2 font-semibold">Enabled</th>
+              <th class="p-2 font-semibold" style="min-width: 240px">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="container in selectedContainers"
+              :key="container.id"
+              class="border-b border-surface-500"
+            >
+              <td class="p-2 align-middle">{{ container.container_name }}</td>
+              <td class="p-2 align-middle">{{ container.image }}</td>
+              <td class="p-2 align-middle">{{ container.status }}</td>
+              <td class="p-2 align-middle">
+                <UBadge
+                  :label="container.is_freqtrade ? 'Yes' : 'No'"
+                  :color="container.is_freqtrade ? 'success' : 'neutral'"
+                  variant="subtle"
                 />
-                <Button
-                  label="Restart"
-                  size="small"
-                  severity="secondary"
-                  outlined
-                  @click="handleRestart(slotProps.data.container_name)"
+              </td>
+              <td class="p-2 align-middle">
+                <UBadge
+                  :label="container.config_mismatch ? 'Mismatch' : 'No mismatch'"
+                  :color="container.config_mismatch ? 'warning' : 'success'"
+                  variant="subtle"
                 />
-                <Button
-                  label="Stop"
-                  size="small"
-                  severity="danger"
-                  outlined
-                  @click="handleStop(slotProps.data.container_name)"
+              </td>
+              <td class="p-2 align-middle">
+                <UBadge
+                  :label="container.enabled ? 'Active' : 'Disabled'"
+                  :color="container.enabled ? 'success' : 'neutral'"
+                  variant="subtle"
                 />
-                <Button
-                  label="Logs"
-                  size="small"
-                  @click="openLogs(slotProps.data.container_name)"
-                />
-                <Button
-                  :label="slotProps.data.enabled ? 'Disable' : 'Enable'"
-                  size="small"
-                  :severity="slotProps.data.enabled ? 'warn' : 'success'"
-                  outlined
-                  :title="
-                    slotProps.data.enabled
-                      ? 'Exclude from DWH ingestion and Console'
-                      : 'Include in DWH ingestion and Console'
-                  "
-                  @click="
-                    handleToggleEnabled(slotProps.data.container_name, slotProps.data.enabled)
-                  "
-                />
-                <Button
-                  v-if="slotProps.data.is_freqtrade"
-                  label="Purge DWH"
-                  size="small"
-                  severity="danger"
-                  outlined
-                  title="Delete all DWH data for this container (trades, logs, signals, heartbeats)"
-                  @click="handlePurgeDwh(slotProps.data.container_name, slotProps.data.enabled)"
-                />
-              </div>
-            </template>
-          </Column>
-        </DataTable>
-      </template>
-    </Card>
+              </td>
+              <td class="p-2 align-middle">
+                <div class="flex gap-2 flex-wrap">
+                  <UButton
+                    label="Start"
+                    size="sm"
+                    color="success"
+                    variant="outline"
+                    @click="handleStart(container.container_name)"
+                  />
+                  <UButton
+                    label="Restart"
+                    size="sm"
+                    color="neutral"
+                    variant="outline"
+                    @click="handleRestart(container.container_name)"
+                  />
+                  <UButton
+                    label="Stop"
+                    size="sm"
+                    color="error"
+                    variant="outline"
+                    @click="handleStop(container.container_name)"
+                  />
+                  <UButton
+                    label="Logs"
+                    size="sm"
+                    @click="openLogs(container.container_name)"
+                  />
+                  <UButton
+                    :label="container.enabled ? 'Disable' : 'Enable'"
+                    size="sm"
+                    :color="container.enabled ? 'warning' : 'success'"
+                    variant="outline"
+                    :title="
+                      container.enabled
+                        ? 'Exclude from DWH ingestion and Console'
+                        : 'Include in DWH ingestion and Console'
+                    "
+                    @click="handleToggleEnabled(container.container_name, container.enabled)"
+                  />
+                  <UButton
+                    v-if="container.is_freqtrade"
+                    label="Purge DWH"
+                    size="sm"
+                    color="error"
+                    variant="outline"
+                    title="Delete all DWH data for this container (trades, logs, signals, heartbeats)"
+                    @click="handlePurgeDwh(container.container_name, container.enabled)"
+                  />
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!selectedContainers.length">
+              <td colspan="7" class="p-3 text-center text-surface-400">No containers</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </UCard>
 
     <VpsOnboardDialog
       v-model:visible="showOnboardDialog"

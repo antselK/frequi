@@ -161,15 +161,15 @@ function loginStatusLabel(row: DiscoveredBotRow): string {
   return 'Not imported';
 }
 
-function loginStatusSeverity(row: DiscoveredBotRow): 'success' | 'warn' | 'secondary' {
+function loginStatusColor(row: DiscoveredBotRow): 'success' | 'warning' | 'neutral' {
   const status = loginStatus(row);
   if (status === 'auto-logged') {
     return 'success';
   }
   if (status === 'manual-login') {
-    return 'warn';
+    return 'warning';
   }
-  return 'secondary';
+  return 'neutral';
 }
 
 function toggleAllEligible() {
@@ -191,10 +191,10 @@ async function importSelected() {
   const selected = selectedRows.value;
   if (!selected.length) {
     toast.add({
-      severity: 'warn',
-      summary: 'Nothing selected',
-      detail: 'Select one or more discovered bots to import.',
-      life: 4000,
+      color: 'warning',
+      title: 'Nothing selected',
+      description: 'Select one or more discovered bots to import.',
+      duration: 4000,
     });
     return;
   }
@@ -286,10 +286,10 @@ async function importSelected() {
 
   const detail = `Added ${added} | Auto-login ${autoLogged}${autoLoginFailed ? ` (failed: ${autoLoginFailed})` : ''} | Skipped (not eligible: ${skippedNotEligible}, duplicate id: ${skippedById}, duplicate url: ${skippedByUrl})`;
   toast.add({
-    severity: added > 0 ? 'success' : 'warn',
-    summary: 'Import completed',
-    detail,
-    life: 6000,
+    color: added > 0 ? 'success' : 'warning',
+    title: 'Import completed',
+    description: detail,
+    duration: 6000,
   });
 }
 
@@ -317,10 +317,10 @@ async function loadData() {
     );
   } catch (err) {
     toast.add({
-      severity: 'error',
-      summary: 'Failed to load VPS data',
-      detail: String(err),
-      life: 5000,
+      color: 'error',
+      title: 'Failed to load VPS data',
+      description: String(err),
+      duration: 5000,
     });
   } finally {
     loading.value = false;
@@ -342,10 +342,10 @@ async function discoverAll() {
     ]);
   } catch (err) {
     toast.add({
-      severity: 'error',
-      summary: 'Discovery failed',
-      detail: String(err),
-      life: 5000,
+      color: 'error',
+      title: 'Discovery failed',
+      description: String(err),
+      duration: 5000,
     });
   } finally {
     loading.value = false;
@@ -358,104 +358,116 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Card>
-    <template #title>
+  <UCard>
+    <template #header>
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <span>Discovered Bots from VPS</span>
-        <div class="flex items-center gap-2">
+        <span class="font-semibold">Discovered Bots from VPS</span>
+        <div class="flex items-center gap-2 flex-wrap">
           <BaseCheckbox v-model="showOnlyFreqtrade">Freqtrade only</BaseCheckbox>
-          <Button
+          <UButton
             :label="allEligibleSelected ? 'Unselect Eligible' : 'Select Eligible'"
-            severity="secondary"
-            outlined
+            color="neutral"
+            variant="outline"
             @click="toggleAllEligible"
           />
-          <Button
+          <UButton
             label="Import Selected"
             :disabled="selectedRows.length === 0"
             :loading="importLoading"
             @click="importSelected"
           />
-          <Button
+          <UButton
             label="Discover All"
-            severity="secondary"
-            outlined
+            color="neutral"
+            variant="outline"
             :loading="loading"
             @click="discoverAll"
           />
-          <Button
+          <UButton
             label="Refresh"
-            severity="secondary"
-            outlined
+            color="neutral"
+            variant="outline"
             :loading="loading"
             @click="loadData"
           />
         </div>
       </div>
     </template>
-    <template #content>
-      <DataTable
-        :value="filteredRows"
-        data-key="key"
-        size="small"
-        show-gridlines
-        :loading="loading"
-      >
-        <Column header="Select">
-          <template #body="slotProps">
-            <BaseCheckbox
-              :model-value="Boolean(selectedRowsMap[slotProps.data.key])"
-              :disabled="!slotProps.data.importEligible"
-              @update:model-value="selectedRowsMap[slotProps.data.key] = $event"
-            />
-          </template>
-        </Column>
-        <Column field="vpsName" header="VPS" />
-        <Column field="containerName" header="Container" />
-        <Column field="status" header="Status" />
-        <Column field="strategy" header="Strategy" />
-        <Column field="exchange" header="Exchange" />
-        <Column field="pairlist" header="Pairlist" />
-        <Column header="Imported">
-          <template #body="slotProps">
-            <Tag
-              :value="isImported(slotProps.data) ? 'Yes' : 'No'"
-              :severity="isImported(slotProps.data) ? 'success' : 'secondary'"
-            />
-          </template>
-        </Column>
-        <Column header="Freqtrade">
-          <template #body="slotProps">
-            <Tag
-              :value="slotProps.data.isFreqtrade ? 'Yes' : 'No'"
-              :severity="slotProps.data.isFreqtrade ? 'success' : 'secondary'"
-            />
-          </template>
-        </Column>
-        <Column header="API Port">
-          <template #body="slotProps">
-            {{ slotProps.data.apiPort ?? '—' }}
-          </template>
-        </Column>
-        <Column field="suggestedUrl" header="Suggested URL" />
-        <Column header="Eligible">
-          <template #body="slotProps">
-            <Tag
-              :value="slotProps.data.importEligible ? 'Yes' : 'No'"
-              :severity="slotProps.data.importEligible ? 'success' : 'warn'"
-            />
-          </template>
-        </Column>
-        <Column header="Login">
-          <template #body="slotProps">
-            <Tag
-              :value="loginStatusLabel(slotProps.data)"
-              :severity="loginStatusSeverity(slotProps.data)"
-            />
-          </template>
-        </Column>
-        <Column field="eligibilityReason" header="Reason" />
-      </DataTable>
-    </template>
-  </Card>
+    <div class="overflow-auto border border-surface-500 rounded-sm">
+      <table class="w-full text-left border-collapse text-sm">
+        <thead class="bg-surface-100 dark:bg-surface-800">
+          <tr class="border-b border-surface-500">
+            <th class="p-2 font-semibold">Select</th>
+            <th class="p-2 font-semibold">VPS</th>
+            <th class="p-2 font-semibold">Container</th>
+            <th class="p-2 font-semibold">Status</th>
+            <th class="p-2 font-semibold">Strategy</th>
+            <th class="p-2 font-semibold">Exchange</th>
+            <th class="p-2 font-semibold">Pairlist</th>
+            <th class="p-2 font-semibold">Imported</th>
+            <th class="p-2 font-semibold">Freqtrade</th>
+            <th class="p-2 font-semibold">API Port</th>
+            <th class="p-2 font-semibold">Suggested URL</th>
+            <th class="p-2 font-semibold">Eligible</th>
+            <th class="p-2 font-semibold">Login</th>
+            <th class="p-2 font-semibold">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in filteredRows" :key="row.key" class="border-b border-surface-500">
+            <td class="p-2 align-middle">
+              <BaseCheckbox
+                :model-value="Boolean(selectedRowsMap[row.key])"
+                :disabled="!row.importEligible"
+                @update:model-value="selectedRowsMap[row.key] = $event"
+              />
+            </td>
+            <td class="p-2 align-middle">{{ row.vpsName }}</td>
+            <td class="p-2 align-middle">{{ row.containerName }}</td>
+            <td class="p-2 align-middle">{{ row.status }}</td>
+            <td class="p-2 align-middle">{{ row.strategy }}</td>
+            <td class="p-2 align-middle">{{ row.exchange }}</td>
+            <td class="p-2 align-middle">{{ row.pairlist }}</td>
+            <td class="p-2 align-middle">
+              <UBadge
+                :label="isImported(row) ? 'Yes' : 'No'"
+                :color="isImported(row) ? 'success' : 'neutral'"
+                variant="subtle"
+              />
+            </td>
+            <td class="p-2 align-middle">
+              <UBadge
+                :label="row.isFreqtrade ? 'Yes' : 'No'"
+                :color="row.isFreqtrade ? 'success' : 'neutral'"
+                variant="subtle"
+              />
+            </td>
+            <td class="p-2 align-middle">{{ row.apiPort ?? '—' }}</td>
+            <td class="p-2 align-middle">{{ row.suggestedUrl }}</td>
+            <td class="p-2 align-middle">
+              <UBadge
+                :label="row.importEligible ? 'Yes' : 'No'"
+                :color="row.importEligible ? 'success' : 'warning'"
+                variant="subtle"
+              />
+            </td>
+            <td class="p-2 align-middle">
+              <UBadge
+                :label="loginStatusLabel(row)"
+                :color="loginStatusColor(row)"
+                variant="subtle"
+              />
+            </td>
+            <td class="p-2 align-middle">{{ row.eligibilityReason }}</td>
+          </tr>
+          <tr v-if="loading && !filteredRows.length">
+            <td colspan="14" class="p-3 text-center text-surface-400">Loading...</td>
+          </tr>
+          <tr v-else-if="!filteredRows.length">
+            <td colspan="14" class="p-3 text-center text-surface-400">No discovered bots</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </UCard>
 </template>

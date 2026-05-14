@@ -121,12 +121,6 @@ const navItems = ref([
     icon: 'i-mdi-cellphone',
   },
   {
-    label: 'Console',
-    to: '/console',
-    visible: computed(() => !botStore.canRunBacktest),
-    icon: 'i-mdi-view-dashboard-edit',
-  },
-  {
     label: 'Chart',
     to: '/graph',
     icon: 'i-mdi-chart-line',

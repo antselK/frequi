@@ -7,10 +7,19 @@ export const useAlertsStore = defineStore('alerts', () => {
 
   function addAlert(message: AlertType) {
     // TODO: is this store still necessary??
+    const severityMap: Record<string, string> = {
+      success: 'success',
+      info: 'info',
+      warning: 'warning',
+      warn: 'warning',
+      danger: 'error',
+      error: 'error',
+      secondary: 'neutral',
+    };
     toast.add({
       title: message.title,
       description: message.message,
-      color: message.severity,
+      color: severityMap[message.severity] ?? 'primary',
       duration: message.timeout,
     });
   }
