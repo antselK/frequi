@@ -16,11 +16,15 @@ const botStore = useBotStore();
         {{ botStore.activeBot.botState.stake_currency }}
       </strong>
       on
-      <strong>{{ botStore.activeBot.botState.exchange }}</strong> in
+      <strong class="text-nowrap"
+        >{{ botStore.activeBot.botState.exchange }}
+        {{ botStore.activeBot.botState.demo_trading ? '(Demo)' : '' }}</strong
+      >
+      in
       <strong
         >{{ botStore.activeBot.botState.trading_mode || 'spot' }}
         {{
-          botStore.activeBot.botState.trading_mode != 'spot'
+          botStore.activeBot.botState.trading_mode !== 'spot'
             ? (botStore.activeBot.botState.margin_mode ?? '')
             : ''
         }}</strong
@@ -43,15 +47,15 @@ const botStore = useBotStore();
     <p>
       <strong>{{ botStore.activeBot.botState.dry_run ? 'Dry-Run' : 'Live' }}</strong>
     </p>
-    <Divider />
-    <p class="mb-4">
+    <USeparator class="my-2" />
+    <p class="mb-4" v-if="botStore.activeBot.profit">
       Avg Profit {{ formatPercent(botStore.activeBot.profit.profit_all_ratio_mean) }} (&sum;
       {{ formatPercent(botStore.activeBot.profit.profit_all_ratio_sum) }}) in
       {{ botStore.activeBot.profit.trade_count }} Trades, with an average duration of
       {{ botStore.activeBot.profit.avg_duration }}. Best pair:
       {{ botStore.activeBot.profit.best_pair }}.
     </p>
-    <p v-if="botStore.activeBot.profit.first_trade_timestamp" class="mb-4">
+    <p v-if="botStore.activeBot.profit?.first_trade_timestamp" class="mb-4">
       <span v-if="botStore.activeBot.profit.bot_start_timestamp" class="block">
         Bot start date:
         <strong>
@@ -72,11 +76,11 @@ const botStore = useBotStore();
       </span>
     </p>
     <p>
-      <span v-if="botStore.activeBot.profit.profit_factor" class="block">
+      <span v-if="botStore.activeBot.profit?.profit_factor" class="block">
         Profit factor:
-        {{ formatNumber(botStore.activeBot.profit.profit_factor, 2) }}
+        {{ formatNumber(botStore.activeBot.profit?.profit_factor, 2) }}
       </span>
-      <span v-if="botStore.activeBot.profit.trading_volume" class="block mb-4">
+      <span v-if="botStore.activeBot.profit?.trading_volume" class="block mb-4">
         Trading volume:
         {{
           formatPriceCurrency(
@@ -87,17 +91,13 @@ const botStore = useBotStore();
         }}
       </span>
     </p>
-    <Panel
-      v-if="botStore.activeBot.strategy.params"
-      header="Strategy parameters"
-      toggleable
-      collapsed
-    >
-      <StrategyParameters :strategy="botStore.activeBot.strategy" />
-    </Panel>
-    <Divider />
+    <BaseCollapsible v-if="botStore.activeBot.strategy?.params" title="Strategy parameters">
+      <StrategyParameters :strategy="botStore.activeBot.strategy" class="m-3" />
+    </BaseCollapsible>
+    <USeparator class="my-5" />
     <BotProfit
       class="mx-1"
+      v-if="botStore.activeBot.profitAll"
       :profit-all="botStore.activeBot.profitAll"
       :stake-currency="botStore.activeBot.botState.stake_currency ?? 'USDT'"
       :stake-currency-decimals="botStore.activeBot.botState.stake_currency_decimals ?? 3"

@@ -11,6 +11,7 @@ import {
   TitleComponent,
   TooltipComponent,
 } from 'echarts/components';
+import { format as echartsFormat } from 'echarts';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 
@@ -56,8 +57,6 @@ const props = withDefaults(
 const settingsStore = useSettingsStore();
 const colorStore = useColorStore();
 // const botList = ref<string[]>([]);
-
-const chart = ref<InstanceType<typeof ECharts>>();
 
 const openProfit = computed<number>(() => {
   return props.openTrades.reduce(
@@ -224,7 +223,7 @@ const cumProfitChartOptions: ComputedRefWithControl<EChartsOption> = computedWit
           const profitText = currentProfit
             ? `Projected profit (incl. unrealized): ${formatPrice(currentProfit, 3)}`
             : `Profit: ${formatPrice(profit, 3)}`;
-          return `${timestampToDateString(params[1].data.date)}<br />${
+          return `${echartsFormat.encodeHTML(timestampToDateString(params[1].data.date))}<br />${
             params[1].marker
           }${profitText}`;
         },
@@ -265,7 +264,6 @@ const cumProfitChartOptions: ComputedRefWithControl<EChartsOption> = computedWit
           type: 'inside',
           // xAxisIndex: [0],
           start: 0,
-
           end: 100,
         },
         {
@@ -309,7 +307,6 @@ watch(
 <template>
   <ECharts
     v-if="trades"
-    ref="chart"
     :option="cumProfitChartOptions"
     :theme="settingsStore.chartTheme"
     autoresize

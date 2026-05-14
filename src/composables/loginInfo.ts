@@ -53,7 +53,7 @@ normalizeStoredBotOrder();
 /**
  * Get available bots with their descriptors
  */
-export const availableBots = computed<BotDescriptors>(() => {
+export const loggedInBots = computed<BotDescriptors>(() => {
   const allInfo = allLoginInfos.value;
   const response: BotDescriptors = {};
   Object.keys(allInfo)

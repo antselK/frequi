@@ -12,7 +12,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 
 const botStore = useBotStore();
 
-const strategyCode = computed((): string => botStore.activeBot.strategy?.code);
+const strategyCode = computed((): string => botStore.activeBot.strategy?.code ?? '');
 const locStrategy = computed({
   get() {
     return props.modelValue;
@@ -33,20 +33,21 @@ onMounted(() => {
 <template>
   <div>
     <div class="w-full flex">
-      <Select
+      <USelectMenu
         id="strategy-select"
         v-model="locStrategy"
         filter
-        fluid
-        :options="botStore.activeBot.strategyList"
+        class="w-full"
+        :items="botStore.activeBot.strategyList"
       >
-      </Select>
+      </USelectMenu>
       <div class="ms-1">
-        <Button severity="secondary" variant="outlined" @click="botStore.activeBot.getStrategyList">
-          <template #icon>
-            <i-mdi-refresh />
-          </template>
-        </Button>
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="mdi:refresh"
+          @click="botStore.activeBot.getStrategyList()"
+        />
       </div>
     </div>
 
