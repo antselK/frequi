@@ -10,6 +10,11 @@ export interface ReportsContext {
   botSelectOptions: ComputedRef<BotSelectOption[]>;
   activeBotIds: Ref<Set<number>>;
   isBotActive: (botId: number) => boolean;
+  getBotVpsName: (botId: number) => string;
+  getBotContainerName: (botId: number) => string;
+  showChartTooltip: (event: MouseEvent, lines: string[]) => void;
+  hideChartTooltip: () => void;
+  ensureBotDisplayMapLoaded: () => Promise<void>;
 }
 
 const reportsContextKey: InjectionKey<ReportsContext> = Symbol('reports-context');

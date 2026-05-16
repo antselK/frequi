@@ -21,6 +21,7 @@ declare global {
   const availableBots: typeof import('./composables/loginInfo').availableBots
   const binData: typeof import('./utils/charts/binCount').binData
   const calculateDiff: typeof import('./utils/charts/areaPlotDataset').calculateDiff
+  const candleBucketMs: typeof import('./utils/reportCharts').candleBucketMs
   const computed: typeof import('vue').computed
   const computedAsync: typeof import('@vueuse/core').computedAsync
   const computedEager: typeof import('@vueuse/core').computedEager
@@ -64,8 +65,11 @@ declare global {
   const exportForTesting: typeof import('./utils/formatters/timeformat').exportForTesting
   const extendLocale: typeof import('../node_modules/.pnpm/@nuxt+ui@4.7.1_@internationalized+date@3.12.1_@internationalized+number@3.6.5_@tiptap+e_830c8a0832ccec5706b5fd368d4211b2/node_modules/@nuxt/ui/dist/runtime/composables/defineLocale').extendLocale
   const extendRef: typeof import('@vueuse/core').extendRef
+  const extractPair: typeof import('./utils/reportParsers').extractPair
+  const extractPairFlexible: typeof import('./utils/reportParsers').extractPairFlexible
   const extractShortcuts: typeof import('../node_modules/.pnpm/@nuxt+ui@4.7.1_@internationalized+date@3.12.1_@internationalized+number@3.6.5_@tiptap+e_830c8a0832ccec5706b5fd368d4211b2/node_modules/@nuxt/ui/dist/runtime/composables/defineShortcuts').extractShortcuts
   const findGridLayout: typeof import('./stores/layout').findGridLayout
+  const formatDate: typeof import('./utils/reportParsers').formatDate
   const formatDecimal: typeof import('./utils/formatters/numberformat').formatDecimal
   const formatNumber: typeof import('./utils/formatters/numberformat').formatNumber
   const formatObjectForTable: typeof import('./utils/objectToTableItems').formatObjectForTable
@@ -110,6 +114,7 @@ declare global {
   const isRef: typeof import('vue').isRef
   const isShallow: typeof import('vue').isShallow
   const loggedInBots: typeof import('./composables/loginInfo').loggedInBots
+  const logsChartLayout: typeof import('./utils/reportCharts').logsChartLayout
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const manualResetRef: typeof import('@vueuse/core').manualResetRef
   const mapActions: typeof import('pinia').mapActions
@@ -119,6 +124,7 @@ declare global {
   const mapWritableState: typeof import('pinia').mapWritableState
   const markRaw: typeof import('vue').markRaw
   const nextTick: typeof import('vue').nextTick
+  const niceTickInterval: typeof import('./utils/reportCharts').niceTickInterval
   const numberformat: typeof import('./utils/formatters/numberformat')['default']
   const onActivated: typeof import('vue').onActivated
   const onBeforeMount: typeof import('vue').onBeforeMount
@@ -452,6 +458,9 @@ declare global {
   // @ts-ignore
   export type { SupportedSeriesTypes } from './utils/charts/candleChartSeries'
   import('./utils/charts/candleChartSeries')
+  // @ts-ignore
+  export type { ChartTooltipState } from './utils/reportCharts'
+  import('./utils/reportCharts')
 }
 
 // for vue template auto import
@@ -473,6 +482,7 @@ declare module 'vue' {
     readonly availableBacktestMetrics: UnwrapRef<typeof import('./utils/backtestMetrics')['availableBacktestMetrics']>
     readonly binData: UnwrapRef<typeof import('./utils/charts/binCount')['binData']>
     readonly calculateDiff: UnwrapRef<typeof import('./utils/charts/areaPlotDataset')['calculateDiff']>
+    readonly candleBucketMs: UnwrapRef<typeof import('./utils/reportCharts')['candleBucketMs']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
     readonly computedEager: UnwrapRef<typeof import('@vueuse/core')['computedEager']>
@@ -515,8 +525,11 @@ declare module 'vue' {
     readonly exportForTesting: UnwrapRef<typeof import('./utils/formatters/timeformat')['exportForTesting']>
     readonly extendLocale: UnwrapRef<typeof import('../node_modules/.pnpm/@nuxt+ui@4.7.1_@internationalized+date@3.12.1_@internationalized+number@3.6.5_@tiptap+e_830c8a0832ccec5706b5fd368d4211b2/node_modules/@nuxt/ui/dist/runtime/composables/defineLocale')['extendLocale']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
+    readonly extractPair: UnwrapRef<typeof import('./utils/reportParsers')['extractPair']>
+    readonly extractPairFlexible: UnwrapRef<typeof import('./utils/reportParsers')['extractPairFlexible']>
     readonly extractShortcuts: UnwrapRef<typeof import('../node_modules/.pnpm/@nuxt+ui@4.7.1_@internationalized+date@3.12.1_@internationalized+number@3.6.5_@tiptap+e_830c8a0832ccec5706b5fd368d4211b2/node_modules/@nuxt/ui/dist/runtime/composables/defineShortcuts')['extractShortcuts']>
     readonly findGridLayout: UnwrapRef<typeof import('./stores/layout')['findGridLayout']>
+    readonly formatDate: UnwrapRef<typeof import('./utils/reportParsers')['formatDate']>
     readonly formatDecimal: UnwrapRef<typeof import('./utils/formatters/numberformat')['formatDecimal']>
     readonly formatNumber: UnwrapRef<typeof import('./utils/formatters/numberformat')['formatNumber']>
     readonly formatObjectForTable: UnwrapRef<typeof import('./utils/objectToTableItems')['formatObjectForTable']>
@@ -557,6 +570,7 @@ declare module 'vue' {
     readonly isRef: UnwrapRef<typeof import('vue')['isRef']>
     readonly isShallow: UnwrapRef<typeof import('vue')['isShallow']>
     readonly loggedInBots: UnwrapRef<typeof import('./composables/loginInfo')['loggedInBots']>
+    readonly logsChartLayout: UnwrapRef<typeof import('./utils/reportCharts')['logsChartLayout']>
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
     readonly mapActions: UnwrapRef<typeof import('pinia')['mapActions']>
     readonly mapGetters: UnwrapRef<typeof import('pinia')['mapGetters']>
@@ -565,6 +579,7 @@ declare module 'vue' {
     readonly mapWritableState: UnwrapRef<typeof import('pinia')['mapWritableState']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
+    readonly niceTickInterval: UnwrapRef<typeof import('./utils/reportCharts')['niceTickInterval']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
     readonly onBeforeRouteLeave: UnwrapRef<typeof import('vue-router')['onBeforeRouteLeave']>
