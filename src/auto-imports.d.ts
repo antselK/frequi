@@ -44,7 +44,9 @@ declare global {
   const customRef: typeof import('vue').customRef
   const dataZoomPartial: typeof import('./utils/charts/chartZoom').dataZoomPartial
   const dateFromString: typeof import('./utils/formatters/timeformat').dateFromString
+  const dateFromToDays: typeof import('./utils/reportDates').dateFromToDays
   const dateStringToTimeRange: typeof import('./utils/formatters/timeformat').dateStringToTimeRange
+  const daysAgoStr: typeof import('./utils/reportDates').daysAgoStr
   const debouncedRef: typeof import('@vueuse/core').debouncedRef
   const debouncedWatch: typeof import('@vueuse/core').debouncedWatch
   const deepClone: typeof import('./utils/deepClone').deepClone
@@ -143,6 +145,7 @@ declare global {
   const plotConfigColumns: typeof import('./utils/charts/plotConfigColumns').plotConfigColumns
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
+  const provideReportsContext: typeof import('./composables/useReportsContext').provideReportsContext
   const randomColor: typeof import('./utils/randomColor').randomColor
   const reactify: typeof import('@vueuse/core').reactify
   const reactifyObject: typeof import('@vueuse/core').reactifyObject
@@ -191,6 +194,7 @@ declare global {
   const toRef: typeof import('vue').toRef
   const toRefs: typeof import('vue').toRefs
   const toValue: typeof import('vue').toValue
+  const todayStr: typeof import('./utils/reportDates').todayStr
   const triggerRef: typeof import('vue').triggerRef
   const tryOnBeforeMount: typeof import('@vueuse/core').tryOnBeforeMount
   const tryOnBeforeUnmount: typeof import('@vueuse/core').tryOnBeforeUnmount
@@ -340,6 +344,7 @@ declare global {
   const usePrevious: typeof import('@vueuse/core').usePrevious
   const useRafFn: typeof import('@vueuse/core').useRafFn
   const useRefHistory: typeof import('@vueuse/core').useRefHistory
+  const useReportsContext: typeof import('./composables/useReportsContext').useReportsContext
   const useResizable: typeof import('../node_modules/.pnpm/@nuxt+ui@4.7.1_@internationalized+date@3.12.1_@internationalized+number@3.6.5_@tiptap+e_830c8a0832ccec5706b5fd368d4211b2/node_modules/@nuxt/ui/dist/runtime/composables/useResizable').useResizable
   const useResizeObserver: typeof import('@vueuse/core').useResizeObserver
   const useRoute: typeof import('vue-router').useRoute
@@ -427,6 +432,9 @@ declare global {
   export type { Component, Slot, Slots, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, ShallowRef, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
+  export type { BotSelectOption, ReportsContext } from './composables/useReportsContext'
+  import('./composables/useReportsContext')
+  // @ts-ignore
   export type { ColorPreferences } from './stores/colors'
   import('./stores/colors')
   // @ts-ignore
@@ -488,6 +496,8 @@ declare module 'vue' {
     readonly customRef: UnwrapRef<typeof import('vue')['customRef']>
     readonly dataZoomPartial: UnwrapRef<typeof import('./utils/charts/chartZoom')['dataZoomPartial']>
     readonly dateFromString: UnwrapRef<typeof import('./utils/formatters/timeformat')['dateFromString']>
+    readonly dateFromToDays: UnwrapRef<typeof import('./utils/reportDates')['dateFromToDays']>
+    readonly daysAgoStr: UnwrapRef<typeof import('./utils/reportDates')['daysAgoStr']>
     readonly debouncedRef: UnwrapRef<typeof import('@vueuse/core')['debouncedRef']>
     readonly debouncedWatch: UnwrapRef<typeof import('@vueuse/core')['debouncedWatch']>
     readonly deepClone: UnwrapRef<typeof import('./utils/deepClone')['deepClone']>
@@ -580,6 +590,7 @@ declare module 'vue' {
     readonly plotConfigColumns: UnwrapRef<typeof import('./utils/charts/plotConfigColumns')['plotConfigColumns']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
+    readonly provideReportsContext: UnwrapRef<typeof import('./composables/useReportsContext')['provideReportsContext']>
     readonly randomColor: UnwrapRef<typeof import('./utils/randomColor')['randomColor']>
     readonly reactify: UnwrapRef<typeof import('@vueuse/core')['reactify']>
     readonly reactifyObject: UnwrapRef<typeof import('@vueuse/core')['reactifyObject']>
@@ -626,6 +637,7 @@ declare module 'vue' {
     readonly toRef: UnwrapRef<typeof import('vue')['toRef']>
     readonly toRefs: UnwrapRef<typeof import('vue')['toRefs']>
     readonly toValue: UnwrapRef<typeof import('vue')['toValue']>
+    readonly todayStr: UnwrapRef<typeof import('./utils/reportDates')['todayStr']>
     readonly triggerRef: UnwrapRef<typeof import('vue')['triggerRef']>
     readonly tryOnBeforeMount: UnwrapRef<typeof import('@vueuse/core')['tryOnBeforeMount']>
     readonly tryOnBeforeUnmount: UnwrapRef<typeof import('@vueuse/core')['tryOnBeforeUnmount']>
@@ -775,6 +787,7 @@ declare module 'vue' {
     readonly usePrevious: UnwrapRef<typeof import('@vueuse/core')['usePrevious']>
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>
     readonly useRefHistory: UnwrapRef<typeof import('@vueuse/core')['useRefHistory']>
+    readonly useReportsContext: UnwrapRef<typeof import('./composables/useReportsContext')['useReportsContext']>
     readonly useResizable: UnwrapRef<typeof import('../node_modules/.pnpm/@nuxt+ui@4.7.1_@internationalized+date@3.12.1_@internationalized+number@3.6.5_@tiptap+e_830c8a0832ccec5706b5fd368d4211b2/node_modules/@nuxt/ui/dist/runtime/composables/useResizable')['useResizable']>
     readonly useResizeObserver: UnwrapRef<typeof import('@vueuse/core')['useResizeObserver']>
     readonly useRoute: UnwrapRef<typeof import('vue-router')['useRoute']>
