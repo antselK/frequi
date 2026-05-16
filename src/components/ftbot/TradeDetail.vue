@@ -7,12 +7,24 @@ defineProps<{
   trade: Trade;
   stakeCurrency: string;
 }>();
+
+const { showTradeCustomData } = useTradeCustomData();
 </script>
 
 <template>
   <div class="text-start grid md:grid-cols-[repeat(auto-fit,minmax(500px,1fr))] gap-4 px-2">
     <div class="">
-      <h5 class="detail-header">General</h5>
+      <div class="flex justify-between items-center border-b">
+        <h5 class="text-xl font-semibold w-full block mb-1">General</h5>
+        <UButton
+          size="sm"
+          variant="outline"
+          color="neutral"
+          @click="showTradeCustomData({ tradeId: trade.trade_id })"
+          label="Show custom data"
+          icon="mdi:database-search"
+        />
+      </div>
       <ValuePair description="Trade Id">{{ trade.trade_id }}</ValuePair>
       <ValuePair description="Pair">{{ trade.pair }}</ValuePair>
 
@@ -61,8 +73,7 @@ defineProps<{
       >
         <TradeProfit :trade="trade" />
       </ValuePair>
-      <details>
-        <summary>Details</summary>
+      <BaseCollapsible title="Details" class="px-2 pb-2">
         <ValuePair v-if="trade.min_rate" description="Min Rate">{{
           formatPrice(trade.min_rate)
         }}</ValuePair>
@@ -81,10 +92,10 @@ defineProps<{
             formatPercent(trade.fee_close)
           }})
         </ValuePair>
-      </details>
+      </BaseCollapsible>
     </div>
     <div class="mt-2 lg:mt-0">
-      <h5 class="detail-header">Stoploss</h5>
+      <h5 class="text-xl font-semibold border-b pb-1 w-full block mb-1">Stoploss</h5>
       <ValuePair description="Stoploss">
         {{ formatPercent(trade.stop_loss_ratio) }} |
         {{ formatPrice(trade.stop_loss_abs) }}
@@ -115,7 +126,7 @@ defineProps<{
         {{ timestampms(trade.stoploss_last_update_timestamp) }}
       </ValuePair>
       <div v-if="trade.trading_mode !== undefined && trade.trading_mode !== 'spot'">
-        <h5 class="detail-header">Futures/Margin</h5>
+        <h5 class="text-xl font-semibold border-b pb-1 w-full block mb-1">Futures/Margin</h5>
         <ValuePair description="Direction">
           {{ trade.is_short ? 'short' : 'long' }} - {{ trade.leverage }}x
         </ValuePair>
@@ -129,8 +140,11 @@ defineProps<{
           {{ formatPrice(trade.liquidation_price) }}
         </ValuePair>
       </div>
-      <details v-if="trade.orders">
-        <summary>Orders {{ trade.orders.length > 1 ? `[${trade.orders.length}]` : '' }}</summary>
+      <BaseCollapsible
+        v-if="trade.orders"
+        :title="`Orders ${trade.orders.length > 1 ? `[${trade.orders.length}]` : ''}`"
+        class="px-2 pb-2"
+      >
         <div
           v-for="(order, key) in trade.orders"
           :key="key"
@@ -146,14 +160,26 @@ defineProps<{
           (#{{ key + 1 }})
           <i-mdi-triangle
             v-if="order.ft_order_side === 'buy'"
-            class="me-1 color-up"
+            class="me-1"
+            :style="{
+              color: colorStore.colorUp,
+            }"
             style="font-size: 0.6rem"
           />
-          <i-mdi-triangle-down v-else class="me-1 color-down" style="font-size: 0.6rem" />
+          <i-mdi-triangle-down
+            v-else
+            class="me-1"
+            :style="{ color: colorStore.colorDown }"
+            style="font-size: 0.6rem"
+          />
           <DateTimeTZ v-if="order.order_timestamp" :date="order.order_timestamp" show-timezone />
-          <b class="ms-1" :class="order.ft_order_side === 'buy' ? 'color-up' : 'color-down'">{{
-            order.ft_order_side
-          }}</b>
+          <b
+            class="ms-1"
+            :style="{
+              color: order.ft_order_side === 'buy' ? colorStore.colorUp : colorStore.colorDown,
+            }"
+            >{{ order.ft_order_side }}</b
+          >
           for <b>{{ formatPrice(order.safe_price) }}</b> |
           <span v-if="order.remaining && order.remaining !== 0" title="remaining"
             >{{ formatPrice(order.remaining, 8) }} /
@@ -161,21 +187,7 @@ defineProps<{
           <span title="Filled">{{ formatPrice(order.filled ?? 0, 8) }}</span>
           <template v-if="order.ft_order_tag"> | {{ order.ft_order_tag ?? '' }}</template>
         </div>
-      </details>
+      </BaseCollapsible>
     </div>
   </div>
 </template>
-<style scoped>
-@reference '../../styles/tailwind.css';
-
-.detail-header {
-  @apply text-xl font-semibold border-b pb-1 w-full block mb-1;
-}
-.color-up {
-  color: v-bind('colorStore.colorUp');
-}
-
-.color-down {
-  color: v-bind('colorStore.colorDown');
-}
-</style>
