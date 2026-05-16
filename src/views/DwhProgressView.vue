@@ -850,19 +850,10 @@ onBeforeUnmount(() => {
       />
     </section>
 
-    <UAlert
-      v-if="errorText"
-      color="error"
-      variant="subtle"
-      :description="errorText"
-    />
+    <UAlert v-if="errorText" color="error" variant="subtle" :description="errorText" />
 
     <section class="grid grid-cols-2 lg:grid-cols-6 gap-3">
-      <UCard
-        v-for="card in cards"
-        :key="card.label"
-        :ui="{ body: 'p-3' }"
-      >
+      <UCard v-for="card in cards" :key="card.label" :ui="{ body: 'p-3' }">
         <p class="text-xs text-surface-400">{{ card.label }}</p>
         <p class="text-xl font-semibold">{{ card.value }}</p>
       </UCard>
@@ -1044,240 +1035,234 @@ onBeforeUnmount(() => {
     >
       <template #body>
         <div class="space-y-4">
-        <div class="flex items-center gap-2 text-sm">
-          <span class="text-surface-300">Full audit capture:</span>
-          <UButton
-            :label="
-              auditModeToggling
-                ? '...'
-                : auditMode?.enabled
-                  ? 'ON (override exclude rules)'
-                  : 'OFF (exclude rules active)'
-            "
-            size="xs"
-            :color="auditMode?.enabled ? 'warning' : 'neutral'"
-            variant="outline"
-            :disabled="auditModeToggling || auditMode === null"
-            :title="
-              auditMode?.enabled
-                ? 'Full audit ON — all logs stored, exclude rules bypassed. Click to disable.'
-                : 'Normal mode — exclude rules active. Click to enable full audit capture.'
-            "
-            @click="toggleAuditMode"
-          />
-        </div>
-
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
-          <UInputNumber v-model="auditHours" :min="1" :max="168" size="sm" placeholder="Hours" />
-          <UInputNumber
-            v-model="auditBotId"
-            :min="1"
-            size="sm"
-            placeholder="Bot ID (optional)"
-          />
-          <div class="col-span-2 md:col-span-3 flex items-center gap-2">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="text-surface-300">Full audit capture:</span>
             <UButton
-              :label="auditLoading ? 'Loading...' : 'Refresh Audit Data'"
-              color="neutral"
+              :label="
+                auditModeToggling
+                  ? '...'
+                  : auditMode?.enabled
+                    ? 'ON (override exclude rules)'
+                    : 'OFF (exclude rules active)'
+              "
+              size="xs"
+              :color="auditMode?.enabled ? 'warning' : 'neutral'"
               variant="outline"
-              size="sm"
-              :disabled="auditLoading"
-              @click="loadAuditData"
+              :disabled="auditModeToggling || auditMode === null"
+              :title="
+                auditMode?.enabled
+                  ? 'Full audit ON — all logs stored, exclude rules bypassed. Click to disable.'
+                  : 'Normal mode — exclude rules active. Click to enable full audit capture.'
+              "
+              @click="toggleAuditMode"
             />
-            <p v-if="auditSummary" class="text-xs text-surface-400">
-              Total events in range: {{ auditSummary.total_events }}
-            </p>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <div class="rounded border border-surface-700 p-3 overflow-x-auto lg:col-span-2">
-            <h3 class="font-semibold mb-2">Log Event Summary (Logger + Level)</h3>
-            <p v-if="auditLoading" class="text-sm text-surface-400">Loading audit summary...</p>
-            <p v-else-if="!auditSummary?.buckets?.length" class="text-sm text-surface-400">
-              No log events in selected range.
-            </p>
-            <table v-else class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-surface-400 border-b border-surface-700">
-                  <th class="py-2 pe-2">Logger</th>
-                  <th class="py-2 pe-2">Level</th>
-                  <th class="py-2 pe-2">Count</th>
-                  <th class="py-2 pe-2">Include</th>
-                  <th class="py-2 pe-2">Exclude</th>
-                  <th class="py-2">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="bucket in auditSummary?.buckets ?? []"
-                  :key="`${bucket.logger}-${bucket.level}`"
-                  class="border-b border-surface-800"
-                >
-                  <td class="py-2 pe-2">{{ bucket.logger }}</td>
-                  <td class="py-2 pe-2">{{ bucket.level }}</td>
-                  <td class="py-2 pe-2">{{ bucket.total }}</td>
-                  <td class="py-2 pe-2">{{ bucket.selected ? 'yes' : 'no' }}</td>
-                  <td class="py-2 pe-2">{{ bucket.excluded ? 'yes' : 'no' }}</td>
-                  <td class="py-2">
-                    <div class="flex items-center gap-2">
-                      <UButton
-                        :label="bucket.selected ? 'Included' : 'Include'"
-                        color="neutral"
-                        variant="outline"
-                        size="xs"
-                        :disabled="auditRuleSaving || bucket.selected"
-                        @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'include')"
-                      />
-                      <UButton
-                        :label="bucket.excluded ? 'Excluded' : 'Exclude'"
-                        color="warning"
-                        variant="outline"
-                        size="xs"
-                        :disabled="auditRuleSaving || bucket.excluded"
-                        @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'exclude')"
-                      />
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
           </div>
 
-          <div class="rounded border border-surface-700 p-3 overflow-x-auto lg:col-span-1">
-            <h3 class="font-semibold mb-2">Selected Capture Rules</h3>
-            <p class="text-xs text-surface-400 mb-2">
-              These rules drive anomaly/trade log analytics filtering.
-            </p>
-            <p v-if="!auditRules.length" class="text-sm text-surface-400">
-              No rules selected yet (all logs are included).
-            </p>
-            <table v-else class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-surface-400 border-b border-surface-700">
-                  <th class="py-2 pe-2">Type</th>
-                  <th class="py-2 pe-2">Logger</th>
-                  <th class="py-2 pe-2">Level</th>
-                  <th class="py-2">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="rule in auditRules" :key="rule.id" class="border-b border-surface-800">
-                  <td class="py-2 pe-2">{{ rule.rule_type }}</td>
-                  <td class="py-2 pe-2">{{ rule.logger_name || '*' }}</td>
-                  <td class="py-2 pe-2">{{ rule.level || '*' }}</td>
-                  <td class="py-2">
-                    <UButton
-                      label="Remove"
-                      color="error"
-                      variant="outline"
-                      size="xs"
-                      :disabled="auditRuleSaving"
-                      @click="deleteAuditRule(rule.id)"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <div
-              v-if="auditRules.some((r) => r.rule_type === 'exclude')"
-              class="mt-3 pt-3 border-t border-surface-700"
-            >
-              <p class="text-xs text-surface-400 mb-2">
-                Excluded logs are stored in DWH but hidden from reports. Purging removes them
-                permanently to free space. Future ingestions will skip them automatically.
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+            <UInputNumber v-model="auditHours" :min="1" :max="168" size="sm" placeholder="Hours" />
+            <UInputNumber v-model="auditBotId" :min="1" size="sm" placeholder="Bot ID (optional)" />
+            <div class="col-span-2 md:col-span-3 flex items-center gap-2">
+              <UButton
+                :label="auditLoading ? 'Loading...' : 'Refresh Audit Data'"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :disabled="auditLoading"
+                @click="loadAuditData"
+              />
+              <p v-if="auditSummary" class="text-xs text-surface-400">
+                Total events in range: {{ auditSummary.total_events }}
               </p>
-              <div class="flex flex-wrap items-center gap-3">
-                <UButton
-                  :label="purging ? 'Purging...' : 'Purge Excluded Logs'"
-                  color="warning"
-                  variant="outline"
-                  size="sm"
-                  :disabled="purging"
-                  @click="purgeExcludedLogs"
-                />
-                <span v-if="purgeResult" class="text-xs text-surface-300">
-                  Done — deleted {{ purgeResult.deleted_log_events.toLocaleString() }} log events,
-                  {{ purgeResult.deleted_anomaly_signatures.toLocaleString() }} anomaly signatures
-                  ({{ purgeResult.rules_applied }} rule{{
-                    purgeResult.rules_applied !== 1 ? 's' : ''
-                  }}
-                  applied)
-                </span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+            <div class="rounded border border-surface-700 p-3 overflow-x-auto lg:col-span-2">
+              <h3 class="font-semibold mb-2">Log Event Summary (Logger + Level)</h3>
+              <p v-if="auditLoading" class="text-sm text-surface-400">Loading audit summary...</p>
+              <p v-else-if="!auditSummary?.buckets?.length" class="text-sm text-surface-400">
+                No log events in selected range.
+              </p>
+              <table v-else class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-surface-400 border-b border-surface-700">
+                    <th class="py-2 pe-2">Logger</th>
+                    <th class="py-2 pe-2">Level</th>
+                    <th class="py-2 pe-2">Count</th>
+                    <th class="py-2 pe-2">Include</th>
+                    <th class="py-2 pe-2">Exclude</th>
+                    <th class="py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="bucket in auditSummary?.buckets ?? []"
+                    :key="`${bucket.logger}-${bucket.level}`"
+                    class="border-b border-surface-800"
+                  >
+                    <td class="py-2 pe-2">{{ bucket.logger }}</td>
+                    <td class="py-2 pe-2">{{ bucket.level }}</td>
+                    <td class="py-2 pe-2">{{ bucket.total }}</td>
+                    <td class="py-2 pe-2">{{ bucket.selected ? 'yes' : 'no' }}</td>
+                    <td class="py-2 pe-2">{{ bucket.excluded ? 'yes' : 'no' }}</td>
+                    <td class="py-2">
+                      <div class="flex items-center gap-2">
+                        <UButton
+                          :label="bucket.selected ? 'Included' : 'Include'"
+                          color="neutral"
+                          variant="outline"
+                          size="xs"
+                          :disabled="auditRuleSaving || bucket.selected"
+                          @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'include')"
+                        />
+                        <UButton
+                          :label="bucket.excluded ? 'Excluded' : 'Exclude'"
+                          color="warning"
+                          variant="outline"
+                          size="xs"
+                          :disabled="auditRuleSaving || bucket.excluded"
+                          @click="upsertAuditBucketRule(bucket.logger, bucket.level, 'exclude')"
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="rounded border border-surface-700 p-3 overflow-x-auto lg:col-span-1">
+              <h3 class="font-semibold mb-2">Selected Capture Rules</h3>
+              <p class="text-xs text-surface-400 mb-2">
+                These rules drive anomaly/trade log analytics filtering.
+              </p>
+              <p v-if="!auditRules.length" class="text-sm text-surface-400">
+                No rules selected yet (all logs are included).
+              </p>
+              <table v-else class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-surface-400 border-b border-surface-700">
+                    <th class="py-2 pe-2">Type</th>
+                    <th class="py-2 pe-2">Logger</th>
+                    <th class="py-2 pe-2">Level</th>
+                    <th class="py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="rule in auditRules" :key="rule.id" class="border-b border-surface-800">
+                    <td class="py-2 pe-2">{{ rule.rule_type }}</td>
+                    <td class="py-2 pe-2">{{ rule.logger_name || '*' }}</td>
+                    <td class="py-2 pe-2">{{ rule.level || '*' }}</td>
+                    <td class="py-2">
+                      <UButton
+                        label="Remove"
+                        color="error"
+                        variant="outline"
+                        size="xs"
+                        :disabled="auditRuleSaving"
+                        @click="deleteAuditRule(rule.id)"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div
+                v-if="auditRules.some((r) => r.rule_type === 'exclude')"
+                class="mt-3 pt-3 border-t border-surface-700"
+              >
+                <p class="text-xs text-surface-400 mb-2">
+                  Excluded logs are stored in DWH but hidden from reports. Purging removes them
+                  permanently to free space. Future ingestions will skip them automatically.
+                </p>
+                <div class="flex flex-wrap items-center gap-3">
+                  <UButton
+                    :label="purging ? 'Purging...' : 'Purge Excluded Logs'"
+                    color="warning"
+                    variant="outline"
+                    size="sm"
+                    :disabled="purging"
+                    @click="purgeExcludedLogs"
+                  />
+                  <span v-if="purgeResult" class="text-xs text-surface-300">
+                    Done — deleted {{ purgeResult.deleted_log_events.toLocaleString() }} log events,
+                    {{ purgeResult.deleted_anomaly_signatures.toLocaleString() }} anomaly signatures
+                    ({{ purgeResult.rules_applied }} rule{{
+                      purgeResult.rules_applied !== 1 ? 's' : ''
+                    }}
+                    applied)
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <section class="rounded border border-surface-700 p-3 space-y-3">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="font-semibold">Strategy Message Explorer</h3>
-            <p class="text-xs text-surface-400">
-              Matched {{ auditMessages.length }} of {{ auditMessagesTotal }} events
-            </p>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-6 gap-2">
-            <UInput
-              v-model="auditMessageLogger"
-              size="sm"
-              placeholder="Logger contains (e.g. Printer)"
-            />
-            <UInput
-              v-model="auditMessageLevel"
-              size="sm"
-              placeholder="Level (optional, e.g. INFO)"
-            />
-            <UInput
-              v-model="auditMessageQuery"
-              size="sm"
-              class="md:col-span-2"
-              placeholder="Message contains (e.g. skip / blocked)"
-            />
-            <UInputNumber
-              v-model="auditMessageLimit"
-              :min="1"
-              :max="500"
-              size="sm"
-              placeholder="Limit"
-            />
-            <UButton
-              :label="auditMessagesLoading ? 'Loading...' : 'Search Messages'"
-              color="neutral"
-              variant="outline"
-              size="sm"
-              :disabled="auditMessagesLoading"
-              @click="loadAuditMessages"
-            />
-          </div>
-
-          <p class="text-xs text-surface-400">
-            Use this to verify/report strategy events like trade skips, entry blocks, and other
-            decision messages.
-          </p>
-
-          <p v-if="auditMessagesLoading" class="text-sm text-surface-400">
-            Loading strategy messages...
-          </p>
-          <p v-else-if="!auditMessages.length" class="text-sm text-surface-400">
-            No matching messages in selected range.
-          </p>
-          <div v-else class="max-h-[38vh] overflow-y-auto space-y-2">
-            <div
-              v-for="(item, index) in auditMessages"
-              :key="`audit-msg-${index}-${item.event_ts}`"
-              class="rounded border border-surface-700 p-2 text-xs"
-            >
-              <p class="text-surface-300">
-                {{ formatDate(item.event_ts) }} · #{{ item.bot_id }} · {{ item.vps_name || '—' }}/{{
-                  item.container_name || '—'
-                }}
-                · {{ item.level }} · {{ item.logger }}
+          <section class="rounded border border-surface-700 p-3 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="font-semibold">Strategy Message Explorer</h3>
+              <p class="text-xs text-surface-400">
+                Matched {{ auditMessages.length }} of {{ auditMessagesTotal }} events
               </p>
-              <p class="text-surface-100 whitespace-pre-wrap break-words">{{ item.message }}</p>
             </div>
-          </div>
-        </section>
+
+            <div class="grid grid-cols-1 md:grid-cols-6 gap-2">
+              <UInput
+                v-model="auditMessageLogger"
+                size="sm"
+                placeholder="Logger contains (e.g. Printer)"
+              />
+              <UInput
+                v-model="auditMessageLevel"
+                size="sm"
+                placeholder="Level (optional, e.g. INFO)"
+              />
+              <UInput
+                v-model="auditMessageQuery"
+                size="sm"
+                class="md:col-span-2"
+                placeholder="Message contains (e.g. skip / blocked)"
+              />
+              <UInputNumber
+                v-model="auditMessageLimit"
+                :min="1"
+                :max="500"
+                size="sm"
+                placeholder="Limit"
+              />
+              <UButton
+                :label="auditMessagesLoading ? 'Loading...' : 'Search Messages'"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :disabled="auditMessagesLoading"
+                @click="loadAuditMessages"
+              />
+            </div>
+
+            <p class="text-xs text-surface-400">
+              Use this to verify/report strategy events like trade skips, entry blocks, and other
+              decision messages.
+            </p>
+
+            <p v-if="auditMessagesLoading" class="text-sm text-surface-400">
+              Loading strategy messages...
+            </p>
+            <p v-else-if="!auditMessages.length" class="text-sm text-surface-400">
+              No matching messages in selected range.
+            </p>
+            <div v-else class="max-h-[38vh] overflow-y-auto space-y-2">
+              <div
+                v-for="(item, index) in auditMessages"
+                :key="`audit-msg-${index}-${item.event_ts}`"
+                class="rounded border border-surface-700 p-2 text-xs"
+              >
+                <p class="text-surface-300">
+                  {{ formatDate(item.event_ts) }} · #{{ item.bot_id }} ·
+                  {{ item.vps_name || '—' }}/{{ item.container_name || '—' }} · {{ item.level }} ·
+                  {{ item.logger }}
+                </p>
+                <p class="text-surface-100 whitespace-pre-wrap break-words">{{ item.message }}</p>
+              </div>
+            </div>
+          </section>
         </div>
       </template>
     </UModal>
@@ -1290,168 +1275,170 @@ onBeforeUnmount(() => {
     >
       <template #body>
         <div class="space-y-4">
-        <section class="rounded border border-surface-700 p-4">
-          <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
-            <h3 class="font-semibold">Recent Ingestion Runs</h3>
-            <div class="flex flex-wrap items-center gap-2">
-              <label class="text-sm text-surface-300">Days</label>
-              <UInputNumber
-                v-model="runHistoryDays"
-                :min="0"
-                :max="3650"
-                size="sm"
-                class="w-24"
-                placeholder="0=all"
-              />
-              <UButton
-                label="Apply"
-                color="neutral"
-                variant="outline"
-                size="sm"
-                @click="loadRunHistory"
-              />
-              <UCheckbox v-model="showFailedOnly" label="Failed only" class="ms-2" />
-              <UButton
-                :label="flushingRuns ? 'Flushing...' : 'Flush All Runs'"
-                color="error"
-                variant="outline"
-                size="sm"
-                class="ms-2"
-                :disabled="flushingRuns"
-                @click="flushIngestionRuns"
-              />
+          <section class="rounded border border-surface-700 p-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+              <h3 class="font-semibold">Recent Ingestion Runs</h3>
+              <div class="flex flex-wrap items-center gap-2">
+                <label class="text-sm text-surface-300">Days</label>
+                <UInputNumber
+                  v-model="runHistoryDays"
+                  :min="0"
+                  :max="3650"
+                  size="sm"
+                  class="w-24"
+                  placeholder="0=all"
+                />
+                <UButton
+                  label="Apply"
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  @click="loadRunHistory"
+                />
+                <UCheckbox v-model="showFailedOnly" label="Failed only" class="ms-2" />
+                <UButton
+                  :label="flushingRuns ? 'Flushing...' : 'Flush All Runs'"
+                  color="error"
+                  variant="outline"
+                  size="sm"
+                  class="ms-2"
+                  :disabled="flushingRuns"
+                  @click="flushIngestionRuns"
+                />
+              </div>
             </div>
-          </div>
-          <div v-if="!visibleRunHistory.length" class="text-sm text-surface-400">
-            No runs to display.
-          </div>
-          <div v-else class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-surface-400 border-b border-surface-700">
-                  <th class="py-2 pe-2">ID</th>
-                  <th class="py-2 pe-2">Mode</th>
-                  <th class="py-2 pe-2">Status</th>
-                  <th class="py-2 pe-2">Started</th>
-                  <th class="py-2 pe-2">Finished</th>
-                  <th class="py-2 pe-2">Synced/Failed</th>
-                  <th class="py-2 pe-2">Actor</th>
-                  <th class="py-2">Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template v-for="run in visibleRunHistory" :key="run.id">
-                  <tr class="border-b border-surface-800">
-                    <td class="py-2 pe-2">#{{ run.id }}</td>
-                    <td class="py-2 pe-2">{{ run.mode }}</td>
-                    <td class="py-2 pe-2">
-                      <span
-                        class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold"
-                        :class="runStatusClass(run.status)"
-                      >
-                        {{ run.status }}
-                      </span>
-                    </td>
-                    <td class="py-2 pe-2">{{ formatDate(run.started_at) }}</td>
-                    <td class="py-2 pe-2">{{ formatDate(run.finished_at) }}</td>
-                    <td class="py-2 pe-2">
-                      {{ run.result ? `${run.result.bots_synced}/${run.result.bots_failed}` : '—' }}
-                    </td>
-                    <td class="py-2 pe-2">{{ run.actor || '—' }}</td>
-                    <td class="py-2">
-                      <UButton
-                        :label="expandedRunId === run.id ? 'Hide' : 'Show'"
-                        color="neutral"
-                        variant="outline"
-                        size="xs"
-                        @click="toggleRunDetails(run.id)"
-                      />
-                    </td>
+            <div v-if="!visibleRunHistory.length" class="text-sm text-surface-400">
+              No runs to display.
+            </div>
+            <div v-else class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-left text-surface-400 border-b border-surface-700">
+                    <th class="py-2 pe-2">ID</th>
+                    <th class="py-2 pe-2">Mode</th>
+                    <th class="py-2 pe-2">Status</th>
+                    <th class="py-2 pe-2">Started</th>
+                    <th class="py-2 pe-2">Finished</th>
+                    <th class="py-2 pe-2">Synced/Failed</th>
+                    <th class="py-2 pe-2">Actor</th>
+                    <th class="py-2">Details</th>
                   </tr>
-                  <tr
-                    v-if="expandedRunId === run.id"
-                    class="border-b border-surface-800 bg-surface-100/40 dark:bg-surface-800/40"
-                  >
-                    <td colspan="8" class="py-3 px-2">
-                      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                        <div class="rounded border border-surface-700 p-3">
-                          <h3 class="font-semibold mb-1">Run Metrics</h3>
-                          <p>Scanned: {{ run.result?.bots_scanned ?? 0 }}</p>
-                          <p>Synced: {{ run.result?.bots_synced ?? 0 }}</p>
-                          <p>Failed: {{ run.result?.bots_failed ?? 0 }}</p>
-                          <p>
-                            Trades +{{ run.result?.inserted_trades ?? 0 }} / ~{{
-                              run.result?.updated_trades ?? 0
-                            }}
-                          </p>
-                          <p>
-                            Orders +{{ run.result?.inserted_orders ?? 0 }} / ~{{
-                              run.result?.updated_orders ?? 0
-                            }}
-                          </p>
-                          <p>
-                            Logs +{{ run.result?.inserted_log_events ?? 0 }}, anomaly signatures
-                            touched {{ run.result?.updated_anomalies ?? 0 }}
-                          </p>
-                        </div>
-                        <div class="rounded border border-surface-700 p-3">
-                          <h3 class="font-semibold mb-1">Errors</h3>
-                          <p v-if="run.error" class="text-red-300 mb-1">{{ run.error }}</p>
-                          <p
-                            v-if="!run.result?.errors?.length && !run.error"
-                            class="text-surface-400"
-                          >
-                            No errors recorded.
-                          </p>
-                          <ul v-else class="list-disc ms-5 space-y-1 text-red-300">
-                            <li
-                              v-for="(entry, index) in run.result?.errors ?? []"
-                              :key="`${run.id}-${index}`"
+                </thead>
+                <tbody>
+                  <template v-for="run in visibleRunHistory" :key="run.id">
+                    <tr class="border-b border-surface-800">
+                      <td class="py-2 pe-2">#{{ run.id }}</td>
+                      <td class="py-2 pe-2">{{ run.mode }}</td>
+                      <td class="py-2 pe-2">
+                        <span
+                          class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold"
+                          :class="runStatusClass(run.status)"
+                        >
+                          {{ run.status }}
+                        </span>
+                      </td>
+                      <td class="py-2 pe-2">{{ formatDate(run.started_at) }}</td>
+                      <td class="py-2 pe-2">{{ formatDate(run.finished_at) }}</td>
+                      <td class="py-2 pe-2">
+                        {{
+                          run.result ? `${run.result.bots_synced}/${run.result.bots_failed}` : '—'
+                        }}
+                      </td>
+                      <td class="py-2 pe-2">{{ run.actor || '—' }}</td>
+                      <td class="py-2">
+                        <UButton
+                          :label="expandedRunId === run.id ? 'Hide' : 'Show'"
+                          color="neutral"
+                          variant="outline"
+                          size="xs"
+                          @click="toggleRunDetails(run.id)"
+                        />
+                      </td>
+                    </tr>
+                    <tr
+                      v-if="expandedRunId === run.id"
+                      class="border-b border-surface-800 bg-surface-100/40 dark:bg-surface-800/40"
+                    >
+                      <td colspan="8" class="py-3 px-2">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                          <div class="rounded border border-surface-700 p-3">
+                            <h3 class="font-semibold mb-1">Run Metrics</h3>
+                            <p>Scanned: {{ run.result?.bots_scanned ?? 0 }}</p>
+                            <p>Synced: {{ run.result?.bots_synced ?? 0 }}</p>
+                            <p>Failed: {{ run.result?.bots_failed ?? 0 }}</p>
+                            <p>
+                              Trades +{{ run.result?.inserted_trades ?? 0 }} / ~{{
+                                run.result?.updated_trades ?? 0
+                              }}
+                            </p>
+                            <p>
+                              Orders +{{ run.result?.inserted_orders ?? 0 }} / ~{{
+                                run.result?.updated_orders ?? 0
+                              }}
+                            </p>
+                            <p>
+                              Logs +{{ run.result?.inserted_log_events ?? 0 }}, anomaly signatures
+                              touched {{ run.result?.updated_anomalies ?? 0 }}
+                            </p>
+                          </div>
+                          <div class="rounded border border-surface-700 p-3">
+                            <h3 class="font-semibold mb-1">Errors</h3>
+                            <p v-if="run.error" class="text-red-300 mb-1">{{ run.error }}</p>
+                            <p
+                              v-if="!run.result?.errors?.length && !run.error"
+                              class="text-surface-400"
                             >
-                              {{ entry }}
-                            </li>
-                          </ul>
+                              No errors recorded.
+                            </p>
+                            <ul v-else class="list-disc ms-5 space-y-1 text-red-300">
+                              <li
+                                v-for="(entry, index) in run.result?.errors ?? []"
+                                :key="`${run.id}-${index}`"
+                              >
+                                {{ entry }}
+                              </li>
+                            </ul>
+                          </div>
+                          <div class="rounded border border-surface-700 p-3">
+                            <h3 class="font-semibold mb-1">Top Anomalies In Run</h3>
+                            <p v-if="loadingRunAnomalies[run.id]" class="text-surface-400">
+                              Loading...
+                            </p>
+                            <p v-else-if="!runAnomalies[run.id]?.length" class="text-surface-400">
+                              No anomaly spikes found.
+                            </p>
+                            <ul v-else class="space-y-1 text-surface-200">
+                              <li
+                                v-for="(row, index) in runAnomalies[run.id]"
+                                :key="`${run.id}-a-${index}`"
+                                class="text-xs"
+                              >
+                                <span class="font-semibold">{{ row.occurrences }}x</span>
+                                <span class="text-surface-400">
+                                  {{ row.level }} / {{ row.logger }}
+                                </span>
+                                <span> {{ row.signature }} </span>
+                              </li>
+                            </ul>
+                          </div>
                         </div>
-                        <div class="rounded border border-surface-700 p-3">
-                          <h3 class="font-semibold mb-1">Top Anomalies In Run</h3>
-                          <p v-if="loadingRunAnomalies[run.id]" class="text-surface-400">
-                            Loading...
-                          </p>
-                          <p v-else-if="!runAnomalies[run.id]?.length" class="text-surface-400">
-                            No anomaly spikes found.
-                          </p>
-                          <ul v-else class="space-y-1 text-surface-200">
-                            <li
-                              v-for="(row, index) in runAnomalies[run.id]"
-                              :key="`${run.id}-a-${index}`"
-                              class="text-xs"
-                            >
-                              <span class="font-semibold">{{ row.occurrences }}x</span>
-                              <span class="text-surface-400">
-                                {{ row.level }} / {{ row.logger }}
-                              </span>
-                              <span> {{ row.signature }} </span>
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-        </section>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-        <section v-if="runResult" class="rounded border border-surface-700 p-4">
-          <h3 class="font-semibold mb-2">Last Run Errors</h3>
-          <p v-if="!runErrors.length" class="text-sm text-surface-400">
-            No errors reported in the last run.
-          </p>
-          <ul v-else class="list-disc ms-5 space-y-1 text-sm text-red-300">
-            <li v-for="(entry, index) in runErrors" :key="`${index}-${entry}`">{{ entry }}</li>
-          </ul>
-        </section>
+          <section v-if="runResult" class="rounded border border-surface-700 p-4">
+            <h3 class="font-semibold mb-2">Last Run Errors</h3>
+            <p v-if="!runErrors.length" class="text-sm text-surface-400">
+              No errors reported in the last run.
+            </p>
+            <ul v-else class="list-disc ms-5 space-y-1 text-sm text-red-300">
+              <li v-for="(entry, index) in runErrors" :key="`${index}-${entry}`">{{ entry }}</li>
+            </ul>
+          </section>
         </div>
       </template>
     </UModal>
@@ -1467,13 +1454,7 @@ onBeforeUnmount(() => {
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-semibold">Anomaly Trends + Samples</h3>
             <div class="flex items-center gap-2">
-              <UInputNumber
-                v-model="anomaliesDays"
-                :min="1"
-                :max="3650"
-                size="sm"
-                class="w-24"
-              />
+              <UInputNumber v-model="anomaliesDays" :min="1" :max="3650" size="sm" class="w-24" />
               <UButton
                 :label="anomaliesLoading ? 'Loading...' : 'Refresh'"
                 color="neutral"
@@ -1632,206 +1613,200 @@ onBeforeUnmount(() => {
     >
       <template #body>
         <div class="space-y-4">
-        <section class="rounded border border-surface-700 p-3 space-y-2">
-          <h3 class="font-semibold">Alerting</h3>
-          <p v-if="alertLoading" class="text-sm text-surface-400">Loading alerting status...</p>
-          <template v-else>
-            <p class="text-sm text-surface-300">
-              Enabled:
-              <span
-                class="font-semibold"
-                :class="alertConfig?.enabled ? 'text-green-300' : 'text-yellow-300'"
+          <section class="rounded border border-surface-700 p-3 space-y-2">
+            <h3 class="font-semibold">Alerting</h3>
+            <p v-if="alertLoading" class="text-sm text-surface-400">Loading alerting status...</p>
+            <template v-else>
+              <p class="text-sm text-surface-300">
+                Enabled:
+                <span
+                  class="font-semibold"
+                  :class="alertConfig?.enabled ? 'text-green-300' : 'text-yellow-300'"
+                >
+                  {{ alertConfig?.enabled ? 'on' : 'off' }}
+                </span>
+              </p>
+              <p v-if="!alertConfig?.enabled" class="text-xs text-yellow-300">
+                Alerting is disabled in this dev stage (no alerts are sent/logged automatically).
+              </p>
+              <p v-if="alertConfig" class="text-xs text-surface-400">
+                Rules: bots_failed ≥ {{ alertConfig.bots_failed_threshold }}, anomaly spike ≥
+                {{ alertConfig.anomaly_occurrences_threshold }} in
+                {{ alertConfig.anomaly_window_minutes }}m.
+              </p>
+              <p v-if="alertStatus" class="text-xs text-surface-400">
+                Last evaluation: {{ formatDate(alertStatus.evaluated_at) }} · currently triggered:
+                {{ alertStatus.triggered_count }}
+              </p>
+              <ul
+                v-if="alertStatus?.enabled && alertStatus.alerts.length"
+                class="list-disc ms-5 text-xs text-red-300 space-y-1"
               >
-                {{ alertConfig?.enabled ? 'on' : 'off' }}
+                <li v-for="item in alertStatus.alerts" :key="item.key">{{ item.message }}</li>
+              </ul>
+            </template>
+          </section>
+
+          <section class="rounded border border-surface-700 p-3 space-y-2">
+            <h3 class="font-semibold">Ingestion Controls</h3>
+            <p class="text-sm text-surface-300">
+              State:
+              <span
+                class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold ms-1"
+                :class="asyncStatusBadgeClass"
+              >
+                {{ asyncStatus?.status ?? 'idle' }}
               </span>
             </p>
-            <p v-if="!alertConfig?.enabled" class="text-xs text-yellow-300">
-              Alerting is disabled in this dev stage (no alerts are sent/logged automatically).
+            <p class="text-sm text-surface-300">
+              Started: {{ formatDate(asyncStatus?.started_at ?? null) }}
             </p>
-            <p v-if="alertConfig" class="text-xs text-surface-400">
-              Rules: bots_failed ≥ {{ alertConfig.bots_failed_threshold }}, anomaly spike ≥
-              {{ alertConfig.anomaly_occurrences_threshold }} in
-              {{ alertConfig.anomaly_window_minutes }}m.
+            <p class="text-sm text-surface-300">
+              Finished: {{ formatDate(asyncStatus?.finished_at ?? null) }}
             </p>
-            <p v-if="alertStatus" class="text-xs text-surface-400">
-              Last evaluation: {{ formatDate(alertStatus.evaluated_at) }} · currently triggered:
-              {{ alertStatus.triggered_count }}
+            <p
+              v-if="
+                asyncStatus?.status === 'running' &&
+                (asyncStatus?.current_container_name || asyncStatus?.current_vps_name)
+              "
+              class="text-sm text-surface-300"
+            >
+              Current bot:
+              <span class="font-medium text-surface-100">
+                {{ asyncStatus?.current_vps_name || '—' }} /
+                {{ asyncStatus?.current_container_name || '—' }}
+              </span>
+              <span
+                v-if="asyncStatus?.current_bot_index && asyncStatus?.current_bots_total"
+                class="text-surface-400"
+              >
+                ({{ asyncStatus.current_bot_index }}/{{ asyncStatus.current_bots_total }})
+              </span>
             </p>
-            <ul
-              v-if="alertStatus?.enabled && alertStatus.alerts.length"
-              class="list-disc ms-5 text-xs text-red-300 space-y-1"
-            >
-              <li v-for="item in alertStatus.alerts" :key="item.key">{{ item.message }}</li>
-            </ul>
-          </template>
-        </section>
+            <div class="flex flex-wrap items-center gap-3 pt-1">
+              <UCheckbox
+                v-model="runAsyncMode"
+                label="Run async before start"
+                :disabled="running"
+              />
+              <UButton
+                label="Refresh"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :disabled="loading || running"
+                @click="refreshAllData"
+              />
+              <UButton
+                :label="running ? 'Running...' : 'Run Ingestion Now'"
+                size="sm"
+                :disabled="running"
+                @click="runIngestion"
+              />
+              <UButton
+                :label="unstickRunning ? 'Unsticking...' : 'Unstick Stale Ingestion'"
+                color="warning"
+                variant="outline"
+                size="sm"
+                :disabled="unstickRunning"
+                @click="unstickIngestion"
+              />
+              <UButton
+                :label="unstickRunning ? 'Unsticking...' : 'Force Unstick'"
+                color="error"
+                variant="outline"
+                size="sm"
+                :disabled="unstickRunning"
+                @click="forceUnstickIngestion"
+              />
+            </div>
+            <div class="flex flex-wrap items-center gap-2 pt-1">
+              <label class="text-sm text-surface-300">Global log fetch timeout (sec)</label>
+              <UInputNumber
+                v-model="ingestionTimeoutSeconds"
+                :min="5"
+                :max="300"
+                size="sm"
+                class="w-28"
+              />
+              <UButton
+                :label="ingestionConfigSaving ? 'Saving...' : 'Save Timeout'"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :disabled="ingestionConfigSaving || running"
+                @click="saveIngestionConfig"
+              />
+            </div>
+            <p class="text-xs text-surface-400">
+              Applies globally to all VPS log fetch operations for ingestion.
+            </p>
+            <p v-if="unstickMessage" class="text-xs text-surface-400">{{ unstickMessage }}</p>
+          </section>
 
-        <section class="rounded border border-surface-700 p-3 space-y-2">
-          <h3 class="font-semibold">Ingestion Controls</h3>
-          <p class="text-sm text-surface-300">
-            State:
-            <span
-              class="inline-flex items-center px-2 py-0.5 rounded border text-xs font-semibold ms-1"
-              :class="asyncStatusBadgeClass"
-            >
-              {{ asyncStatus?.status ?? 'idle' }}
-            </span>
-          </p>
-          <p class="text-sm text-surface-300">
-            Started: {{ formatDate(asyncStatus?.started_at ?? null) }}
-          </p>
-          <p class="text-sm text-surface-300">
-            Finished: {{ formatDate(asyncStatus?.finished_at ?? null) }}
-          </p>
-          <p
-            v-if="
-              asyncStatus?.status === 'running' &&
-              (asyncStatus?.current_container_name || asyncStatus?.current_vps_name)
-            "
-            class="text-sm text-surface-300"
-          >
-            Current bot:
-            <span class="font-medium text-surface-100">
-              {{ asyncStatus?.current_vps_name || '—' }} /
-              {{ asyncStatus?.current_container_name || '—' }}
-            </span>
-            <span
-              v-if="asyncStatus?.current_bot_index && asyncStatus?.current_bots_total"
-              class="text-surface-400"
-            >
-              ({{ asyncStatus.current_bot_index }}/{{ asyncStatus.current_bots_total }})
-            </span>
-          </p>
-          <div class="flex flex-wrap items-center gap-3 pt-1">
-            <UCheckbox
-              v-model="runAsyncMode"
-              label="Run async before start"
-              :disabled="running"
-            />
-            <UButton
-              label="Refresh"
-              color="neutral"
-              variant="outline"
-              size="sm"
-              :disabled="loading || running"
-              @click="refreshAllData"
-            />
-            <UButton
-              :label="running ? 'Running...' : 'Run Ingestion Now'"
-              size="sm"
-              :disabled="running"
-              @click="runIngestion"
-            />
-            <UButton
-              :label="unstickRunning ? 'Unsticking...' : 'Unstick Stale Ingestion'"
-              color="warning"
-              variant="outline"
-              size="sm"
-              :disabled="unstickRunning"
-              @click="unstickIngestion"
-            />
-            <UButton
-              :label="unstickRunning ? 'Unsticking...' : 'Force Unstick'"
-              color="error"
-              variant="outline"
-              size="sm"
-              :disabled="unstickRunning"
-              @click="forceUnstickIngestion"
-            />
-          </div>
-          <div class="flex flex-wrap items-center gap-2 pt-1">
-            <label class="text-sm text-surface-300">Global log fetch timeout (sec)</label>
-            <UInputNumber
-              v-model="ingestionTimeoutSeconds"
-              :min="5"
-              :max="300"
-              size="sm"
-              class="w-28"
-            />
-            <UButton
-              :label="ingestionConfigSaving ? 'Saving...' : 'Save Timeout'"
-              color="neutral"
-              variant="outline"
-              size="sm"
-              :disabled="ingestionConfigSaving || running"
-              @click="saveIngestionConfig"
-            />
-          </div>
-          <p class="text-xs text-surface-400">
-            Applies globally to all VPS log fetch operations for ingestion.
-          </p>
-          <p v-if="unstickMessage" class="text-xs text-surface-400">{{ unstickMessage }}</p>
-        </section>
+          <section class="rounded border border-surface-700 p-3 space-y-2">
+            <h3 class="font-semibold">Retention</h3>
+            <div class="flex flex-wrap items-center gap-2">
+              <UInputNumber v-model="retentionDays" :min="1" :max="3650" size="sm" class="w-28" />
+              <UButton
+                :label="retentionRunning ? 'Cleaning...' : 'Run Cleanup'"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :disabled="retentionRunning"
+                @click="runRetention"
+              />
+            </div>
+            <p class="text-xs text-surface-400">Delete DWH rows older than selected days.</p>
+            <p v-if="retentionConfig" class="text-xs text-surface-400">
+              Auto: {{ retentionConfig.enabled ? 'on' : 'off' }} · {{ retentionConfig.days }}d ·
+              every {{ retentionConfig.interval_minutes }}m · next {{ nextAutoRetentionText }}
+            </p>
+          </section>
 
-        <section class="rounded border border-surface-700 p-3 space-y-2">
-          <h3 class="font-semibold">Retention</h3>
-          <div class="flex flex-wrap items-center gap-2">
-            <UInputNumber
-              v-model="retentionDays"
-              :min="1"
-              :max="3650"
-              size="sm"
-              class="w-28"
-            />
-            <UButton
-              :label="retentionRunning ? 'Cleaning...' : 'Run Cleanup'"
-              color="neutral"
-              variant="outline"
-              size="sm"
-              :disabled="retentionRunning"
-              @click="runRetention"
-            />
-          </div>
-          <p class="text-xs text-surface-400">Delete DWH rows older than selected days.</p>
-          <p v-if="retentionConfig" class="text-xs text-surface-400">
-            Auto: {{ retentionConfig.enabled ? 'on' : 'off' }} · {{ retentionConfig.days }}d · every
-            {{ retentionConfig.interval_minutes }}m · next {{ nextAutoRetentionText }}
-          </p>
-        </section>
-
-        <section class="rounded border border-surface-700 p-3 space-y-2">
-          <h3 class="font-semibold">Rollups + Compaction</h3>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-2">
-            <UInputNumber
-              v-model="rollupDays"
-              :min="1"
-              :max="3650"
-              size="sm"
-              placeholder="Rollup days"
-            />
-            <UInputNumber
-              v-model="compactLogDays"
-              :min="1"
-              :max="3650"
-              size="sm"
-              placeholder="Compact log days"
-            />
-            <UInputNumber
-              v-model="compactMessageMaxLen"
-              :min="50"
-              :max="2000"
-              size="sm"
-              placeholder="Max message len"
-            />
-            <UButton
-              :label="rollupCompactionRunning ? 'Running...' : 'Run Rollup + Compaction'"
-              color="neutral"
-              variant="outline"
-              size="sm"
-              :disabled="rollupCompactionRunning"
-              @click="runRollupCompaction"
-            />
-          </div>
-          <p v-if="rollupCompactionConfig" class="text-xs text-surface-400">
-            Auto: {{ rollupCompactionConfig.enabled ? 'on' : 'off' }} · rollup
-            {{ rollupCompactionConfig.rollup_days }}d · compact
-            {{ rollupCompactionConfig.compact_log_days }}d · every
-            {{ rollupCompactionConfig.interval_minutes }}m · next {{ nextAutoRollupText }}
-          </p>
-          <p class="text-xs text-surface-400">
-            Rollups store hourly anomaly counts; compaction truncates older long log messages.
-          </p>
-        </section>
+          <section class="rounded border border-surface-700 p-3 space-y-2">
+            <h3 class="font-semibold">Rollups + Compaction</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-2">
+              <UInputNumber
+                v-model="rollupDays"
+                :min="1"
+                :max="3650"
+                size="sm"
+                placeholder="Rollup days"
+              />
+              <UInputNumber
+                v-model="compactLogDays"
+                :min="1"
+                :max="3650"
+                size="sm"
+                placeholder="Compact log days"
+              />
+              <UInputNumber
+                v-model="compactMessageMaxLen"
+                :min="50"
+                :max="2000"
+                size="sm"
+                placeholder="Max message len"
+              />
+              <UButton
+                :label="rollupCompactionRunning ? 'Running...' : 'Run Rollup + Compaction'"
+                color="neutral"
+                variant="outline"
+                size="sm"
+                :disabled="rollupCompactionRunning"
+                @click="runRollupCompaction"
+              />
+            </div>
+            <p v-if="rollupCompactionConfig" class="text-xs text-surface-400">
+              Auto: {{ rollupCompactionConfig.enabled ? 'on' : 'off' }} · rollup
+              {{ rollupCompactionConfig.rollup_days }}d · compact
+              {{ rollupCompactionConfig.compact_log_days }}d · every
+              {{ rollupCompactionConfig.interval_minutes }}m · next {{ nextAutoRollupText }}
+            </p>
+            <p class="text-xs text-surface-400">
+              Rollups store hourly anomaly counts; compaction truncates older long log messages.
+            </p>
+          </section>
         </div>
       </template>
     </UModal>

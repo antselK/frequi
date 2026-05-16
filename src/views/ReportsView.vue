@@ -2376,10 +2376,12 @@ const drillChartYTicks = computed(() => {
     const ratio = i / ticks;
     const value = max - ratio * (max - min);
     const y = topPad + ratio * plotHeight;
-    let label = '';
-    if (drillChartMetric.value === 'profit_pct') label = `${value.toFixed(1)}%`;
-    else if (drillChartMetric.value === 'profit_abs') label = value.toFixed(2);
-    else label = value.toFixed(0);
+    const label =
+      drillChartMetric.value === 'profit_pct'
+        ? `${value.toFixed(1)}%`
+        : drillChartMetric.value === 'profit_abs'
+          ? value.toFixed(2)
+          : value.toFixed(0);
     return { y, value, label };
   });
 });
@@ -2414,11 +2416,14 @@ const drillChartCoordinates = computed(() => {
   const { min, max } = drillChartYRange.value;
   const range = max - min || 1;
   return sorted.map((trade, idx) => {
-    let rawVal: number | null = null;
-    if (drillChartMetric.value === 'profit_pct')
-      rawVal = trade.profit_ratio !== null ? trade.profit_ratio * 100 : null;
-    else if (drillChartMetric.value === 'profit_abs') rawVal = trade.profit_abs;
-    else rawVal = tradeDurationMinutes(trade);
+    const rawVal: number | null =
+      drillChartMetric.value === 'profit_pct'
+        ? trade.profit_ratio !== null
+          ? trade.profit_ratio * 100
+          : null
+        : drillChartMetric.value === 'profit_abs'
+          ? trade.profit_abs
+          : tradeDurationMinutes(trade);
     const val = rawVal ?? min;
     const x = leftPad + (idx / denominator) * plotWidth;
     const y = topPad + ((max - val) / range) * plotHeight;
@@ -4150,20 +4155,12 @@ onMounted(async () => {
           <div class="flex flex-wrap gap-3">
             <div class="flex flex-col gap-1 min-w-52">
               <label class="text-sm">Category</label>
-              <USelect
-                v-model="selectedCategory"
-                :items="categoryOptions"
-                size="sm"
-              />
+              <USelect v-model="selectedCategory" :items="categoryOptions" size="sm" />
             </div>
 
             <div class="flex flex-col gap-1 min-w-64">
               <label class="text-sm">Sub category</label>
-              <USelect
-                v-model="selectedSubCategory"
-                :items="availableSubCategories"
-                size="sm"
-              />
+              <USelect v-model="selectedSubCategory" :items="availableSubCategories" size="sm" />
             </div>
           </div>
 
@@ -4506,12 +4503,7 @@ onMounted(async () => {
                   class="w-40"
                   placeholder="Logger (e.g. Printer)"
                 />
-                <UInput
-                  v-model="logsFilterLevel"
-                  size="sm"
-                  class="w-28"
-                  placeholder="Level"
-                />
+                <UInput v-model="logsFilterLevel" size="sm" class="w-28" placeholder="Level" />
                 <UButton
                   label="Refresh"
                   size="sm"
@@ -4670,12 +4662,7 @@ onMounted(async () => {
                       size="sm"
                       class="w-56"
                     />
-                    <UInput
-                      v-model="logsSpikeLevels"
-                      size="sm"
-                      class="w-44"
-                      placeholder="Levels"
-                    />
+                    <UInput v-model="logsSpikeLevels" size="sm" class="w-44" placeholder="Levels" />
                     <UInputNumber
                       v-model="logsSpikeLimit"
                       :min="1"
@@ -5227,7 +5214,9 @@ onMounted(async () => {
                 :label="`Trailing-entry misses: ${signalOutcomeTrailingCount} (${signalOutcomeReasonSharePct(signalOutcomeTrailingCount)}%)`"
                 size="sm"
                 color="warning"
-                :variant="selectedSignalOutcomeReasons.includes('trailing_entry') ? 'solid' : 'outline'"
+                :variant="
+                  selectedSignalOutcomeReasons.includes('trailing_entry') ? 'solid' : 'outline'
+                "
                 @click="
                   selectedSignalOutcomeReasons.includes('trailing_entry')
                     ? (selectedSignalOutcomeReasons = selectedSignalOutcomeReasons.filter(
@@ -6275,12 +6264,7 @@ onMounted(async () => {
                   size="sm"
                   class="w-56"
                 />
-                <UInput
-                  v-model="signalIndFilterPair"
-                  size="sm"
-                  class="w-36"
-                  placeholder="Pair"
-                />
+                <UInput v-model="signalIndFilterPair" size="sm" class="w-36" placeholder="Pair" />
                 <USelect
                   v-model="signalIndFilterTag"
                   :items="signalIndTagOptions"
@@ -8223,12 +8207,7 @@ onMounted(async () => {
                   class="w-40"
                   placeholder="Pair (e.g. BTC/USDT)"
                 />
-                <UInput
-                  v-model="trailingFilterVps"
-                  size="sm"
-                  class="w-36"
-                  placeholder="VPS"
-                />
+                <UInput v-model="trailingFilterVps" size="sm" class="w-36" placeholder="VPS" />
                 <UInput
                   v-model="trailingFilterContainer"
                   size="sm"
@@ -9014,12 +8993,7 @@ onMounted(async () => {
                       class="flex items-center gap-1 text-xs"
                     >
                       <span class="text-surface-400">Capital (USDT):</span>
-                      <UInputNumber
-                        v-model="botPerfCapital"
-                        :min="1"
-                        size="sm"
-                        class="w-20"
-                      />
+                      <UInputNumber v-model="botPerfCapital" :min="1" size="sm" class="w-20" />
                     </div>
                   </div>
                 </div>

@@ -790,11 +790,7 @@ onBeforeUnmount(() => {
                     variant="outline"
                     @click="handleStop(container.container_name)"
                   />
-                  <UButton
-                    label="Logs"
-                    size="sm"
-                    @click="openLogs(container.container_name)"
-                  />
+                  <UButton label="Logs" size="sm" @click="openLogs(container.container_name)" />
                   <UButton
                     :label="container.enabled ? 'Disable' : 'Enable'"
                     size="sm"

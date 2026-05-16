@@ -10,7 +10,7 @@ import { computed, type Ref, type ComputedRef } from 'vue';
  *
  * For date columns, pass their names in `dateCols` — they sort lexicographically with nulls last.
  */
-export function useTableSort<T extends Record<string, any>>(
+export function useTableSort<T extends Record<string, unknown>>(
   items: Ref<T[]> | ComputedRef<T[]>,
   sortCol: Ref<keyof T & string>,
   sortAsc: Ref<boolean>,

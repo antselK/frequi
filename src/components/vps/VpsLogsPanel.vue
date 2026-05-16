@@ -20,13 +20,7 @@ const emit = defineEmits<{
     @update:open="emit('update:visible', $event)"
   >
     <template #body>
-      <UTextarea
-        :model-value="logs"
-        :rows="20"
-        class="w-full font-mono"
-        readonly
-        autoresize
-      />
+      <UTextarea :model-value="logs" :rows="20" class="w-full font-mono" readonly autoresize />
     </template>
     <template #footer>
       <div class="flex justify-end gap-2 w-full">

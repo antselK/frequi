@@ -191,16 +191,12 @@ function cancel() {
       </div>
 
       <div v-else class="flex flex-col gap-6">
-        <UAlert
-          v-if="errorMessage"
-          color="error"
-          variant="subtle"
-          :title="errorMessage"
-        />
+        <UAlert v-if="errorMessage" color="error" variant="subtle" :title="errorMessage" />
 
         <p class="text-sm text-surface-500">
-          Drag the <strong>↑ ↓</strong> buttons to reorder categories and reports. Use the eye button
-          to hide reports from the navigation (hidden reports can be restored here at any time).
+          Drag the <strong>↑ ↓</strong> buttons to reorder categories and reports. Use the eye
+          button to hide reports from the navigation (hidden reports can be restored here at any
+          time).
         </p>
 
         <div
