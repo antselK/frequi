@@ -12,4 +12,5 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
+      - "100.112.155.89:3000:80"
