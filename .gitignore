@@ -32,3 +32,6 @@ yarn-error.log*
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Timestamped local backups (e.g. docker-compose.yml.bak.20260520091622)
+*.bak.*
