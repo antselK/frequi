@@ -1,6 +1,7 @@
 FROM node:26.2.0-alpine AS ui-builder
 
 RUN mkdir /app \
+    && npm install -g corepack \
     && corepack enable
 
 WORKDIR /app
