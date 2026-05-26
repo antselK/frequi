@@ -10,7 +10,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mobile-compact w-full flex flex-col gap-2 p-1 text-[13px]">
+  <div class="mobile-compact w-full flex flex-col gap-2 p-1 text-[15px]">
     <!-- Bot Comparison -->
     <div class="border border-surface-300 dark:border-surface-700 rounded">
       <div
@@ -66,7 +66,7 @@ onMounted(async () => {
   line-height: 1.15;
 }
 .mobile-compact :deep(thead th) {
-  font-size: 0.78rem;
+  font-size: 0.88rem;
 }
 /* UCard header (Discovered Bots panel) — shrink chrome */
 .mobile-compact :deep([class*="card"] > [class*="header"]) {
