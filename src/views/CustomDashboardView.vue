@@ -64,6 +64,8 @@ const responsiveGridLayouts = computed(() => {
 
 onMounted(async () => {
   botStore.allGetDaily({ timescale: 30 });
+  // activeBot is undefined when no bot is selected (fresh/zero-bot session) — skip the fetch.
+  if (!botStore.activeBot) return;
   botStore.activeBot.getOpenTrades();
   botStore.activeBot.getProfit();
 });

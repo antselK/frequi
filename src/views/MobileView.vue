@@ -4,6 +4,8 @@ import ConsoleDiscoveredBotsPanel from '@/components/console/ConsoleDiscoveredBo
 const botStore = useBotStore();
 
 onMounted(async () => {
+  // activeBot is undefined when no bot is selected (fresh/zero-bot session) — skip the fetch.
+  if (!botStore.activeBot) return;
   botStore.activeBot.getOpenTrades();
   botStore.activeBot.getProfit();
 });

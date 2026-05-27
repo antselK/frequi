@@ -68,6 +68,7 @@ const tradeLimit = ref(15);
 const expandedTradeId = ref<number | null>(null);
 const tradeTimelines = ref<Record<number, DwhTradeTimeline>>({});
 const loadingTradeTimeline = ref<Record<number, boolean>>({});
+const tradeTimelineError = ref<Record<number, string | null>>({});
 const anomalies = ref<DwhAnomaly[]>([]);
 const anomaliesLoading = ref(false);
 const anomaliesDays = ref(30);
@@ -105,6 +106,9 @@ const unstickMessage = ref('');
 
 let refreshTimer: number | null = null;
 let statusPollTimer: number | null = null;
+// Safety cap: stop auto-refreshing if the backend stays 'running' this long (likely wedged).
+const STATUS_POLL_MAX_MS = 15 * 60 * 1000;
+let statusPollStartedAt = 0;
 
 const cards = computed(() => {
   const data = summary.value;
@@ -494,25 +498,28 @@ async function loadAnomalyDetail(signatureHash: string) {
   }
 }
 
-async function toggleTradeTimeline(tradeId: number) {
+async function loadTradeTimeline(tradeId: number) {
+  loadingTradeTimeline.value[tradeId] = true;
+  tradeTimelineError.value[tradeId] = null;
+  try {
+    tradeTimelines.value[tradeId] = await vpsApi.dwhTradeTimeline(tradeId, 120);
+  } catch (err) {
+    // Leave the entry uncached so re-expanding (or Retry) refetches, and surface the error
+    // rather than a misleading "No timeline events found." on a transient failure.
+    tradeTimelineError.value[tradeId] = String(err);
+  } finally {
+    loadingTradeTimeline.value[tradeId] = false;
+  }
+}
+
+function toggleTradeTimeline(tradeId: number) {
   expandedTradeId.value = expandedTradeId.value === tradeId ? null : tradeId;
-  if (expandedTradeId.value === tradeId && tradeTimelines.value[tradeId] === undefined) {
-    loadingTradeTimeline.value[tradeId] = true;
-    try {
-      tradeTimelines.value[tradeId] = await vpsApi.dwhTradeTimeline(tradeId, 120);
-    } catch {
-      tradeTimelines.value[tradeId] = {
-        trade_id: tradeId,
-        bot_id: 0,
-        source_trade_id: 0,
-        pair: null,
-        open_date: null,
-        close_date: null,
-        items: [],
-      };
-    } finally {
-      loadingTradeTimeline.value[tradeId] = false;
-    }
+  if (
+    expandedTradeId.value === tradeId &&
+    tradeTimelines.value[tradeId] === undefined &&
+    !loadingTradeTimeline.value[tradeId]
+  ) {
+    void loadTradeTimeline(tradeId);
   }
 }
 
@@ -525,6 +532,7 @@ function stopStatusPolling() {
 
 function startStatusPolling() {
   stopStatusPolling();
+  statusPollStartedAt = Date.now();
   statusPollTimer = window.setInterval(async () => {
     try {
       await syncAsyncStatus();
@@ -532,6 +540,13 @@ function startStatusPolling() {
         stopStatusPolling();
         running.value = false;
         await refreshAllData();
+      } else if (Date.now() - statusPollStartedAt > STATUS_POLL_MAX_MS) {
+        // Still 'running' after the cap — assume it's wedged and stop hammering the API.
+        stopStatusPolling();
+        running.value = false;
+        errorText.value =
+          'Ingestion has reported "running" for over 15 minutes; stopped auto-refresh. ' +
+          'Use "Unstick Stale Ingestion" if it is wedged, then refresh.';
       }
     } catch (pollError) {
       errorText.value = String(pollError);
@@ -989,6 +1004,20 @@ onBeforeUnmount(() => {
                   <p v-if="loadingTradeTimeline[trade.id]" class="text-sm text-surface-400">
                     Loading timeline...
                   </p>
+                  <div
+                    v-else-if="tradeTimelineError[trade.id]"
+                    class="flex items-center gap-2 text-sm text-red-400"
+                  >
+                    <span>Failed to load timeline: {{ tradeTimelineError[trade.id] }}</span>
+                    <UButton
+                      size="xs"
+                      color="neutral"
+                      variant="outline"
+                      @click="loadTradeTimeline(trade.id)"
+                    >
+                      Retry
+                    </UButton>
+                  </div>
                   <div
                     v-else-if="!tradeTimelines[trade.id]?.items?.length"
                     class="text-sm text-surface-400"

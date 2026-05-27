@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useReportsContext } from '@/composables/useReportsContext';
+import { useTableSort } from '@/composables/useTableSort';
+import { profitColor, rateColor } from '@/utils/reportColors';
 import { vpsApi } from '@/composables/vpsApi';
 import { daysAgoStr, todayStr } from '@/utils/reportDates';
 import type { DwhTodDurationHourlyStat, DwhTodDurationRead } from '@/types/vps';
@@ -34,15 +36,8 @@ async function loadTodDuration() {
   }
 }
 
-const todDurItems = computed(() => {
-  if (!todDuration.value) return [];
-  const items = [...todDuration.value.items];
-  items.sort((a, b) => {
-    const diff = (a[todDurSortCol.value] as number) - (b[todDurSortCol.value] as number);
-    return todDurSortAsc.value ? diff : -diff;
-  });
-  return items;
-});
+const todDurRawItems = computed(() => todDuration.value?.items ?? []);
+const todDurItems = useTableSort(todDurRawItems, todDurSortCol, todDurSortAsc);
 </script>
 
 <template>
@@ -262,13 +257,13 @@ const todDurItems = computed(() => {
             </td>
             <td
               class="py-1.5 pe-3 text-right font-mono text-xs"
-              :class="row.avg_profit_pct >= 0 ? 'text-green-400' : 'text-red-400'"
+              :class="profitColor(row.avg_profit_pct)"
             >
               {{ row.avg_profit_pct.toFixed(2) }}%
             </td>
             <td
               class="py-1.5 pe-3 text-right font-mono text-xs"
-              :class="row.win_rate_pct >= 50 ? 'text-green-400' : 'text-red-400'"
+              :class="rateColor(row.win_rate_pct)"
             >
               {{ row.win_rate_pct.toFixed(1) }}%
             </td>

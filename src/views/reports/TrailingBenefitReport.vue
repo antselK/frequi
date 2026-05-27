@@ -950,10 +950,21 @@ async function loadTrailingBenefitReport() {
     if (!trailingDateTo.value) trailingDateTo.value = todayStr();
     const trailingDaysComputed = dateFromToDays(trailingDateFrom.value);
 
+    // Date window (UTC, [from, to] inclusive of the whole to-day) — mirrors the backend
+    // report convention so the To picker actually narrows the result set.
+    const windowFromMs = new Date(trailingDateFrom.value).getTime();
+    const windowToMs = new Date(trailingDateTo.value).getTime() + 86_400_000;
+    const closeDateInWindow = (closeDate: string | null): boolean => {
+      if (!closeDate) return false;
+      const t = new Date(closeDate).getTime();
+      return t >= windowFromMs && t < windowToMs;
+    };
+
     // Step 1: Fetch trades FIRST (reversed data flow)
     const allTrades = await loadTrailingTrades(trailingDaysComputed);
     const closedTrailTrades = allTrades.filter(
-      (trade) => !trade.is_open && isTrailEnterTag(trade.enter_tag),
+      (trade) =>
+        !trade.is_open && isTrailEnterTag(trade.enter_tag) && closeDateInWindow(trade.close_date),
     );
 
     // Step 2: Fetch trailing logs per bot via direct audit message queries

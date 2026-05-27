@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import { loadEnv } from 'vite';
 
 import createVuePlugin from '@vitejs/plugin-vue';
 import ui from '@nuxt/ui/vite';
@@ -13,6 +14,19 @@ try {
 } catch (error) {
   console.error('Failed to get commit hash. Running in this mode will not be supported.');
 }
+
+// Dev proxy → control-plane. In production nginx routes same-origin /api/v1/ to the
+// control-plane with X-Admin-Token; mirror that here so `pnpm dev` reaches VPS/DWH/Reports.
+// Set CONTROL_PLANE_BASE_URL (default 127.0.0.1:8000 for local dev) and
+// CONTROL_PLANE_ADMIN_TOKEN in .env to authenticate; without a token the API returns 401.
+const cpEnv = loadEnv(process.env.NODE_ENV || 'development', process.cwd(), '');
+const controlPlaneProxy = {
+  target: cpEnv.CONTROL_PLANE_BASE_URL || 'http://127.0.0.1:8000',
+  changeOrigin: true,
+  ...(cpEnv.CONTROL_PLANE_ADMIN_TOKEN
+    ? { headers: { 'X-Admin-Token': cpEnv.CONTROL_PLANE_ADMIN_TOKEN } }
+    : {}),
+};
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -85,6 +99,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // Control-plane API (VPS/DWH/Reports/SSE) — must be listed before '/api' so it wins.
+      '/api/v1': controlPlaneProxy,
+      // Upstream default: any other /api path proxies to a co-located freqtrade bot.
       '/api': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,

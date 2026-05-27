@@ -120,6 +120,10 @@ const selectedReasonFilters = ref<MissedTradeReasonCode[]>([]);
 // ─── Missed-trade-specific parsers (private) ───────────────────────────────
 
 function extractMissedTradeSide(message: string): 'long' | 'short' | null {
+  // Prefer the backend's anchored `dir=` token; the bare word match is a fallback and can
+  // grab the wrong direction when a message mentions the opposite side first.
+  const dir = message.match(/\bdir=(long|short)\b/i);
+  if (dir) return dir[1].toLowerCase() as 'long' | 'short';
   const m = message.match(/\b(long|short)\b/i);
   return m ? (m[1].toLowerCase() as 'long' | 'short') : null;
 }

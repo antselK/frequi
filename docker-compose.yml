@@ -8,7 +8,9 @@ services:
     restart: unless-stopped
     environment:
       CONTROL_PLANE_BASE_URL: ${CONTROL_PLANE_BASE_URL:-http://host.docker.internal:8000}
-      CONTROL_PLANE_ADMIN_TOKEN: ${CONTROL_PLANE_ADMIN_TOKEN}
+      # Fail fast if unset/empty — an empty token makes nginx forward a blank X-Admin-Token,
+      # which the control-plane rejects with silent 401s on every request.
+      CONTROL_PLANE_ADMIN_TOKEN: ${CONTROL_PLANE_ADMIN_TOKEN:?CONTROL_PLANE_ADMIN_TOKEN is required (set it in .env)}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

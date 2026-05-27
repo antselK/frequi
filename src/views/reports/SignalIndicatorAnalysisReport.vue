@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useReportsContext } from '@/composables/useReportsContext';
+import { profitColor } from '@/utils/reportColors';
 import { vpsApi } from '@/composables/vpsApi';
 import { daysAgoStr, todayStr } from '@/utils/reportDates';
 import { formatDate } from '@/utils/reportParsers';
@@ -74,10 +75,12 @@ const signalIndItems = computed<DwhSignalIndicatorTradeRow[]>(() => {
   const asc = signalIndSortAsc.value;
   return [...rows].sort((a, b) => {
     if (_sigIndDateCols.has(col)) {
-      // ISO date strings sort lexicographically; nulls (open trades) sort last when asc, first when desc
-      const av = (a[col] as string | null) ?? '\uFFFF';
-      const bv = (b[col] as string | null) ?? '\uFFFF';
-      return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+      // ISO date strings sort lexicographically; null (open trades) is treated as the max,
+      // so it sorts last when asc and first when desc.
+      const av = a[col] as string | null;
+      const bv = b[col] as string | null;
+      const cmp = av === bv ? 0 : av === null ? 1 : bv === null ? -1 : av.localeCompare(bv);
+      return asc ? cmp : -cmp;
     }
     const av = (a[col] as number | null) ?? (asc ? Infinity : -Infinity);
     const bv = (b[col] as number | null) ?? (asc ? Infinity : -Infinity);
@@ -355,7 +358,9 @@ const signalIndAnalyticsData = computed<SigIndCombinedAnalytics | null>(() => {
 
   if (!rows.length) return null;
 
-  const isGood = (r: (typeof rows)[0]) => (r.quality_score ?? -Infinity) >= avgScore!;
+  // quality_score is "lower = better" (short duration + few DCA), so an at-or-below-average
+  // score is a good entry. Null scores (open trades) fall to the bad side.
+  const isGood = (r: (typeof rows)[0]) => (r.quality_score ?? Infinity) <= avgScore!;
   const goodRows = rows.filter(isGood);
   const badRows = rows.filter((r) => !isGood(r));
 
@@ -565,10 +570,7 @@ onMounted(() => {
           v-if="signalIndAvgProfit !== null"
           class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center"
         >
-          <div
-            class="text-lg font-bold font-mono"
-            :class="signalIndAvgProfit >= 0 ? 'text-green-400' : 'text-red-400'"
-          >
+          <div class="text-lg font-bold font-mono" :class="profitColor(signalIndAvgProfit)">
             {{ signalIndAvgProfit >= 0 ? '+' : '' }}{{ signalIndAvgProfit.toFixed(2) }}%
           </div>
           <div class="text-xs text-surface-400">Avg profit</div>
@@ -608,7 +610,7 @@ onMounted(() => {
         >
           <div
             class="text-lg font-bold font-mono"
-            :class="signalIndUnmatchedAvgProfit >= 0 ? 'text-green-400' : 'text-red-400'"
+            :class="profitColor(signalIndUnmatchedAvgProfit)"
           >
             {{ signalIndUnmatchedAvgProfit >= 0 ? '+' : ''
             }}{{ signalIndUnmatchedAvgProfit.toFixed(2) }}%

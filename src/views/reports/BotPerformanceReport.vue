@@ -41,6 +41,14 @@ watch(botPerfCapital, (v) => localStorage.setItem('botPerfCapital', String(v)));
 const botHistEnabledBots = ref<Set<number>>(new Set());
 const botHistHoverDate = ref<string | null>(null);
 
+// Format a duration in hours as "H:MMh". Rounds via total minutes so 2.999h → "3:00h"
+// rather than the "2:60h" produced by rounding the minute part independently.
+function formatDurationHM(hours: number | null): string {
+  if (hours === null) return '—';
+  const totalMin = Math.round(hours * 60);
+  return `${Math.floor(totalMin / 60)}:${String(totalMin % 60).padStart(2, '0')}h`;
+}
+
 // Bot Performance computed
 const botPerfItemsFiltered = computed(() =>
   (botPerf.value?.items ?? []).filter((r) => isBotActive(r.bot_id)),
@@ -141,7 +149,9 @@ const botHistChartData = computed(() => {
   const rawMin = Math.min(mode === 'equity' ? 0 : Math.min(...allValues), ...allValues);
   const rawMax = Math.max(mode === 'equity' ? 1 : Math.max(...allValues), ...allValues);
   const yRange = rawMax - rawMin;
-  const yPad = yRange * 0.12;
+  // When every point is identical (e.g. a single pivot date in score mode) yRange is 0;
+  // fall back to a nonzero pad so valToY's denominator never collapses to 0 (NaN coords).
+  const yPad = (yRange || Math.abs(rawMax) || 1) * 0.12;
   const yMin = rawMin - yPad;
   const yMax = rawMax + yPad;
   const valToY = (v: number) => BH_MT + plotH * (1 - (v - yMin) / (yMax - yMin));
@@ -580,11 +590,7 @@ onMounted(() => {
                 {{ row.total_profit_abs >= 0 ? '+' : '' }}{{ row.total_profit_abs.toFixed(2) }}
               </td>
               <td class="py-2 pe-3 text-right font-mono text-xs text-surface-300">
-                {{
-                  row.avg_duration_hours !== null
-                    ? `${Math.floor(row.avg_duration_hours)}:${String(Math.round((row.avg_duration_hours % 1) * 60)).padStart(2, '0')}h`
-                    : '—'
-                }}
+                {{ formatDurationHM(row.avg_duration_hours) }}
               </td>
               <td
                 class="py-2 pe-3 text-right font-mono text-xs"
@@ -760,11 +766,7 @@ onMounted(() => {
                   {{ row.total_profit_abs >= 0 ? '+' : '' }}{{ row.total_profit_abs.toFixed(2) }}
                 </td>
                 <td class="py-2 pe-3 text-right font-mono text-xs text-surface-300">
-                  {{
-                    row.avg_duration_hours !== null
-                      ? `${Math.floor(row.avg_duration_hours)}:${String(Math.round((row.avg_duration_hours % 1) * 60)).padStart(2, '0')}h`
-                      : '—'
-                  }}
+                  {{ formatDurationHM(row.avg_duration_hours) }}
                 </td>
                 <td
                   class="py-2 pe-3 text-right font-mono text-xs"
