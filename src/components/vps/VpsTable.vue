@@ -216,7 +216,7 @@ const sortedItems = computed(() => {
           </td>
           <td class="p-2 align-middle">{{ item.last_error || '' }}</td>
           <td class="p-2 align-middle">
-            <UDropdownMenu :items="actionItems(item)" size="sm">
+            <UDropdownMenu :items="actionItems(item)" size="sm" :modal="false">
               <UButton
                 size="sm"
                 color="neutral"

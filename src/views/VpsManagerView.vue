@@ -817,7 +817,7 @@ onBeforeUnmount(() => {
                 />
               </td>
               <td class="p-2 align-middle">
-                <UDropdownMenu :items="containerActionItems(container)" size="sm">
+                <UDropdownMenu :items="containerActionItems(container)" size="sm" :modal="false">
                   <UButton
                     size="sm"
                     color="neutral"
