@@ -9,6 +9,7 @@ import {
   getVpsStatusStreamUrl,
   setControlPlaneActor,
 } from '@/composables/vpsApi';
+import type { DropdownMenuItem } from '@nuxt/ui';
 import type {
   AuditLogEntry,
   VpsContainer,
@@ -523,6 +524,54 @@ async function openLogs(containerName: string) {
   await refreshLogs();
 }
 
+function containerActionItems(container: VpsContainer): DropdownMenuItem[][] {
+  const groups: DropdownMenuItem[][] = [
+    [
+      {
+        label: 'Start',
+        icon: 'i-mdi-play',
+        color: 'success',
+        onSelect: () => handleStart(container.container_name),
+      },
+      {
+        label: 'Restart',
+        icon: 'i-mdi-restart',
+        onSelect: () => handleRestart(container.container_name),
+      },
+      {
+        label: 'Stop',
+        icon: 'i-mdi-stop',
+        color: 'error',
+        onSelect: () => handleStop(container.container_name),
+      },
+    ],
+    [
+      {
+        label: 'Logs',
+        icon: 'i-mdi-text-box-outline',
+        onSelect: () => openLogs(container.container_name),
+      },
+      {
+        label: container.enabled ? 'Disable' : 'Enable',
+        icon: container.enabled ? 'i-mdi-eye-off' : 'i-mdi-eye',
+        color: container.enabled ? 'warning' : 'success',
+        onSelect: () => handleToggleEnabled(container.container_name, container.enabled),
+      },
+    ],
+  ];
+  if (container.is_freqtrade) {
+    groups.push([
+      {
+        label: 'Purge DWH',
+        icon: 'i-mdi-delete-sweep',
+        color: 'error',
+        onSelect: () => handlePurgeDwh(container.container_name, container.enabled),
+      },
+    ]);
+  }
+  return groups;
+}
+
 async function refreshLogs() {
   if (!selectedVpsId.value || !selectedContainerName.value) {
     return;
@@ -734,7 +783,7 @@ onBeforeUnmount(() => {
               <th class="p-2 font-semibold">Freqtrade</th>
               <th class="p-2 font-semibold">Mismatch</th>
               <th class="p-2 font-semibold">Enabled</th>
-              <th class="p-2 font-semibold" style="min-width: 240px">Actions</th>
+              <th class="p-2 font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -768,51 +817,16 @@ onBeforeUnmount(() => {
                 />
               </td>
               <td class="p-2 align-middle">
-                <div class="flex gap-2 flex-wrap">
+                <UDropdownMenu :items="containerActionItems(container)" size="sm">
                   <UButton
-                    label="Start"
-                    size="sm"
-                    color="success"
-                    variant="outline"
-                    @click="handleStart(container.container_name)"
-                  />
-                  <UButton
-                    label="Restart"
                     size="sm"
                     color="neutral"
                     variant="outline"
-                    @click="handleRestart(container.container_name)"
+                    square
+                    icon="i-mdi-dots-vertical"
+                    title="Actions"
                   />
-                  <UButton
-                    label="Stop"
-                    size="sm"
-                    color="error"
-                    variant="outline"
-                    @click="handleStop(container.container_name)"
-                  />
-                  <UButton label="Logs" size="sm" @click="openLogs(container.container_name)" />
-                  <UButton
-                    :label="container.enabled ? 'Disable' : 'Enable'"
-                    size="sm"
-                    :color="container.enabled ? 'warning' : 'success'"
-                    variant="outline"
-                    :title="
-                      container.enabled
-                        ? 'Exclude from DWH ingestion and Console'
-                        : 'Include in DWH ingestion and Console'
-                    "
-                    @click="handleToggleEnabled(container.container_name, container.enabled)"
-                  />
-                  <UButton
-                    v-if="container.is_freqtrade"
-                    label="Purge DWH"
-                    size="sm"
-                    color="error"
-                    variant="outline"
-                    title="Delete all DWH data for this container (trades, logs, signals, heartbeats)"
-                    @click="handlePurgeDwh(container.container_name, container.enabled)"
-                  />
-                </div>
+                </UDropdownMenu>
               </td>
             </tr>
             <tr v-if="!selectedContainers.length">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui';
 import type { VpsServer } from '@/types/vps';
 
 const props = defineProps<{
@@ -17,6 +18,53 @@ const emit = defineEmits<{
   (event: 'edit', item: VpsServer): void;
   (event: 'delete', item: VpsServer): void;
 }>();
+
+function actionItems(item: VpsServer): DropdownMenuItem[][] {
+  return [
+    [
+      {
+        label: 'Test SSH connection',
+        icon: 'i-mdi-lan-connect',
+        onSelect: () => emit('test', item),
+      },
+      { label: 'Check Docker', icon: 'i-mdi-docker', onSelect: () => emit('checkDocker', item) },
+      {
+        label: 'Discover containers',
+        icon: 'i-mdi-magnify',
+        onSelect: () => emit('discover', item),
+      },
+      {
+        label: 'Show containers',
+        icon: 'i-mdi-view-list',
+        onSelect: () => emit('showContainers', item),
+      },
+    ],
+    [
+      {
+        label: 'Start all',
+        icon: 'i-mdi-play',
+        color: 'success',
+        onSelect: () => emit('startAll', item),
+      },
+      { label: 'Restart all', icon: 'i-mdi-restart', onSelect: () => emit('restartAll', item) },
+      {
+        label: 'Stop all',
+        icon: 'i-mdi-stop',
+        color: 'error',
+        onSelect: () => emit('stopAll', item),
+      },
+    ],
+    [
+      { label: 'Edit VPS', icon: 'i-mdi-pencil', onSelect: () => emit('edit', item) },
+      {
+        label: 'Delete VPS',
+        icon: 'i-mdi-delete',
+        color: 'error',
+        onSelect: () => emit('delete', item),
+      },
+    ],
+  ];
+}
 
 const sortKey = ref<'name' | 'ip' | 'ssh_user' | 'ssh_port' | 'status' | 'docker' | 'last_error'>(
   'name',
@@ -139,7 +187,7 @@ const sortedItems = computed(() => {
               Last Error{{ sortIndicator('last_error') }}
             </button>
           </th>
-          <th class="p-2 min-w-[220px]">Actions</th>
+          <th class="p-2">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -168,87 +216,16 @@ const sortedItems = computed(() => {
           </td>
           <td class="p-2 align-middle">{{ item.last_error || '' }}</td>
           <td class="p-2 align-middle">
-            <div class="flex flex-wrap gap-1">
+            <UDropdownMenu :items="actionItems(item)" size="sm">
               <UButton
                 size="sm"
                 color="neutral"
                 variant="outline"
                 square
-                icon="i-mdi-lan-connect"
-                title="Test SSH connection"
-                @click="emit('test', item)"
+                icon="i-mdi-dots-vertical"
+                title="Actions"
               />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="outline"
-                square
-                icon="i-mdi-docker"
-                title="Check Docker availability"
-                @click="emit('checkDocker', item)"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="outline"
-                square
-                icon="i-mdi-magnify"
-                title="Discover running containers"
-                @click="emit('discover', item)"
-              />
-              <UButton
-                size="sm"
-                color="success"
-                variant="outline"
-                square
-                icon="i-mdi-play"
-                title="Start discovered containers"
-                @click="emit('startAll', item)"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="outline"
-                square
-                icon="i-mdi-restart"
-                title="Restart discovered containers"
-                @click="emit('restartAll', item)"
-              />
-              <UButton
-                size="sm"
-                color="error"
-                variant="outline"
-                square
-                icon="i-mdi-stop"
-                title="Stop discovered containers"
-                @click="emit('stopAll', item)"
-              />
-              <UButton
-                size="sm"
-                square
-                icon="i-mdi-view-list"
-                title="Show containers"
-                @click="emit('showContainers', item)"
-              />
-              <UButton
-                size="sm"
-                color="neutral"
-                variant="outline"
-                square
-                icon="i-mdi-pencil"
-                title="Edit VPS"
-                @click="emit('edit', item)"
-              />
-              <UButton
-                size="sm"
-                color="error"
-                variant="outline"
-                square
-                icon="i-mdi-delete"
-                title="Delete VPS"
-                @click="emit('delete', item)"
-              />
-            </div>
+            </UDropdownMenu>
           </td>
         </tr>
         <tr v-if="loading">
