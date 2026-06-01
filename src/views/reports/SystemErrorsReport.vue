@@ -248,8 +248,12 @@ async function loadSystemErrorsTimeline() {
       }
     }
 
+    // Trends are anchored at now over the computed day-span; honor the To-date by
+    // dropping buckets after it (exclusive next-day UTC midnight).
+    const systemToMs = new Date(`${systemDateTo.value}T00:00:00Z`).getTime() + 24 * 3600 * 1000;
     systemErrorTimelinePoints.value = Array.from(bucketMap.entries())
       .map(([at, count]) => ({ ts: at, at: formatDate(at), count }))
+      .filter((p) => new Date(p.ts).getTime() < systemToMs)
       .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 
     if (!systemSpikeFromLocal.value || !systemSpikeToLocal.value) {

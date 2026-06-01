@@ -9,7 +9,10 @@ export function daysAgoStr(n: number): string {
 }
 
 export function dateFromToDays(dateFrom: string): number {
-  const from = new Date(dateFrom + 'T00:00:00');
+  // Parse as UTC midnight to match todayStr()/daysAgoStr() (both UTC via toISOString)
+  // and the UTC date-window filters in the reports — a local parse drifts the day count
+  // by up to ±1 in non-UTC timezones, under-fetching near the from-boundary.
+  const from = new Date(dateFrom + 'T00:00:00Z');
   const diffMs = Date.now() - from.getTime();
   return Math.max(1, Math.ceil(diffMs / 86400000));
 }

@@ -299,9 +299,9 @@ function handleActionToast(summary: string, message: string, ok = true) {
   });
 }
 
-async function handleAddServer(payload: VpsCreatePayload) {
+async function handleAddServer(payload: VpsUpdatePayload | VpsCreatePayload) {
   try {
-    await vpsStore.addServer(payload);
+    await vpsStore.addServer(payload as VpsCreatePayload);
     showOnboardDialog.value = false;
     handleActionToast('VPS Added', `Added ${payload.name}`);
   } catch (error) {

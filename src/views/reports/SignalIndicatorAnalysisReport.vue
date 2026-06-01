@@ -358,9 +358,10 @@ const signalIndAnalyticsData = computed<SigIndCombinedAnalytics | null>(() => {
 
   if (!rows.length) return null;
 
-  // quality_score is "lower = better" (short duration + few DCA), so an at-or-below-average
-  // score is a good entry. Null scores (open trades) fall to the bad side.
-  const isGood = (r: (typeof rows)[0]) => (r.quality_score ?? Infinity) <= avgScore!;
+  // quality_score is "higher = better" — profit% × 2 − duration_h × 0.1 − (dca − 1), mirroring
+  // the Bot Performance score (backend reports.py). An at-or-above-average score is a good
+  // entry. Null scores (open trades) fall to the bad side.
+  const isGood = (r: (typeof rows)[0]) => (r.quality_score ?? -Infinity) >= avgScore!;
   const goodRows = rows.filter(isGood);
   const badRows = rows.filter((r) => !isGood(r));
 
@@ -1020,7 +1021,7 @@ onMounted(() => {
                 :class="
                   row.is_open
                     ? 'text-surface-500 italic'
-                    : (row.quality_score ?? -99) >= (signalIndAvgQuality ?? -99)
+                    : (row.quality_score ?? -Infinity) >= (signalIndAvgQuality ?? Infinity)
                       ? 'text-green-400'
                       : ''
                 "
@@ -1140,7 +1141,7 @@ onMounted(() => {
         <!-- Summary + legend row -->
         <div class="flex flex-wrap items-center gap-4 text-xs text-surface-400">
           <span class="text-surface-200 font-medium">
-            {{ signalIndAnalyticsData.tradeCount }} trades &mdash; threshold: score &le;
+            {{ signalIndAnalyticsData.tradeCount }} trades &mdash; threshold: score &ge;
             <span class="font-mono">{{
               signalIndAvgQuality !== null ? signalIndAvgQuality.toFixed(1) : '?'
             }}</span>

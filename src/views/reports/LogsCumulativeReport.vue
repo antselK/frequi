@@ -263,6 +263,10 @@ async function loadLogsCumulativeChart() {
       level: logsFilterLevel.value.trim().toUpperCase() || undefined,
     });
 
+    // The API returns buckets from (now − hours) up to now; honor the To-date by
+    // dropping buckets after it (exclusive next-day UTC midnight). Cumulative values
+    // stay correct since they accumulate from the window start.
+    const logsToMs = new Date(`${logsDateTo.value}T00:00:00Z`).getTime() + 24 * 3600 * 1000;
     logsCumulativeChartPoints.value = rows
       .map((row) => ({
         at: formatDate(row.bucket_ts),
@@ -270,6 +274,7 @@ async function loadLogsCumulativeChart() {
         generated: row.log_count,
         cumulative: row.cumulative_count,
       }))
+      .filter((p) => new Date(p.ts).getTime() < logsToMs)
       .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 
     if (!logsSpikeFromLocal.value || !logsSpikeToLocal.value) {

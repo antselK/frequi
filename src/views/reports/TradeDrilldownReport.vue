@@ -41,6 +41,7 @@ const drillPageSize = 100;
 const drillExpandedKey = ref<string | null>(null);
 const drillOrdersCache = ref<Map<string, DwhOrder[]>>(new Map());
 const drillOrdersLoading = ref<Set<string>>(new Set());
+const drillOrdersError = ref<Set<string>>(new Set());
 const loadingDrilldown = ref(false);
 const drillLoaded = ref(false);
 
@@ -240,6 +241,32 @@ function drillTradeKey(trade: DwhTrade): string {
   return `${trade.bot_id}|${trade.source_trade_id}`;
 }
 
+async function loadDrillOrders(trade: DwhTrade) {
+  const key = drillTradeKey(trade);
+  if (drillOrdersLoading.value.has(key)) return;
+  drillOrdersLoading.value = new Set([...drillOrdersLoading.value, key]);
+  if (drillOrdersError.value.has(key)) {
+    const cleared = new Set(drillOrdersError.value);
+    cleared.delete(key);
+    drillOrdersError.value = cleared;
+  }
+  try {
+    const orders = await vpsApi.dwhTradeOrders(trade.id);
+    const newMap = new Map(drillOrdersCache.value);
+    newMap.set(key, orders);
+    drillOrdersCache.value = newMap;
+  } catch {
+    // Don't cache on failure — flag an error so the row can be retried instead of
+    // permanently showing "No orders found" (which is indistinguishable from a real
+    // empty result if we cached []).
+    drillOrdersError.value = new Set([...drillOrdersError.value, key]);
+  } finally {
+    const newSet = new Set(drillOrdersLoading.value);
+    newSet.delete(key);
+    drillOrdersLoading.value = newSet;
+  }
+}
+
 async function toggleDrillTradeExpand(trade: DwhTrade) {
   const key = drillTradeKey(trade);
   if (drillExpandedKey.value === key) {
@@ -248,21 +275,7 @@ async function toggleDrillTradeExpand(trade: DwhTrade) {
   }
   drillExpandedKey.value = key;
   if (!drillOrdersCache.value.has(key) && !drillOrdersLoading.value.has(key)) {
-    drillOrdersLoading.value = new Set([...drillOrdersLoading.value, key]);
-    try {
-      const orders = await vpsApi.dwhTradeOrders(trade.id);
-      const newMap = new Map(drillOrdersCache.value);
-      newMap.set(key, orders);
-      drillOrdersCache.value = newMap;
-    } catch {
-      const newMap = new Map(drillOrdersCache.value);
-      newMap.set(key, []);
-      drillOrdersCache.value = newMap;
-    } finally {
-      const newSet = new Set(drillOrdersLoading.value);
-      newSet.delete(key);
-      drillOrdersLoading.value = newSet;
-    }
+    await loadDrillOrders(trade);
   }
 }
 
@@ -602,7 +615,20 @@ onMounted(() => {
               <td colspan="14" class="py-3 px-2">
                 <div class="space-y-1 max-h-72 overflow-y-auto">
                   <div
-                    v-if="!drillOrdersCache.get(drillTradeKey(trade))?.length"
+                    v-if="drillOrdersError.has(drillTradeKey(trade))"
+                    class="text-xs text-red-400 py-1 flex items-center gap-2"
+                  >
+                    <span>Failed to load orders for this trade.</span>
+                    <button
+                      class="px-2 py-0.5 rounded border border-surface-600 hover:bg-surface-800"
+                      :disabled="drillOrdersLoading.has(drillTradeKey(trade))"
+                      @click="loadDrillOrders(trade)"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                  <div
+                    v-else-if="!drillOrdersCache.get(drillTradeKey(trade))?.length"
                     class="text-xs text-surface-400 py-1"
                   >
                     No orders found for this trade.

@@ -419,7 +419,7 @@ onMounted(async () => {
               <BaseCheckbox
                 :model-value="Boolean(selectedRowsMap[row.key])"
                 :disabled="!row.importEligible"
-                @update:model-value="selectedRowsMap[row.key] = $event"
+                @update:model-value="selectedRowsMap[row.key] = Boolean($event)"
               />
             </td>
             <td class="p-2 align-middle">{{ row.vpsName }}</td>

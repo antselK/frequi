@@ -970,7 +970,10 @@ async function loadTrailingBenefitReport() {
     // Step 2: Fetch trailing logs per bot via direct audit message queries
     // (replaces anomaly signature → samples approach for full coverage)
     const uniqueBotIds = [...new Set(closedTrailTrades.map((t) => t.bot_id))];
-    const hours = Math.min(trailingDaysComputed * 24, 720);
+    // Cover the full selected window — trades are fetched uncapped over the same span, so a
+    // fixed 720h (30d) cap here left trades older than 30d with blank trailing snapshots
+    // (they read as "no trailing data"). Audit fetch paginates, so wider ranges just page more.
+    const hours = trailingDaysComputed * 24;
     const [allAuditMessages, rpcTradeHints] = await Promise.all([
       fetchTrailingAuditLogs(uniqueBotIds, hours),
       loadRpcTradeHints(trailingDaysComputed),
