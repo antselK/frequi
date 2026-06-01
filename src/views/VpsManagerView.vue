@@ -737,6 +737,76 @@ onBeforeUnmount(() => {
       />
     </UCard>
 
+    <UCard v-if="selectedVpsId">
+      <template #header>
+        <div class="font-semibold">Containers — {{ selectedVps?.name }}</div>
+      </template>
+      <div class="overflow-auto border border-surface-500 rounded-sm">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead class="bg-surface-100 dark:bg-surface-800">
+            <tr class="border-b border-surface-500">
+              <th class="p-2 font-semibold">Container</th>
+              <th class="p-2 font-semibold">Image</th>
+              <th class="p-2 font-semibold">Status</th>
+              <th class="p-2 font-semibold">Strategy</th>
+              <th class="p-2 font-semibold">Freqtrade</th>
+              <th class="p-2 font-semibold">Mismatch</th>
+              <th class="p-2 font-semibold">Enabled</th>
+              <th class="p-2 font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="container in selectedContainers"
+              :key="container.id"
+              class="border-b border-surface-500"
+            >
+              <td class="p-2 align-middle">{{ container.container_name }}</td>
+              <td class="p-2 align-middle">{{ container.image }}</td>
+              <td class="p-2 align-middle">{{ container.status }}</td>
+              <td class="p-2 align-middle font-mono text-xs">{{ container.strategy ?? '—' }}</td>
+              <td class="p-2 align-middle">
+                <UBadge
+                  :label="container.is_freqtrade ? 'Yes' : 'No'"
+                  :color="container.is_freqtrade ? 'success' : 'neutral'"
+                  variant="subtle"
+                />
+              </td>
+              <td class="p-2 align-middle">
+                <UBadge
+                  :label="container.config_mismatch ? 'Mismatch' : 'No mismatch'"
+                  :color="container.config_mismatch ? 'warning' : 'success'"
+                  variant="subtle"
+                />
+              </td>
+              <td class="p-2 align-middle">
+                <UBadge
+                  :label="container.enabled ? 'Active' : 'Disabled'"
+                  :color="container.enabled ? 'success' : 'neutral'"
+                  variant="subtle"
+                />
+              </td>
+              <td class="p-2 align-middle">
+                <UDropdownMenu :items="containerActionItems(container)" size="sm" :modal="false">
+                  <UButton
+                    size="sm"
+                    color="neutral"
+                    variant="outline"
+                    square
+                    icon="i-mdi-dots-vertical"
+                    title="Actions"
+                  />
+                </UDropdownMenu>
+              </td>
+            </tr>
+            <tr v-if="!selectedContainers.length">
+              <td colspan="8" class="p-3 text-center text-surface-400">No containers</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </UCard>
+
     <UCard>
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -829,76 +899,6 @@ onBeforeUnmount(() => {
             </tr>
             <tr v-else-if="!filteredAuditEntries.length">
               <td colspan="8" class="p-3 text-center text-surface-400">No audit entries</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </UCard>
-
-    <UCard v-if="selectedVpsId">
-      <template #header>
-        <div class="font-semibold">Containers — {{ selectedVps?.name }}</div>
-      </template>
-      <div class="overflow-auto border border-surface-500 rounded-sm">
-        <table class="w-full text-left border-collapse text-sm">
-          <thead class="bg-surface-100 dark:bg-surface-800">
-            <tr class="border-b border-surface-500">
-              <th class="p-2 font-semibold">Container</th>
-              <th class="p-2 font-semibold">Image</th>
-              <th class="p-2 font-semibold">Status</th>
-              <th class="p-2 font-semibold">Strategy</th>
-              <th class="p-2 font-semibold">Freqtrade</th>
-              <th class="p-2 font-semibold">Mismatch</th>
-              <th class="p-2 font-semibold">Enabled</th>
-              <th class="p-2 font-semibold">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="container in selectedContainers"
-              :key="container.id"
-              class="border-b border-surface-500"
-            >
-              <td class="p-2 align-middle">{{ container.container_name }}</td>
-              <td class="p-2 align-middle">{{ container.image }}</td>
-              <td class="p-2 align-middle">{{ container.status }}</td>
-              <td class="p-2 align-middle font-mono text-xs">{{ container.strategy ?? '—' }}</td>
-              <td class="p-2 align-middle">
-                <UBadge
-                  :label="container.is_freqtrade ? 'Yes' : 'No'"
-                  :color="container.is_freqtrade ? 'success' : 'neutral'"
-                  variant="subtle"
-                />
-              </td>
-              <td class="p-2 align-middle">
-                <UBadge
-                  :label="container.config_mismatch ? 'Mismatch' : 'No mismatch'"
-                  :color="container.config_mismatch ? 'warning' : 'success'"
-                  variant="subtle"
-                />
-              </td>
-              <td class="p-2 align-middle">
-                <UBadge
-                  :label="container.enabled ? 'Active' : 'Disabled'"
-                  :color="container.enabled ? 'success' : 'neutral'"
-                  variant="subtle"
-                />
-              </td>
-              <td class="p-2 align-middle">
-                <UDropdownMenu :items="containerActionItems(container)" size="sm" :modal="false">
-                  <UButton
-                    size="sm"
-                    color="neutral"
-                    variant="outline"
-                    square
-                    icon="i-mdi-dots-vertical"
-                    title="Actions"
-                  />
-                </UDropdownMenu>
-              </td>
-            </tr>
-            <tr v-if="!selectedContainers.length">
-              <td colspan="8" class="p-3 text-center text-surface-400">No containers</td>
             </tr>
           </tbody>
         </table>
