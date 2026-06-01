@@ -2,6 +2,8 @@ import axios from 'axios';
 
 import type {
   AuditLogEntry,
+  ContainerSetStrategyResult,
+  ContainerStrategies,
   DwhAlertConfig,
   DwhAlertStatus,
   DwhAuditMessageList,
@@ -248,6 +250,25 @@ export const vpsApi = {
     const { data } = await vpsApiClient.patch<VpsContainer>(
       `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/enabled`,
       { enabled },
+    );
+    return data;
+  },
+  async containerStrategies(vpsId: number, containerName: string): Promise<ContainerStrategies> {
+    const { data } = await vpsApiClient.get<ContainerStrategies>(
+      `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/strategies`,
+    );
+    return data;
+  },
+  async setContainerStrategy(
+    vpsId: number,
+    containerName: string,
+    strategy: string,
+    restart: boolean,
+  ): Promise<ContainerSetStrategyResult> {
+    const { data } = await vpsApiClient.patch<ContainerSetStrategyResult>(
+      `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/strategy`,
+      { strategy, restart },
+      { timeout: 90_000 },
     );
     return data;
   },

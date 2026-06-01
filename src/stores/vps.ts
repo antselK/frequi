@@ -2,6 +2,8 @@ import axios from 'axios';
 
 import type {
   AuditLogEntry,
+  ContainerSetStrategyResult,
+  ContainerStrategies,
   VpsActionResult,
   VpsContainer,
   VpsCreatePayload,
@@ -235,6 +237,40 @@ export const useVpsStore = defineStore('vpsStore', {
         await vpsApi.setContainerEnabled(vpsId, containerName, enabled);
         await this.loadContainers(vpsId);
         return { ok: true, message: enabled ? 'Enabled' : 'Disabled' };
+      } catch (error) {
+        this.setError(error);
+        throw error;
+      } finally {
+        this.actionLoading = false;
+      }
+    },
+    async loadContainerStrategies(
+      vpsId: number,
+      containerName: string,
+    ): Promise<ContainerStrategies> {
+      this.actionLoading = true;
+      this.lastError = '';
+      try {
+        return await vpsApi.containerStrategies(vpsId, containerName);
+      } catch (error) {
+        this.setError(error);
+        throw error;
+      } finally {
+        this.actionLoading = false;
+      }
+    },
+    async setContainerStrategy(
+      vpsId: number,
+      containerName: string,
+      strategy: string,
+      restart: boolean,
+    ): Promise<ContainerSetStrategyResult> {
+      this.actionLoading = true;
+      this.lastError = '';
+      try {
+        const result = await vpsApi.setContainerStrategy(vpsId, containerName, strategy, restart);
+        await this.loadContainers(vpsId);
+        return result;
       } catch (error) {
         this.setError(error);
         throw error;

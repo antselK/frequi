@@ -30,6 +30,14 @@ const logsVisible = ref(false);
 const selectedContainerName = ref('');
 const logsText = ref('');
 const logsLoading = ref(false);
+const strategyModalVisible = ref(false);
+const strategyContainerName = ref('');
+const strategyOptions = ref<string[]>([]);
+const strategyCurrent = ref<string | null>(null);
+const strategySelected = ref<string | null>(null);
+const strategyRestart = ref(true);
+const strategyLoading = ref(false);
+const strategyApplying = ref(false);
 const streamConnected = ref(false);
 const streamStatusText = computed(() => (streamConnected.value ? 'Live' : 'Polling'));
 const actorOptions = getControlPlaneActorOptions();
@@ -524,6 +532,59 @@ async function openLogs(containerName: string) {
   await refreshLogs();
 }
 
+async function openStrategyModal(containerName: string) {
+  if (!selectedVpsId.value) {
+    return;
+  }
+  strategyContainerName.value = containerName;
+  strategyOptions.value = [];
+  strategyCurrent.value = null;
+  strategySelected.value = null;
+  strategyRestart.value = true;
+  strategyModalVisible.value = true;
+  strategyLoading.value = true;
+  try {
+    const result = await vpsStore.loadContainerStrategies(selectedVpsId.value, containerName);
+    strategyOptions.value = result.available;
+    strategyCurrent.value = result.current;
+    strategySelected.value = result.current;
+  } catch (error) {
+    handleActionToast(`Strategies — ${containerName}`, String(error), false);
+    strategyModalVisible.value = false;
+  } finally {
+    strategyLoading.value = false;
+  }
+}
+
+const strategyCanApply = computed(
+  () =>
+    !!strategySelected.value &&
+    (strategySelected.value !== strategyCurrent.value || strategyRestart.value),
+);
+
+async function applyStrategy() {
+  if (!selectedVpsId.value || !strategySelected.value) {
+    return;
+  }
+  strategyApplying.value = true;
+  try {
+    const result = await vpsStore.setContainerStrategy(
+      selectedVpsId.value,
+      strategyContainerName.value,
+      strategySelected.value,
+      strategyRestart.value,
+    );
+    handleActionToast(`Strategy — ${strategyContainerName.value}`, result.message, result.ok);
+    if (result.ok) {
+      strategyModalVisible.value = false;
+    }
+  } catch (error) {
+    handleActionToast(`Strategy — ${strategyContainerName.value}`, String(error), false);
+  } finally {
+    strategyApplying.value = false;
+  }
+}
+
 function containerActionItems(container: VpsContainer): DropdownMenuItem[][] {
   const groups: DropdownMenuItem[][] = [
     [
@@ -561,6 +622,11 @@ function containerActionItems(container: VpsContainer): DropdownMenuItem[][] {
   ];
   if (container.is_freqtrade) {
     groups.push([
+      {
+        label: 'Change strategy',
+        icon: 'i-mdi-swap-horizontal',
+        onSelect: () => openStrategyModal(container.container_name),
+      },
       {
         label: 'Purge DWH',
         icon: 'i-mdi-delete-sweep',
@@ -780,6 +846,7 @@ onBeforeUnmount(() => {
               <th class="p-2 font-semibold">Container</th>
               <th class="p-2 font-semibold">Image</th>
               <th class="p-2 font-semibold">Status</th>
+              <th class="p-2 font-semibold">Strategy</th>
               <th class="p-2 font-semibold">Freqtrade</th>
               <th class="p-2 font-semibold">Mismatch</th>
               <th class="p-2 font-semibold">Enabled</th>
@@ -795,6 +862,7 @@ onBeforeUnmount(() => {
               <td class="p-2 align-middle">{{ container.container_name }}</td>
               <td class="p-2 align-middle">{{ container.image }}</td>
               <td class="p-2 align-middle">{{ container.status }}</td>
+              <td class="p-2 align-middle font-mono text-xs">{{ container.strategy ?? '—' }}</td>
               <td class="p-2 align-middle">
                 <UBadge
                   :label="container.is_freqtrade ? 'Yes' : 'No'"
@@ -830,7 +898,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="!selectedContainers.length">
-              <td colspan="7" class="p-3 text-center text-surface-400">No containers</td>
+              <td colspan="8" class="p-3 text-center text-surface-400">No containers</td>
             </tr>
           </tbody>
         </table>
@@ -858,5 +926,54 @@ onBeforeUnmount(() => {
       :loading="logsLoading"
       @refresh="refreshLogs"
     />
+
+    <UModal
+      v-model:open="strategyModalVisible"
+      :title="`Change strategy — ${strategyContainerName}`"
+    >
+      <template #body>
+        <div class="flex flex-col gap-4">
+          <div v-if="strategyLoading" class="flex items-center gap-2 text-sm text-surface-400">
+            <UIcon name="i-lucide-loader-circle" class="animate-spin" />
+            Loading available strategies…
+          </div>
+          <template v-else>
+            <div class="text-sm">
+              Current strategy:
+              <span class="font-mono">{{ strategyCurrent ?? '—' }}</span>
+            </div>
+            <USelect
+              v-model="strategySelected"
+              :items="strategyOptions"
+              placeholder="Select a strategy"
+            />
+            <UCheckbox v-model="strategyRestart" label="Restart bot now to apply" />
+            <UAlert
+              v-if="!strategyRestart"
+              color="warning"
+              variant="subtle"
+              title="Restart required"
+              description="The new strategy is written to the config but only takes effect after the bot restarts."
+            />
+          </template>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-2 w-full">
+          <UButton
+            label="Cancel"
+            color="neutral"
+            variant="outline"
+            @click="strategyModalVisible = false"
+          />
+          <UButton
+            label="Apply"
+            :loading="strategyApplying"
+            :disabled="strategyLoading || !strategyCanApply"
+            @click="applyStrategy"
+          />
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

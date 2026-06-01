@@ -89,6 +89,20 @@ export interface BotSummary {
   status: string;
 }
 
+export interface ContainerStrategies {
+  container_name: string;
+  current: string | null;
+  available: string[];
+}
+
+export interface ContainerSetStrategyResult {
+  ok: boolean;
+  message: string;
+  strategy: string | null;
+  restarted: boolean;
+  config_path: string;
+}
+
 export interface VpsContainerAuthHint {
   found: boolean;
   config_path: string;
