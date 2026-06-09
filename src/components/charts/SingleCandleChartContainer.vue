@@ -30,7 +30,7 @@ const colorStore = useColorStore();
 const botStore = useBotStore();
 const plotStore = usePlotConfigStore();
 
-const dataset = computed((): PairHistory => {
+const dataset = computed((): PairHistory | undefined => {
   if (props.historicView) {
     return botStore.activeBot.history[`${props.pair}__${props.timeframe}`]?.data;
   }
@@ -160,7 +160,7 @@ watch(
     <div class="h-full flex">
       <div class="min-w-0 w-full flex-1">
         <CandleChart
-          v-if="hasDataset"
+          v-if="hasDataset && dataset"
           :dataset="dataset"
           :trades="trades"
           :plot-config="plotStore.plotConfig"
