@@ -15,6 +15,7 @@ const emit = defineEmits<{
   (event: 'restartAll', item: VpsServer): void;
   (event: 'stopAll', item: VpsServer): void;
   (event: 'showContainers', item: VpsServer): void;
+  (event: 'rebootVps', item: VpsServer): void;
   (event: 'edit', item: VpsServer): void;
   (event: 'delete', item: VpsServer): void;
 }>();
@@ -52,6 +53,14 @@ function actionItems(item: VpsServer): DropdownMenuItem[][] {
         icon: 'i-mdi-stop',
         color: 'error',
         onSelect: () => emit('stopAll', item),
+      },
+    ],
+    [
+      {
+        label: 'Restart VPS',
+        icon: 'i-mdi-restart-alert',
+        color: 'warning',
+        onSelect: () => emit('rebootVps', item),
       },
     ],
     [

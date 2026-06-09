@@ -423,6 +423,21 @@ async function handleStopAll(item: VpsServer) {
   await runContainerActionForVps(item, 'stop');
 }
 
+async function handleRebootVps(item: VpsServer) {
+  const confirmed = window.confirm(
+    `Restart VPS "${item.name}"?\n\nThis will reboot the entire server. All bots will be offline for 1–2 minutes.`,
+  );
+  if (!confirmed) {
+    return;
+  }
+  try {
+    const result = await vpsApi.rebootVps(item.id);
+    handleActionToast(`Restart VPS — ${item.name}`, result.message, result.ok);
+  } catch (error) {
+    handleActionToast(`Restart VPS — ${item.name}`, String(error), false);
+  }
+}
+
 function handleEdit(item: VpsServer) {
   editingVps.value = item;
   showEditDialog.value = true;
@@ -731,6 +746,7 @@ onBeforeUnmount(() => {
         @start-all="handleStartAll"
         @restart-all="handleRestartAll"
         @stop-all="handleStopAll"
+        @reboot-vps="handleRebootVps"
         @show-containers="handleShowContainers"
         @edit="handleEdit"
         @delete="handleDelete"

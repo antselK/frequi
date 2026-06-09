@@ -223,6 +223,14 @@ export const vpsApi = {
     );
     return data;
   },
+  async rebootVps(vpsId: number): Promise<VpsActionResult> {
+    const { data } = await vpsApiClient.post<VpsActionResult>(
+      `/vps/${vpsId}/reboot`,
+      undefined,
+      { timeout: 15_000 },
+    );
+    return data;
+  },
   async containerLogs(vpsId: number, containerName: string, tail = 200): Promise<VpsLogsResult> {
     const { data } = await vpsApiClient.get<VpsLogsResult>(
       `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/logs`,
