@@ -38,6 +38,8 @@ import type {
   DwhEntryTagPerformanceList,
   DwhDcaAnalysisList,
   DwhSignalIndicatorAnalysis,
+  DwhConfluenceAnalysis,
+  DwhConfluenceModel,
   DwhBotPerfRead,
   DwhBotPerfHistoryRead,
   DwhBotPerfRollingScoreRead,
@@ -646,6 +648,40 @@ export const vpsApi = {
           bot_id: botId,
           pair: pair,
           enter_tag: enterTag,
+        },
+      },
+    );
+    return data;
+  },
+
+  async dwhConfluenceAnalysis(
+    dateFrom?: string,
+    dateTo?: string,
+    botId?: number,
+    enterTag?: string,
+  ): Promise<DwhConfluenceAnalysis> {
+    const { data } = await vpsApiClient.get<DwhConfluenceAnalysis>(
+      '/dwh/reports/confluence-analysis',
+      {
+        params: {
+          date_from: dateFrom,
+          date_to: dateTo,
+          bot_id: botId,
+          enter_tag: enterTag,
+        },
+      },
+    );
+    return data;
+  },
+
+  async dwhRecalibrateConfluence(dateFrom?: string, dateTo?: string): Promise<DwhConfluenceModel> {
+    const { data } = await vpsApiClient.post<DwhConfluenceModel>(
+      '/dwh/reports/confluence-recalibrate',
+      null,
+      {
+        params: {
+          date_from: dateFrom,
+          date_to: dateTo,
         },
       },
     );

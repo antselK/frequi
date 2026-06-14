@@ -14,6 +14,7 @@ import SignalOutcomesReport from '@/views/reports/SignalOutcomesReport.vue';
 import TradeDrilldownReport from '@/views/reports/TradeDrilldownReport.vue';
 import TrailingBenefitReport from '@/views/reports/TrailingBenefitReport.vue';
 import SignalIndicatorAnalysisReport from '@/views/reports/SignalIndicatorAnalysisReport.vue';
+import ConfluenceScoreReport from '@/views/reports/ConfluenceScoreReport.vue';
 import SystemErrorsReport from '@/views/reports/SystemErrorsReport.vue';
 import LogsCumulativeReport from '@/views/reports/LogsCumulativeReport.vue';
 import type { BotSummary, ReportLayoutSettings } from '@/types/vps';
@@ -118,6 +119,11 @@ const _subcategoryDefs: Record<ReportCategory, ReportOption[]> = {
       value: 'signal-indicator-analysis',
       label: 'Signal Indicator Analysis',
       todo: 'Correlates each trade with its [SIGNAL_FLASH] indicator snapshot (captured at signal time, up to 20 min before entry). Trades tab: scatter chart (indicator vs profit/score) + sortable trade table. Analytics tab: per-bot indicator histograms showing good vs bad trade distributions — good = score ≥ avg. Use the Analytics tab to find indicator value ranges that produce more profitable, faster, lower-DCA trades, then reconfigure Printer.py entry filters. Score = profit% × 2 − duration (h) × 0.1 − (DCA orders − 1) × 1. Higher is better. Mirrors the Bot Performance score formula. Indicators: RSI (momentum), HV (volatility %), ROCR 1h / ROCR (rate of change), HH48 / LL48 (48h high/low distance %), Chop (choppiness index), BB (Bollinger band position).',
+    },
+    {
+      value: 'confluence-score',
+      label: 'Confluence Score',
+      todo: 'Data-driven confluence score (0–100) built from the [SIGNAL_FLASH] indicators. For each entry tag the model learns which indicator value bands go with high-quality trades (good = quality ≥ tag median) and weights each indicator by how strongly it separates good from bad — flat indicators get zero weight (so e.g. short_chop_vol, whose indicators barely move quality, scores on its few useful ones only). A trade/signal’s score = weighted fraction of indicators inside their favorable band. Quality = profit% × 2 − duration(h) × 0.1 − (DCA − 1); win/loss is useless here (~98% of trades eventually ROI-exit). The Validation table shows avg quality/profit per score bucket — it should rise with confluence. Click Recalibrate to retrain from all history as new trades accumulate; a nightly job also retrains automatically. The model is stored in app_settings (key confluence-model).',
     },
     {
       value: 'trade-duration',
@@ -604,6 +610,8 @@ onMounted(async () => {
           <SignalIndicatorAnalysisReport
             v-if="selectedSubCategory === 'signal-indicator-analysis'"
           />
+
+          <ConfluenceScoreReport v-if="selectedSubCategory === 'confluence-score'" />
 
           <ReportStub
             v-if="selectedSubCategory === 'trade-duration'"

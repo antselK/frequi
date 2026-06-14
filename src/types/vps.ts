@@ -590,6 +590,70 @@ export interface DwhSignalIndicatorAnalysis {
   items: DwhSignalIndicatorTradeRow[];
 }
 
+// --- Confluence Score report ---
+
+export interface DwhConfluenceIndicatorSpec {
+  lo: number | null;
+  hi: number | null;
+  sep: number;
+  mean_good: number;
+  mean_bad: number;
+  weight: number;
+}
+
+export interface DwhConfluenceBbPosSpec {
+  favorable: string;
+  good_rate: number;
+  rates: Record<string, number>;
+}
+
+export interface DwhConfluenceTagModel {
+  n: number;
+  qs_median: number;
+  has_signal: boolean;
+  indicators: Record<string, DwhConfluenceIndicatorSpec>;
+  bb_pos: DwhConfluenceBbPosSpec | null;
+}
+
+export interface DwhConfluenceModel {
+  calibrated_at: string | null;
+  date_from: string | null;
+  date_to: string | null;
+  trades_used: number;
+  indicators: string[];
+  params: Record<string, number>;
+  tags: Record<string, DwhConfluenceTagModel>;
+}
+
+export interface DwhConfluenceTradeRow extends DwhSignalIndicatorTradeRow {
+  confluence_score: number | null;
+}
+
+export interface DwhConfluenceBucketStat {
+  bucket: string;
+  lo: number;
+  hi: number;
+  trades: number;
+  avg_confluence: number | null;
+  avg_quality_score: number | null;
+  avg_profit_pct: number | null;
+  avg_duration_hours: number | null;
+  avg_dca_orders: number | null;
+  win_rate_pct: number | null;
+}
+
+export interface DwhConfluenceAnalysis {
+  active_calibrated_at: string | null;
+  active_trades_used: number;
+  has_model: boolean;
+  total_trades: number;
+  matched_trades: number;
+  scored_trades: number;
+  confluence_model: DwhConfluenceModel | null;
+  buckets: DwhConfluenceBucketStat[];
+  items: DwhConfluenceTradeRow[];
+}
+
 export interface DwhOrder {
   id: number;
   bot_id: number;
