@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useReportsContext } from '@/composables/useReportsContext';
+import { useTableSort } from '@/composables/useTableSort';
 import { vpsApi } from '@/composables/vpsApi';
 import { daysAgoStr, todayStr } from '@/utils/reportDates';
-import type { DwhConfluenceAnalysis } from '@/types/vps';
+import type { DwhConfluenceAnalysis, DwhConfluenceTradeRow } from '@/types/vps';
 
 const { reportsError, botSelectOptions } = useReportsContext();
 
@@ -76,6 +77,34 @@ const maxBucketQs = computed(() => {
 
 function fmt(v: number | null, digits = 2, suffix = ''): string {
   return v === null ? '—' : `${v >= 0 && suffix === '%' ? '+' : ''}${v.toFixed(digits)}${suffix}`;
+}
+
+// --- Per-trade table ---
+const scoredOnly = ref(true);
+const tradeSortCol = ref<keyof DwhConfluenceTradeRow & string>('confluence_score');
+const tradeSortAsc = ref(false);
+const tradeDateCols = new Set(['open_date', 'close_date']);
+
+const tradeRaw = computed<DwhConfluenceTradeRow[]>(() => {
+  const items = analysis.value?.items ?? [];
+  return scoredOnly.value ? items.filter((r) => r.confluence_score !== null) : items;
+});
+const tradeRows = useTableSort(tradeRaw, tradeSortCol, tradeSortAsc, tradeDateCols);
+
+function setTradeSort(col: keyof DwhConfluenceTradeRow & string) {
+  if (tradeSortCol.value === col) tradeSortAsc.value = !tradeSortAsc.value;
+  else {
+    tradeSortCol.value = col;
+    tradeSortAsc.value = false;
+  }
+}
+const arrow = (col: string) => (tradeSortCol.value === col ? (tradeSortAsc.value ? '↑' : '↓') : '');
+
+function confColor(v: number | null): string {
+  if (v === null) return 'text-surface-500';
+  if (v >= 60) return 'text-green-400';
+  if (v >= 40) return 'text-amber-400';
+  return 'text-red-400';
 }
 </script>
 
@@ -265,6 +294,122 @@ function fmt(v: number | null, digits = 2, suffix = ''): string {
           bb_pos favorable: <span class="text-green-400">{{ tm.bb_pos.favorable }}</span> (good rate
           {{ (tm.bb_pos.good_rate * 100).toFixed(0) }}%)
         </div>
+      </div>
+    </div>
+
+    <!-- Per-trade table -->
+    <div v-if="loaded && analysis?.has_model" class="space-y-2">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <h6 class="font-semibold text-sm">Trades — each with its confluence score</h6>
+        <UCheckbox v-model="scoredOnly" label="Scored trades only" size="sm" />
+      </div>
+      <p class="text-xs text-surface-400">
+        Confluence is computed from the trade's own [SIGNAL_FLASH] indicators against the active
+        model. Unscored trades (no matching flash, open, or an unscorable tag) show “—”. Default
+        sort: highest confluence first.
+      </p>
+      <div v-if="tradeRows.length === 0" class="text-sm text-surface-400 py-4 text-center">
+        No trades for the selected filters.
+      </div>
+      <div v-else class="overflow-x-auto w-full">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-surface-600 text-left text-surface-300">
+              <th
+                class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                @click="setTradeSort('open_date')"
+              >
+                Open {{ arrow('open_date') }}
+              </th>
+              <th class="py-2 pe-3 whitespace-nowrap">Bot</th>
+              <th class="py-2 pe-3 whitespace-nowrap">Pair</th>
+              <th class="py-2 pe-3 whitespace-nowrap">Tag</th>
+              <th class="py-2 pe-3 whitespace-nowrap">Side</th>
+              <th
+                class="py-2 pe-3 text-right cursor-pointer select-none whitespace-nowrap"
+                :class="tradeSortCol === 'confluence_score' ? 'text-primary-400' : ''"
+                @click="setTradeSort('confluence_score')"
+              >
+                Confluence {{ arrow('confluence_score') }}
+              </th>
+              <th
+                class="py-2 pe-3 text-right cursor-pointer select-none whitespace-nowrap"
+                :class="tradeSortCol === 'quality_score' ? 'text-primary-400' : ''"
+                @click="setTradeSort('quality_score')"
+              >
+                Quality {{ arrow('quality_score') }}
+              </th>
+              <th
+                class="py-2 pe-3 text-right cursor-pointer select-none whitespace-nowrap"
+                :class="tradeSortCol === 'profit_pct' ? 'text-primary-400' : ''"
+                @click="setTradeSort('profit_pct')"
+              >
+                Profit % {{ arrow('profit_pct') }}
+              </th>
+              <th
+                class="py-2 pe-3 text-right cursor-pointer select-none whitespace-nowrap"
+                :class="tradeSortCol === 'duration_hours' ? 'text-primary-400' : ''"
+                @click="setTradeSort('duration_hours')"
+              >
+                Dur (h) {{ arrow('duration_hours') }}
+              </th>
+              <th
+                class="py-2 pe-3 text-right cursor-pointer select-none whitespace-nowrap"
+                :class="tradeSortCol === 'dca_order_count' ? 'text-primary-400' : ''"
+                @click="setTradeSort('dca_order_count')"
+              >
+                DCA {{ arrow('dca_order_count') }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in tradeRows"
+              :key="row.trade_id"
+              class="border-b border-surface-700/70 hover:bg-surface-700/30"
+            >
+              <td class="py-1.5 pe-3 font-mono text-xs whitespace-nowrap">
+                {{ row.open_date?.slice(0, 16).replace('T', ' ') ?? '—' }}
+              </td>
+              <td class="py-1.5 pe-3 font-mono text-xs whitespace-nowrap">
+                {{ row.container_name ?? row.bot_id }}
+                <span v-if="row.vps_name" class="text-surface-500">· {{ row.vps_name }}</span>
+              </td>
+              <td class="py-1.5 pe-3 font-mono text-xs">{{ row.pair ?? '—' }}</td>
+              <td class="py-1.5 pe-3 font-mono text-xs">{{ row.enter_tag ?? '—' }}</td>
+              <td class="py-1.5 pe-3 text-xs">
+                <span :class="row.is_short ? 'text-red-400' : 'text-green-400'">
+                  {{ row.is_short === null ? '—' : row.is_short ? 'short' : 'long' }}
+                </span>
+              </td>
+              <td
+                class="py-1.5 pe-3 text-right font-mono text-xs font-bold"
+                :class="confColor(row.confluence_score)"
+              >
+                {{ row.confluence_score === null ? '—' : row.confluence_score.toFixed(0) }}
+              </td>
+              <td class="py-1.5 pe-3 text-right font-mono text-xs">
+                {{ fmt(row.quality_score, 2) }}
+              </td>
+              <td
+                class="py-1.5 pe-3 text-right font-mono text-xs"
+                :class="
+                  row.profit_pct === null
+                    ? 'text-surface-500'
+                    : row.profit_pct >= 0
+                      ? 'text-green-400'
+                      : 'text-red-400'
+                "
+              >
+                {{ row.is_open ? 'open' : fmt(row.profit_pct, 2, '%') }}
+              </td>
+              <td class="py-1.5 pe-3 text-right font-mono text-xs">
+                {{ fmt(row.duration_hours, 1) }}
+              </td>
+              <td class="py-1.5 pe-3 text-right font-mono text-xs">{{ row.dca_order_count }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
