@@ -927,6 +927,11 @@ export function createBotSubStore(botId: string, botName: string) {
         return Promise.resolve(res.data);
       } catch (error) {
         if (axios.isAxiosError(error)) {
+          // Freqtrade returns 404 when a trade simply has no stored custom data —
+          // treat that as an empty result rather than a hard error.
+          if (error.response?.status === 404) {
+            return Promise.resolve([]);
+          }
           console.error(error.response);
         }
         showAlert(`Failed to get custom data for trade ${tradeid}`, 'error');

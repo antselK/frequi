@@ -23,6 +23,9 @@ const { state: customData, execute } = useAsyncState(
         <p class="italic text-sm text-neutral-500">No custom data for this trade</p>
       </template>
     </template>
+    <template v-if="Array.isArray(customData) && customData.length === 0">
+      <p class="italic text-sm text-neutral-500">No custom data for this trade</p>
+    </template>
 
     <UButton @click="execute()" icon="mdi:reload" label="Reload Custom Data" class="mt-2" />
   </div>
