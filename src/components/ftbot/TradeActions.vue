@@ -18,6 +18,7 @@ defineEmits<{
   reloadTrade: [trade: Trade];
   deleteTrade: [trade: Trade];
   forceEntry: [trade: Trade];
+  forceDcaEntry: [trade: Trade];
 }>();
 </script>
 
@@ -76,6 +77,15 @@ defineEmits<{
       label="Increase position"
       icon="mdi:plus-box-multiple-outline"
       @click="$emit('forceEntry', trade)"
+    />
+    <UButton
+      v-if="enableForceEntry && botFeatures.forceEntryTag"
+      class="justify-start!"
+      color="neutral"
+      title="DCA increase"
+      label="DCA increase"
+      icon="mdi:plus-box-multiple"
+      @click="$emit('forceDcaEntry', trade)"
     />
     <UButton
       v-if="botFeatures.reloadTrade"

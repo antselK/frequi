@@ -33,7 +33,7 @@ const filterText = ref('');
 const perPage = props.activeTrades ? 200 : 15;
 const pagination = ref({ pageIndex: 0, pageSize: perPage });
 const { confirm } = useConfirmBox();
-const { forceEntryDialog, forceExitDialog } = useForceTrade();
+const { forceEntryDialog, forceDcaDialog, forceExitDialog } = useForceTrade();
 
 function formatPriceWithDecimals(price: number) {
   return formatPrice(price, botStore.activeBot.stakeCurrencyDecimals);
@@ -166,6 +166,17 @@ function handleForceEntry(item: Trade) {
   });
 }
 
+function handleForceDcaEntry(item: Trade) {
+  // The dialog acts on the active bot; in multi-bot view switch to the trade's bot first.
+  if (props.multiBotView && botStore.selectedBot !== item.botId) {
+    botStore.selectBot(item.botId);
+  }
+  forceDcaDialog({
+    trade: item,
+    stakeCurrencyDecimals: botStore.activeBot.botState.stake_currency_decimals ?? 3,
+  });
+}
+
 const onRowClicked = (item: Trade) => {
   if (props.multiBotView && botStore.selectedBot !== item.botId) {
     // Multibotview - on click switch to the bot trade view
@@ -242,6 +253,7 @@ const rowSelection = computed({
           @cancel-open-order="cancelOpenOrderHandler"
           @reload-trade="reloadTradeHandler"
           @force-entry="handleForceEntry"
+          @force-dca-entry="handleForceDcaEntry"
         />
       </template>
       <template #stake_amount-cell="{ row }">

@@ -1,3 +1,4 @@
+import ForceDcaForm, { type ForceDcaFormProps } from '../components/ftbot/ForceDcaForm.vue';
 import ForceEntryForm, { type ForceEntryFormProps } from '../components/ftbot/ForceEntryForm.vue';
 import ForceExitForm, { type ForceExitFormProps } from '../components/ftbot/ForceExitForm.vue';
 
@@ -7,6 +8,14 @@ export function useForceTrade() {
   return {
     forceEntryDialog: (options: ForceEntryFormProps): Promise<boolean> => {
       const modal = overlay.create(ForceEntryForm, {
+        destroyOnClose: true,
+        props: options,
+      });
+
+      return modal.open();
+    },
+    forceDcaDialog: (options: ForceDcaFormProps): Promise<boolean> => {
+      const modal = overlay.create(ForceDcaForm, {
         destroyOnClose: true,
         props: options,
       });

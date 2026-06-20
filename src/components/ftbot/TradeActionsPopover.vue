@@ -20,6 +20,7 @@ const emit = defineEmits<{
   reloadTrade: [trade: Trade];
   deleteTrade: [trade: Trade];
   forceEntry: [trade: Trade];
+  forceDcaEntry: [trade: Trade];
 }>();
 const popoverOpen = ref(false);
 
@@ -46,6 +47,10 @@ function handleDeleteTrade(item: Trade) {
 function handleForceEntry(item: Trade) {
   popoverOpen.value = false;
   emit('forceEntry', item);
+}
+function handleForceDcaEntry(item: Trade) {
+  popoverOpen.value = false;
+  emit('forceDcaEntry', item);
 }
 </script>
 
@@ -78,6 +83,7 @@ function handleForceEntry(item: Trade) {
             @cancel-open-order="cancelOpenOrderHandler"
             @reload-trade="handleReloadTrade"
             @force-entry="handleForceEntry"
+            @force-dca-entry="handleForceDcaEntry"
           />
           <UButton
             class="mt-1 w-full text-start"
