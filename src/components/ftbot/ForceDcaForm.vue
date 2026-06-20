@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ForceEnterPayload, Trade } from '@/types';
+import type { ForceEnterPayload, Order, Trade } from '@/types';
 import { OrderSides } from '@/types';
 
 // Default DCA multipliers — mirror Printer.adjust_trade_position
@@ -21,17 +21,30 @@ const emit = defineEmits<{
 const botStore = useBotStore();
 
 const leverage = computed(() => props.trade.leverage || 1);
+const entrySide = computed(() => (props.trade.is_short ? 'sell' : 'buy'));
 
-// Filled entry orders, oldest first.
+// Filled entry orders, oldest first. The /status payload doesn't reliably populate
+// `cost`/`filled`, so detect entries by side and "filled" by the fill timestamp.
 const filledEntries = computed(() =>
   (props.trade.orders ?? [])
-    .filter((o) => o.ft_is_entry && (o.filled ?? 0) > 0)
+    .filter((o) => {
+      const isEntry = o.ft_is_entry ?? o.ft_order_side === entrySide.value;
+      const isFilled = (o.order_filled_timestamp ?? null) !== null || (o.filled ?? 0) > 0;
+      return isEntry && isFilled;
+    })
     .sort(
       (a, b) =>
         (a.order_filled_timestamp ?? a.order_timestamp ?? 0) -
         (b.order_filled_timestamp ?? b.order_timestamp ?? 0),
     ),
 );
+
+// Per-order stake (collateral): prefer cost, else filled/amount × price, then de-leverage.
+function orderStake(o: Order): number {
+  const notional =
+    o.cost && o.cost > 0 ? o.cost : (o.filled ?? o.amount ?? 0) * (o.safe_price ?? 0);
+  return notional / leverage.value;
+}
 
 const entryCount = computed(
   () => props.trade.nr_of_successful_entries ?? filledEntries.value.length,
@@ -45,7 +58,7 @@ const isFirstDca = computed(() => nextLevel.value <= 1);
 const baseEntry = computed(() =>
   isFirstDca.value ? filledEntries.value[0] : filledEntries.value.at(-1),
 );
-const baseStake = computed(() => (baseEntry.value ? baseEntry.value.cost / leverage.value : 0));
+const baseStake = computed(() => (baseEntry.value ? orderStake(baseEntry.value) : 0));
 
 const multiplier = ref(isFirstDca.value ? FIRST_DCA_MULTIPLIER : SUBSEQUENT_DCA_MULTIPLIER);
 const ordertype = ref('');
