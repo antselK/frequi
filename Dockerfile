@@ -1,4 +1,4 @@
-FROM node:26.3.0-alpine AS ui-builder
+FROM node:26.3.1-alpine AS ui-builder
 
 RUN mkdir /app \
     && npm install -g corepack \
@@ -16,7 +16,7 @@ COPY . /app
 
 RUN pnpm run build
 
-FROM nginx:1.31.1-alpine
+FROM nginx:1.31.2-alpine
 COPY  --from=ui-builder /app/dist /etc/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template
 RUN apk add --no-cache gettext
