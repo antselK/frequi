@@ -39,6 +39,9 @@ const routes: Array<RouteRecordRaw> = [
     path: '/mobile',
     name: 'Mobile',
     component: () => import('@/views/MobileView.vue'),
+    meta: {
+      allowAnonymous: true,
+    },
   },
   {
     path: '/balance',
@@ -68,6 +71,9 @@ const routes: Array<RouteRecordRaw> = [
     path: '/vps',
     name: 'VPS Manager',
     component: () => import('@/views/VpsManagerView.vue'),
+    meta: {
+      allowAnonymous: true,
+    },
   },
   {
     path: '/dwh',
