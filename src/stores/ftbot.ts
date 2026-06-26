@@ -31,8 +31,11 @@ import type {
   FreqAIModelListResult,
   HyperoptLossListResponse,
   HyperoptLossObj,
+  JobCategory,
   LockResponse,
   LogLine,
+  LookaheadAnalysis,
+  LookaheadAnalysisPayload,
   Markets,
   MarketsPayload,
   MixTagStats,
@@ -47,6 +50,8 @@ import type {
   PerformanceEntry,
   PlotConfig,
   ProfitStats,
+  RecursiveAnalysis,
+  RecursiveAnalysisPayload,
   StatusResponse,
   StrategyListResult,
   StrategyResult,
@@ -728,8 +733,7 @@ export function createBotSubStore(botId: string, botName: string) {
         botStatusAvailable.value = true;
         startWebSocket();
         if (isWebserverMode.value) {
-          const { recoverBgJobs } = useBackgroundJob();
-          recoverBgJobs(api, showAlert).then();
+          recoverBgJobs();
         }
         return Promise.resolve(data);
       } catch (error) {
@@ -783,6 +787,11 @@ export function createBotSubStore(botId: string, botName: string) {
       }
     }
 
+    // #region background jobs
+    const backgroundJobs = ref<Record<string, BackgroundTaskStatus>>({});
+    // In-flight polls, keyed by jobId - ensures a single interval per job
+    const bgJobPolls = new Map<string, Promise<BackgroundTaskStatus>>();
+
     async function getBackgroundJobStatus(jobId: string) {
       try {
         const { data } = await api.get<BackgroundTaskStatus>(`/background/${jobId}`);
@@ -793,14 +802,140 @@ export function createBotSubStore(botId: string, botName: string) {
       }
     }
 
+    /**
+     * Poll a background job until it finishes, keeping `backgroundJobs` (and therefore
+     * the tracking widget) up to date. Resolves with the final status so callers can
+     * fetch the typed result. Deduplicated per jobId.
+     */
+    function pollBgJob(jobId: string, jobCategory: JobCategory): Promise<BackgroundTaskStatus> {
+      const existing = bgJobPolls.get(jobId);
+      if (existing) {
+        return existing;
+      }
+      if (!backgroundJobs.value[jobId]) {
+        backgroundJobs.value[jobId] = {
+          job_id: jobId,
+          job_category: jobCategory,
+          status: 'pending',
+          running: true,
+        };
+      }
+      const promise = new Promise<BackgroundTaskStatus>((resolve, reject) => {
+        const interval = window.setInterval(async () => {
+          try {
+            const status = await getBackgroundJobStatus(jobId);
+            backgroundJobs.value[jobId] = status;
+            if (!status.running) {
+              window.clearInterval(interval);
+              bgJobPolls.delete(jobId);
+              resolve(status);
+            }
+          } catch (error) {
+            window.clearInterval(interval);
+            bgJobPolls.delete(jobId);
+            showAlert('Failed to get background job status', 'error');
+            reject(error);
+          }
+        }, 1000);
+      });
+      bgJobPolls.set(jobId, promise);
+      return promise;
+    }
+
+    async function recoverBgJobs() {
+      try {
+        const { data } = await api.get<BackgroundTaskStatus[]>('/background');
+        for (const job of data) {
+          backgroundJobs.value[job.job_id] = job;
+          if (job.running) {
+            pollBgJob(job.job_id, job.job_category);
+          }
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    async function clearBgJobs() {
+      if (botFeatures.value.backgroundJobDelete) {
+        try {
+          // Server-side clear - returns the list of still-running jobs; cleared jobs are omitted.
+          const { data } = await api.delete<BackgroundTaskStatus[]>('/background/clear');
+          backgroundJobs.value = {};
+          for (const job of data) {
+            backgroundJobs.value[job.job_id] = job;
+          }
+          showAlert('All non-running background jobs cleared', 'success');
+        } catch (error) {
+          console.error(error);
+          showAlert('Failed to clear background jobs', 'error');
+        }
+        return;
+      }
+      // Local fallback - drop all jobs that are no longer running.
+      for (const [jobId, job] of Object.entries(backgroundJobs.value)) {
+        if (!job.running) {
+          delete backgroundJobs.value[jobId];
+        }
+      }
+    }
+    // #endregion background jobs
+
     async function startDataDownload(payload: DownloadDataPayload) {
       try {
         const { data } = await api.post<DownloadDataPayload, AxiosResponse<BgTaskStarted>>(
           '/download_data',
           payload,
         );
-        const { startBgJob } = useBackgroundJob();
-        startBgJob(api, showAlert, data.job_id, 'download_data');
+        pollBgJob(data.job_id, 'download_data');
+        return Promise.resolve(data);
+      } catch (error) {
+        console.error(error);
+        return Promise.reject(error);
+      }
+    }
+
+    async function startRecursiveAnalysis(payload: RecursiveAnalysisPayload) {
+      try {
+        const { data } = await api.post<RecursiveAnalysisPayload, AxiosResponse<BgTaskStarted>>(
+          '/recursive_analysis',
+          payload,
+        );
+        pollBgJob(data.job_id, 'recursive_analysis');
+        return Promise.resolve(data);
+      } catch (error) {
+        console.error(error);
+        return Promise.reject(error);
+      }
+    }
+
+    async function getRecursiveAnalysisResult(jobId: string) {
+      try {
+        const { data } = await api.get<RecursiveAnalysis>(`/recursive_analysis/${jobId}`);
+        return Promise.resolve(data);
+      } catch (error) {
+        console.error(error);
+        return Promise.reject(error);
+      }
+    }
+
+    async function startLookaheadAnalysis(payload: LookaheadAnalysisPayload) {
+      try {
+        const { data } = await api.post<LookaheadAnalysisPayload, AxiosResponse<BgTaskStarted>>(
+          '/lookahead_analysis',
+          payload,
+        );
+        pollBgJob(data.job_id, 'lookahead_analysis');
+        return Promise.resolve(data);
+      } catch (error) {
+        console.error(error);
+        return Promise.reject(error);
+      }
+    }
+
+    async function getLookaheadAnalysisResult(jobId: string) {
+      try {
+        const { data } = await api.get<LookaheadAnalysis>(`/lookahead_analysis/${jobId}`);
         return Promise.resolve(data);
       } catch (error) {
         console.error(error);
@@ -1427,6 +1562,7 @@ export function createBotSubStore(botId: string, botName: string) {
       backtestHistory,
       backtestHistoryList,
       sysInfo,
+      backgroundJobs,
       version,
       botApiVersion,
       botFeatures,
@@ -1490,7 +1626,14 @@ export function createBotSubStore(botId: string, botName: string) {
       evaluatePairlist,
       getPairlistEvalResult,
       getBackgroundJobStatus,
+      pollBgJob,
+      recoverBgJobs,
+      clearBgJobs,
       startDataDownload,
+      startRecursiveAnalysis,
+      getRecursiveAnalysisResult,
+      startLookaheadAnalysis,
+      getLookaheadAnalysisResult,
       startBot,
       stopBot,
       stopBuy,
