@@ -34,7 +34,7 @@ const strategyModalVisible = ref(false);
 const strategyContainerName = ref('');
 const strategyOptions = ref<string[]>([]);
 const strategyCurrent = ref<string | null>(null);
-const strategySelected = ref<string | null>(null);
+const strategySelected = ref<string | undefined>(undefined);
 const strategyRestart = ref(true);
 const strategyLoading = ref(false);
 const strategyApplying = ref(false);
@@ -554,7 +554,7 @@ async function openStrategyModal(containerName: string) {
   strategyContainerName.value = containerName;
   strategyOptions.value = [];
   strategyCurrent.value = null;
-  strategySelected.value = null;
+  strategySelected.value = undefined;
   strategyRestart.value = true;
   strategyModalVisible.value = true;
   strategyLoading.value = true;
@@ -562,7 +562,7 @@ async function openStrategyModal(containerName: string) {
     const result = await vpsStore.loadContainerStrategies(selectedVpsId.value, containerName);
     strategyOptions.value = result.available;
     strategyCurrent.value = result.current;
-    strategySelected.value = result.current;
+    strategySelected.value = result.current ?? undefined;
   } catch (error) {
     handleActionToast(`Strategies — ${containerName}`, String(error), false);
     strategyModalVisible.value = false;

@@ -7,7 +7,7 @@ export const useAlertsStore = defineStore('alerts', () => {
 
   function addAlert(message: AlertType) {
     // TODO: is this store still necessary??
-    const severityMap: Record<string, string> = {
+    const severityMap: Record<string, 'success' | 'info' | 'warning' | 'error' | 'neutral'> = {
       success: 'success',
       info: 'info',
       warning: 'warning',

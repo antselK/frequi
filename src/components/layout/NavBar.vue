@@ -119,7 +119,7 @@ const navItems = computed<NavItem[]>(() => [
   {
     label: 'Mobile',
     to: '/mobile',
-    visible: computed(() => !botStore.canRunBacktest),
+    visible: !botStore.canRunBacktest,
     icon: 'i-mdi-cellphone',
   },
   {

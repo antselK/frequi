@@ -4,7 +4,11 @@ import { useReportsContext } from '@/composables/useReportsContext';
 import { useTableSort } from '@/composables/useTableSort';
 import { vpsApi } from '@/composables/vpsApi';
 import { daysAgoStr, todayStr } from '@/utils/reportDates';
-import type { DwhConfluenceAnalysis, DwhConfluenceTradeRow } from '@/types/vps';
+import type {
+  DwhConfluenceAnalysis,
+  DwhConfluenceIndicatorSpec,
+  DwhConfluenceTradeRow,
+} from '@/types/vps';
 
 const { reportsError, botSelectOptions } = useReportsContext();
 
@@ -62,7 +66,7 @@ function band(spec: { lo: number | null; hi: number | null }): string {
 }
 
 // Strongest-first indicators that actually carry weight, for the per-tag table.
-function weightedIndicators(indicators: Record<string, { weight: number }>) {
+function weightedIndicators(indicators: Record<string, DwhConfluenceIndicatorSpec>) {
   return Object.entries(indicators)
     .filter(([, s]) => s.weight > 0)
     .sort((a, b) => b[1].weight - a[1].weight);
