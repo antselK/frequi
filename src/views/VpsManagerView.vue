@@ -26,6 +26,9 @@ const showOnboardDialog = ref(false);
 const showEditDialog = ref(false);
 const editingVps = ref<VpsServer | null>(null);
 const selectedVpsId = ref<number | null>(null);
+// Guards the bulk start/restart/stop-all loop (can run for minutes with a 2-min
+// stagger) against being re-triggered while already in flight.
+const bulkActionInFlight = ref(false);
 const logsVisible = ref(false);
 const selectedContainerName = ref('');
 const logsText = ref('');
@@ -370,11 +373,25 @@ async function handleShowContainers(item: VpsServer) {
 }
 
 async function runContainerActionForVps(item: VpsServer, action: 'start' | 'restart' | 'stop') {
+  if (bulkActionInFlight.value) {
+    return;
+  }
+  bulkActionInFlight.value = true;
   try {
     await vpsStore.loadContainers(item.id);
-    const containers = vpsStore.getContainersForVps(item.id);
+    // Only ever act on freqtrade bot containers, never other infra containers
+    // discovered on the host. For 'start', also skip deliberately-disabled bots
+    // so a bulk start doesn't resume a container that was parked on purpose.
+    let containers = vpsStore.getContainersForVps(item.id).filter((c) => c.is_freqtrade);
+    if (action === 'start') {
+      containers = containers.filter((c) => c.enabled);
+    }
     if (!containers.length) {
-      handleActionToast(`${action} ${item.name}`, 'No discovered containers for this VPS.', false);
+      handleActionToast(
+        `${action} ${item.name}`,
+        'No eligible freqtrade containers for this action.',
+        false,
+      );
       return;
     }
 
@@ -408,6 +425,8 @@ async function runContainerActionForVps(item: VpsServer, action: 'start' | 'rest
     );
   } catch (error) {
     handleActionToast(`${action} ${item.name}`, String(error), false);
+  } finally {
+    bulkActionInFlight.value = false;
   }
 }
 

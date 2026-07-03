@@ -494,16 +494,20 @@ function matchTrailingEventTrade(
   };
 }
 
-async function loadTrailingTrades(days: number): Promise<DwhTrade[]> {
+async function loadTrailingTrades(dateFrom: string, dateTo: string): Promise<DwhTrade[]> {
   const pageSize = 500;
-  const maxRows = 2000;
   const collected: DwhTrade[] = [];
   let offset = 0;
   let total = Number.POSITIVE_INFINITY;
 
-  while (offset < total && collected.length < maxRows) {
+  // Fetch by explicit date window (server-side filtered), NOT a newest-first
+  // `days` window capped at 2000 rows — that cap silently dropped the oldest
+  // trades in wide/historical ranges (showing partial or empty results). The
+  // loop is bounded by the server's `total`, so it terminates.
+  while (offset < total) {
     const page = await vpsApi.dwhTrades({
-      days,
+      date_from: dateFrom,
+      date_to: dateTo,
       limit: pageSize,
       offset,
     });
@@ -961,7 +965,7 @@ async function loadTrailingBenefitReport() {
     };
 
     // Step 1: Fetch trades FIRST (reversed data flow)
-    const allTrades = await loadTrailingTrades(trailingDaysComputed);
+    const allTrades = await loadTrailingTrades(trailingDateFrom.value, trailingDateTo.value);
     const closedTrailTrades = allTrades.filter(
       (trade) =>
         !trade.is_open && isTrailEnterTag(trade.enter_tag) && closeDateInWindow(trade.close_date),

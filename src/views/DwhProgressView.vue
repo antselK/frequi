@@ -221,6 +221,13 @@ async function loadRunHistory() {
 }
 
 async function flushIngestionRuns() {
+  if (
+    !window.confirm(
+      'Delete ALL ingestion run history?\n\nThis cannot be undone. It also resets the high-volume-warning baseline (rolling median) until history rebuilds.',
+    )
+  ) {
+    return;
+  }
   flushingRuns.value = true;
   errorText.value = '';
   try {
@@ -619,8 +626,12 @@ async function toggleRunDetails(runId: number) {
     loadingRunAnomalies.value[runId] = true;
     try {
       runAnomalies.value[runId] = await vpsApi.dwhRunAnomalies(runId, 20);
-    } catch {
-      runAnomalies.value[runId] = [];
+    } catch (error) {
+      // Don't cache [] on error — that renders as "No anomaly spikes found" and
+      // the `=== undefined` guard would prevent any retry. Leave it unset so
+      // re-expanding refetches, and surface the failure.
+      delete runAnomalies.value[runId];
+      errorText.value = `Failed to load anomalies for run ${runId}: ${String(error)}`;
     } finally {
       loadingRunAnomalies.value[runId] = false;
     }
@@ -640,9 +651,14 @@ function runStatusClass(status: string): string {
   return 'bg-surface-700 text-surface-200 border-surface-600';
 }
 
-async function loadSummary() {
+async function loadSummary(clearError = true) {
   loading.value = true;
-  errorText.value = '';
+  // Only user-initiated loads clear the shared banner; the 20s background
+  // refresh must not wipe operator-facing messages (wedged-ingestion warning,
+  // failed destructive-op errors) that nothing has resolved.
+  if (clearError) {
+    errorText.value = '';
+  }
   try {
     summary.value = await vpsApi.dwhSummary();
   } catch (error) {
@@ -793,15 +809,21 @@ async function runRollupCompaction() {
 }
 
 onMounted(async () => {
-  await loadSummary();
-  await loadIngestionConfig();
-  await loadRunHistory();
-  await loadTrades();
-  await loadAnomalies();
-  await loadAlerts();
-  await loadRetentionConfig();
-  await loadRollupCompactionConfig();
-  await loadAuditData();
+  // Guard the bootstrap loaders: a single transient failure must not abort the
+  // rest of mount (status-poll resume + the 20s auto-refresh below).
+  try {
+    await loadSummary();
+    await loadIngestionConfig();
+    await loadRunHistory();
+    await loadTrades();
+    await loadAnomalies();
+    await loadAlerts();
+    await loadRetentionConfig();
+    await loadRollupCompactionConfig();
+    await loadAuditData();
+  } catch (error) {
+    errorText.value = String(error);
+  }
   try {
     await syncAsyncStatus();
     if (asyncStatus.value?.status === 'running') {
@@ -812,7 +834,7 @@ onMounted(async () => {
     // Ignore status bootstrap errors and keep summary visible.
   }
   refreshTimer = window.setInterval(() => {
-    loadSummary();
+    loadSummary(false);
   }, 20000);
 });
 

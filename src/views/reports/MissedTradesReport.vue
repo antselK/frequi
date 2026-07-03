@@ -440,6 +440,14 @@ function parseMissedTradeSamples(
     if (isStrategyUserDenyMessage(loweredMessage)) {
       continue;
     }
+    // Deep-DCA blocks emit two lines. "Blocking new trades: {blocker} has N DCA
+    // entries" names the pair CAUSING the block (which had no signal); only
+    // "Blocking new entry for {candidate}" is a genuinely missed trade. Parsing
+    // the blocker line created a spurious row + double-count (backend parser
+    // dropped this pattern 2026-06-10 for the same reason).
+    if (loweredMessage.includes('blocking new trades:')) {
+      continue;
+    }
     const event: ParsedLogEvent = {
       eventTs: sample.event_ts,
       at: formatDate(sample.event_ts),

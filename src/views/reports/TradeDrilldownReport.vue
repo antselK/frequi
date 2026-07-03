@@ -8,8 +8,14 @@ import { logsChartLayout } from '@/utils/reportCharts';
 import { timestampShort } from '@/utils/formatters/timeformat';
 import type { DwhOrder, DwhTrade } from '@/types/vps';
 
-const { botSelectOptions, activeBotIds, isBotActive, showChartTooltip, hideChartTooltip } =
-  useReportsContext();
+const {
+  botSelectOptions,
+  activeBotIds,
+  isBotActive,
+  showChartTooltip,
+  hideChartTooltip,
+  reportsError,
+} = useReportsContext();
 
 // ─── Types specific to this report ─────────────────────────────────────────
 
@@ -229,9 +235,14 @@ async function loadDrilldownReport(append = false) {
     }
     drillOffset.value += result.items.length;
     drillLoaded.value = true;
-  } catch {
-    drillTrades.value = [];
-    drillTotal.value = 0;
+  } catch (error) {
+    // Surface the failure instead of masking it as "No trades found". On a
+    // failed "Load more" (append), keep the rows already on screen.
+    reportsError.value = String(error);
+    if (!append) {
+      drillTrades.value = [];
+      drillTotal.value = 0;
+    }
   } finally {
     loadingDrilldown.value = false;
   }

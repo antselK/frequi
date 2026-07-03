@@ -374,7 +374,11 @@ export const vpsApi = {
     const { data } = await vpsApiClient.post<DwhIngestionRunResult>(
       '/dwh/ingestion/run',
       undefined,
-      { timeout: 180000 },
+      // A full blocking Phase-A run (SSH log reads across all bots) routinely
+      // takes ~10 min; 180s guaranteed a client timeout that reported failure
+      // while the backend run completed. 20 min covers the worst case and
+      // matches the 15-min status-poll safety cap used in async mode.
+      { timeout: 1200000 },
     );
     return data;
   },

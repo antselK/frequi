@@ -92,6 +92,20 @@ const BH_COLORS = [
   '#38bdf8',
 ];
 
+// Single source of truth for per-bot colors: keyed on the UNFILTERED union of
+// both data sources (equity + rolling-score), sorted by bot_id. The chart lines
+// and the legend both read this, so a color always maps to the same bot
+// regardless of the global bot filter or which chart mode is active.
+const botColorByBot = computed(() => {
+  const ids = [
+    ...new Set([
+      ...(botPerfHistory.value?.items ?? []).map((i) => i.bot_id),
+      ...(botPerfRollingScore.value?.items ?? []).map((i) => i.bot_id),
+    ]),
+  ].sort((a, b) => a - b);
+  return new Map(ids.map((id, idx) => [id, BH_COLORS[idx % BH_COLORS.length]]));
+});
+
 const botHistChartData = computed(() => {
   const mode = botHistChartMode.value;
   const enabled = botHistEnabledBots.value;
@@ -176,9 +190,8 @@ const botHistChartData = computed(() => {
 
   const datePositions = allDates.map((d) => ({ date: d, x: dateToX(d) }));
 
-  // Series per bot — assign stable color by bot_id order from full (unfiltered) data
-  const allBotIds = [...new Set(rawItems.map((i) => i.bot_id))].sort((a, b) => a - b);
-  const colorByBot = new Map(allBotIds.map((id, idx) => [id, BH_COLORS[idx % BH_COLORS.length]]));
+  // Series per bot — stable color from the shared unfiltered map (see botColorByBot)
+  const colorByBot = botColorByBot.value;
 
   const byBot = new Map<number, RawPt[]>();
   for (const item of filtered) {
@@ -265,10 +278,7 @@ const botHistAllBots = computed(() => {
   const scoreItems = (botPerfRollingScore.value?.items ?? []).filter((i) => isBotActive(i.bot_id));
   const seen = new Set<number>();
   const bots: { botId: number; name: string; vpsName: string; color: string }[] = [];
-  const allIds = [...new Set([...equityItems, ...scoreItems].map((i) => i.bot_id))].sort(
-    (a, b) => a - b,
-  );
-  const colorByBot = new Map(allIds.map((id, idx) => [id, BH_COLORS[idx % BH_COLORS.length]]));
+  const colorByBot = botColorByBot.value;
   for (const item of [...equityItems, ...scoreItems]) {
     if (seen.has(item.bot_id)) continue;
     seen.add(item.bot_id);

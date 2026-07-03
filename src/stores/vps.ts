@@ -168,12 +168,24 @@ export const useVpsStore = defineStore('vpsStore', {
         this.loadingContainers = false;
       }
     },
+    // Refresh the container list after an action WITHOUT letting a refresh
+    // failure surface as an action failure. loadContainers is an SSH-backed GET
+    // that is slow/flaky exactly when a host is busy restarting — a throw there
+    // previously made a succeeded action report failure, prompting operators to
+    // retry (double restarts / duplicate strategy applies).
+    async refreshContainersQuietly(vpsId: number): Promise<void> {
+      try {
+        await this.loadContainers(vpsId);
+      } catch {
+        // ignore — the action itself already succeeded
+      }
+    },
     async startContainer(vpsId: number, containerName: string): Promise<VpsActionResult> {
       this.actionLoading = true;
       this.lastError = '';
       try {
         const result = await vpsApi.startContainer(vpsId, containerName);
-        await this.loadContainers(vpsId);
+        await this.refreshContainersQuietly(vpsId);
         return result;
       } catch (error) {
         this.setError(error);
@@ -187,7 +199,7 @@ export const useVpsStore = defineStore('vpsStore', {
       this.lastError = '';
       try {
         const result = await vpsApi.restartContainer(vpsId, containerName);
-        await this.loadContainers(vpsId);
+        await this.refreshContainersQuietly(vpsId);
         return result;
       } catch (error) {
         this.setError(error);
@@ -201,7 +213,7 @@ export const useVpsStore = defineStore('vpsStore', {
       this.lastError = '';
       try {
         const result = await vpsApi.stopContainer(vpsId, containerName);
-        await this.loadContainers(vpsId);
+        await this.refreshContainersQuietly(vpsId);
         return result;
       } catch (error) {
         this.setError(error);
@@ -235,7 +247,7 @@ export const useVpsStore = defineStore('vpsStore', {
       this.lastError = '';
       try {
         await vpsApi.setContainerEnabled(vpsId, containerName, enabled);
-        await this.loadContainers(vpsId);
+        await this.refreshContainersQuietly(vpsId);
         return { ok: true, message: enabled ? 'Enabled' : 'Disabled' };
       } catch (error) {
         this.setError(error);
@@ -269,7 +281,7 @@ export const useVpsStore = defineStore('vpsStore', {
       this.lastError = '';
       try {
         const result = await vpsApi.setContainerStrategy(vpsId, containerName, strategy, restart);
-        await this.loadContainers(vpsId);
+        await this.refreshContainersQuietly(vpsId);
         return result;
       } catch (error) {
         this.setError(error);

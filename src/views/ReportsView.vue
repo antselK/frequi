@@ -185,7 +185,10 @@ function clearAllBots() {
 }
 
 function isBotActive(botId: number): boolean {
-  return activeBotIds.value.size === 0 || activeBotIds.value.has(botId);
+  // Empty selection = no bots (matches the all-chips-deselected + "● filtered"
+  // rendering). selectAllBots() seeds the full set on mount, so an empty set is
+  // only ever reached by an explicit "None"/untick-all action, not the default.
+  return activeBotIds.value.has(botId);
 }
 
 const botSelectOptions = computed(() => [
