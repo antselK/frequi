@@ -228,7 +228,11 @@ resetForm();
     <template #footer>
       <div class="ms-auto flex justify-end gap-2">
         <UButton color="neutral" icon="mdi:close" @click="$emit('close', false)">Cancel</UButton>
-        <UButton icon="mdi:plus-box-multiple" :disabled="!hasEntries" @click="handleDca">
+        <UButton
+          icon="mdi:plus-box-multiple"
+          :disabled="!hasEntries || stakeAmount <= 0"
+          @click="handleDca"
+        >
           Confirm DCA increase
         </UButton>
       </div>

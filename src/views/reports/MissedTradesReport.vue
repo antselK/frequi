@@ -563,18 +563,24 @@ const trailingEntryMissPct = computed(() => {
 });
 
 const missedChartPoints = computed<MissedChartPoint[]>(() => {
-  const events = parsedMissedTradeEvents.value;
-  if (!events.length) return [];
+  // Chart the SAME population the table/summary show: groupedMissedTradeEvents
+  // already drops trail_triggered events and trail-triggered groups. Bucketing
+  // raw parsedMissedTradeEvents counted events the table excludes.
+  const groups = groupedMissedTradeEvents.value;
+  if (!groups.length) return [];
   const bucketMap = new Map<string, number>();
-  for (const ev of events) {
-    const key = ev.eventTs.slice(0, 13); // "YYYY-MM-DDTHH"
-    bucketMap.set(key, (bucketMap.get(key) ?? 0) + 1);
+  for (const g of groups) {
+    for (const ev of g.events) {
+      const key = ev.eventTs.slice(0, 13); // "YYYY-MM-DDTHH"
+      bucketMap.set(key, (bucketMap.get(key) ?? 0) + 1);
+    }
   }
   const sorted = Array.from(bucketMap.entries()).sort(([a], [b]) => a.localeCompare(b));
   let cumulative = 0;
   return sorted.map(([key, count]) => {
     cumulative += count;
-    const date = new Date(key + ':00:00');
+    // UTC hour key — append Z so it parses as UTC (matches the table times).
+    const date = new Date(key + ':00:00Z');
     const at = Number.isNaN(date.getTime()) ? key : timestampShort(date);
     return { hourKey: key, at, count, cumulative };
   });

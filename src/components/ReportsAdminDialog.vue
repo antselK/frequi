@@ -30,6 +30,7 @@ const workingSubcategorySettings = ref<Record<string, ReportSubcategorySettings>
 
 const saving = ref(false);
 const loading = ref(false);
+const loadFailed = ref(false);
 const errorMessage = ref('');
 
 // Build default layout from props (no customisation applied)
@@ -82,11 +83,15 @@ watch(
   async (open) => {
     if (!open) return;
     loading.value = true;
+    loadFailed.value = false;
     errorMessage.value = '';
     try {
       const saved = await vpsApi.getReportLayout();
       mergeLayout(saved);
     } catch {
+      // Guard Save: without a successful load the working state is empty, and
+      // saving it would overwrite the persisted layout with nothing.
+      loadFailed.value = true;
       errorMessage.value = 'Failed to load settings.';
     } finally {
       loading.value = false;
@@ -286,7 +291,7 @@ function cancel() {
     <template #footer>
       <div class="flex justify-end gap-2 w-full">
         <UButton label="Cancel" color="neutral" variant="outline" @click="cancel" />
-        <UButton label="Save" :loading="saving" :disabled="loading" @click="save" />
+        <UButton label="Save" :loading="saving" :disabled="loading || loadFailed" @click="save" />
       </div>
     </template>
   </UModal>

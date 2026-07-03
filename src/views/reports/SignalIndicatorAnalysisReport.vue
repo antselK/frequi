@@ -385,7 +385,9 @@ const signalIndAnalyticsData = computed<SigIndCombinedAnalytics | null>(() => {
 
 // Unmatched trade stats (closed trades with no indicator snapshot)
 const signalIndUnmatchedItems = computed(() =>
-  (signalIndData.value?.items ?? []).filter((r) => r.rsi === null && !r.is_open),
+  (signalIndData.value?.items ?? []).filter(
+    (r) => r.rsi === null && !r.is_open && isBotActive(r.bot_id),
+  ),
 );
 
 const signalIndUnmatchedAvgProfit = computed(() => {
@@ -412,7 +414,7 @@ const signalIndUnmatchedBreakdown = computed(() => {
   const botMap = new Map<string, { total: number; matched: number }>();
   const tagMap = new Map<string, { total: number; matched: number }>();
   for (const r of rows) {
-    if (r.is_open) continue;
+    if (r.is_open || !isBotActive(r.bot_id)) continue;
     const botKey = `${r.vps_name ?? '?'} / ${r.container_name ?? '?'} (${r.bot_id})`;
     const tagKey = r.enter_tag ?? '(none)';
     const isMatched = r.rsi !== null;

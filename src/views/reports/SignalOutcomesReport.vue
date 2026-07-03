@@ -172,7 +172,9 @@ const signalOutcomesChartPoints = computed<MissedChartPoint[]>(() => {
   let cumulative = 0;
   return sorted.map(([key, count]) => {
     cumulative += count;
-    const date = new Date(key + ':00:00');
+    // key is a UTC hour ("YYYY-MM-DDTHH"); append Z so it's parsed as UTC, not
+    // local — otherwise chart labels drift from the table by the tz offset.
+    const date = new Date(key + ':00:00Z');
     const at = Number.isNaN(date.getTime()) ? key : timestampShort(date);
     return { hourKey: key, at, count, cumulative };
   });

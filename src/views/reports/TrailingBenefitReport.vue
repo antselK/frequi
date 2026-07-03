@@ -1007,7 +1007,7 @@ async function loadTrailingBenefitReport() {
         broadTradeMatched.tradeId === null
           ? matchTrailingEventRpcTradeHint(broadTradeMatched, rpcTradeHints)
           : broadTradeMatched;
-      dedupe.set(`${msg.event_ts}|${msg.logger}|${msg.message}`, event);
+      dedupe.set(`${msg.bot_id}|${msg.event_ts}|${msg.logger}|${msg.message}`, event);
     }
     const allLogEvents = Array.from(dedupe.values());
 

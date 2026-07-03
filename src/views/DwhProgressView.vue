@@ -540,9 +540,16 @@ function stopStatusPolling() {
 function startStatusPolling() {
   stopStatusPolling();
   statusPollStartedAt = Date.now();
+  let inFlight = false;
+  let consecutiveFailures = 0;
   statusPollTimer = window.setInterval(async () => {
+    // Skip if the previous poll is still running (syncAsyncStatus slower than
+    // the 3s interval) — avoids piling up overlapping in-flight requests.
+    if (inFlight) return;
+    inFlight = true;
     try {
       await syncAsyncStatus();
+      consecutiveFailures = 0;
       if (!asyncStatus.value || asyncStatus.value.status !== 'running') {
         stopStatusPolling();
         running.value = false;
@@ -556,9 +563,16 @@ function startStatusPolling() {
           'Use "Unstick Stale Ingestion" if it is wedged, then refresh.';
       }
     } catch (pollError) {
-      errorText.value = String(pollError);
-      stopStatusPolling();
-      running.value = false;
+      // Tolerate transient failures; only give up after 3 consecutive errors
+      // so one blip doesn't permanently stop tracking a running ingestion.
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= 3) {
+        errorText.value = String(pollError);
+        stopStatusPolling();
+        running.value = false;
+      }
+    } finally {
+      inFlight = false;
     }
   }, 3000);
 }

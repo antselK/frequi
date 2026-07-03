@@ -113,6 +113,7 @@ watch(
             !form.name.trim() ||
             !form.ip.trim() ||
             !form.ssh_user.trim() ||
+            !(Number(form.ssh_port) >= 1) ||
             (mode !== 'edit' && !form.private_key.trim())
           "
           @click="submit"

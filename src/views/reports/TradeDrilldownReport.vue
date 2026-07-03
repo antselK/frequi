@@ -639,6 +639,12 @@ onMounted(() => {
                     </button>
                   </div>
                   <div
+                    v-else-if="drillOrdersLoading.has(drillTradeKey(trade))"
+                    class="text-xs text-surface-400 py-1"
+                  >
+                    Loading orders…
+                  </div>
+                  <div
                     v-else-if="!drillOrdersCache.get(drillTradeKey(trade))?.length"
                     class="text-xs text-surface-400 py-1"
                   >

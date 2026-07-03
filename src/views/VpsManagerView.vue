@@ -228,8 +228,11 @@ function startPollingFallback() {
     return;
   }
   pollTimer = window.setInterval(() => {
-    loadServers();
-    loadAudit();
+    // Silent polling: log failures instead of the toasting loadServers/loadAudit
+    // wrappers, which otherwise spam an error-toast pair every 20s while the
+    // backend is unreachable. Manual/initial loads still use the toasting paths.
+    vpsStore.loadServers().catch((err) => console.warn('Polling: failed to load servers', err));
+    vpsStore.loadAudit(100).catch((err) => console.warn('Polling: failed to load audit', err));
     if (selectedVpsId.value) {
       vpsStore.loadContainers(selectedVpsId.value).catch((err) => {
         console.warn('Polling: failed to load containers', err);

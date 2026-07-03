@@ -370,7 +370,7 @@ onMounted(() => {
     <!-- Summary cards -->
     <div v-if="botPerfLoaded && botPerf" class="flex flex-wrap gap-3 text-sm">
       <div class="rounded border border-surface-600 px-3 py-2 min-w-24 text-center">
-        <div class="text-lg font-bold">{{ botPerf.total_bots }}</div>
+        <div class="text-lg font-bold">{{ botPerfItemsFiltered.length }}</div>
         <div class="text-xs text-surface-400">Bots</div>
       </div>
       <div class="rounded border border-surface-600 px-3 py-2 min-w-24 text-center">
