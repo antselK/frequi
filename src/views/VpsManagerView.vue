@@ -416,10 +416,24 @@ async function handleStartAll(item: VpsServer) {
 }
 
 async function handleRestartAll(item: VpsServer) {
+  if (
+    !window.confirm(
+      `Restart ALL containers on "${item.name}"?\n\nBots are restarted one at a time with a 2-minute stagger, so this takes several minutes; each bot briefly stops trading as it restarts.`,
+    )
+  ) {
+    return;
+  }
   await runContainerActionForVps(item, 'restart');
 }
 
 async function handleStopAll(item: VpsServer) {
+  if (
+    !window.confirm(
+      `Stop ALL containers on "${item.name}"?\n\nEvery bot on this VPS will stop trading and any open leveraged positions will be left unmanaged (no ROI exits or trailing) until restarted.`,
+    )
+  ) {
+    return;
+  }
   await runContainerActionForVps(item, 'stop');
 }
 
@@ -486,6 +500,13 @@ async function handleStart(containerName: string) {
 
 async function handleStop(containerName: string) {
   if (!selectedVpsId.value) {
+    return;
+  }
+  if (
+    !window.confirm(
+      `Stop container "${containerName}"?\n\nThe bot will stop trading and any open leveraged positions will be left unmanaged (no ROI exits or trailing) until it is started again.`,
+    )
+  ) {
     return;
   }
   try {
