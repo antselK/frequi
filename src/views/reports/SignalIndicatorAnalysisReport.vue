@@ -50,6 +50,8 @@ const signalIndIndicatorOptions = [
   { label: 'HH 48 diff', value: 'hh_48_diff' },
   { label: 'LL 48 diff', value: 'll_48_diff' },
   { label: 'Chop', value: 'chop' },
+  { label: 'ADX', value: 'adx' },
+  { label: 'ADX 1h', value: 'adx_1h' },
   { label: 'BB Delta', value: 'bbdelta' },
   { label: 'Close Delta', value: 'closedelta' },
   { label: 'Tail', value: 'tail' },
@@ -270,6 +272,8 @@ const _sigIndAnalyticsKeys: Array<{
   { key: 'hh_48_diff', label: 'HH48 diff', decimals: 2 },
   { key: 'll_48_diff', label: 'LL48 diff', decimals: 2 },
   { key: 'chop', label: 'Chop', decimals: 1 },
+  { key: 'adx', label: 'ADX', decimals: 1 },
+  { key: 'adx_1h', label: 'ADX 1h', decimals: 1 },
   { key: 'bbdelta', label: 'BB Delta', decimals: 4 },
   { key: 'closedelta', label: 'Close Delta', decimals: 4 },
   { key: 'tail', label: 'Tail', decimals: 4 },
@@ -877,6 +881,20 @@ onMounted(() => {
               >
                 Chop{{ signalIndSortArrow('chop') }}
               </th>
+              <th
+                class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                :class="signalIndSortCol === 'adx' ? 'text-primary-400' : ''"
+                @click="toggleSignalIndSort('adx')"
+              >
+                ADX{{ signalIndSortArrow('adx') }}
+              </th>
+              <th
+                class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+                :class="signalIndSortCol === 'adx_1h' ? 'text-primary-400' : ''"
+                @click="toggleSignalIndSort('adx_1h')"
+              >
+                ADX 1h{{ signalIndSortArrow('adx_1h') }}
+              </th>
               <th class="py-2 pe-3">BB</th>
               <th
                 class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
@@ -1056,6 +1074,12 @@ onMounted(() => {
               </td>
               <td class="py-2 pe-3 text-right font-mono text-xs">
                 {{ row.chop !== null ? row.chop.toFixed(1) : '-' }}
+              </td>
+              <td class="py-2 pe-3 text-right font-mono text-xs">
+                {{ row.adx !== null ? row.adx.toFixed(1) : '-' }}
+              </td>
+              <td class="py-2 pe-3 text-right font-mono text-xs">
+                {{ row.adx_1h !== null ? row.adx_1h.toFixed(1) : '-' }}
               </td>
               <td class="py-2 pe-3 font-mono text-xs">{{ row.bb_pos ?? '-' }}</td>
               <td class="py-2 pe-3 text-right font-mono text-xs">

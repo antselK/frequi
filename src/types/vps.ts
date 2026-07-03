@@ -580,6 +580,8 @@ export interface DwhSignalIndicatorTradeRow {
   ob_bid_vol: number | null;
   ob_ask_vol: number | null;
   ob_imbalance: number | null;
+  adx: number | null;
+  adx_1h: number | null;
   quality_score: number | null;
 }
 
