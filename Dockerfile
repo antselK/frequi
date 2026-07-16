@@ -16,7 +16,7 @@ COPY . /app
 
 RUN pnpm run build
 
-FROM nginx:1.31.2-alpine
+FROM nginx:1.31.3-alpine
 COPY  --from=ui-builder /app/dist /etc/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template
 RUN apk add --no-cache gettext
