@@ -44,6 +44,15 @@ const routes: Array<RouteRecordRaw> = [
     },
   },
   {
+    // Experimental snappier mobile view — sandbox for perf testing (URL-only, no NavBar link).
+    path: '/mobile-v2',
+    name: 'Mobile v2',
+    component: () => import('@/views/MobileV2View.vue'),
+    meta: {
+      allowAnonymous: true,
+    },
+  },
+  {
     path: '/balance',
     name: 'Freqtrade Balance',
     component: () => import('@/components/ftbot/BotBalance.vue'),
