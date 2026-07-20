@@ -123,6 +123,12 @@ const navItems = computed<NavItem[]>(() => [
     icon: 'i-mdi-cellphone',
   },
   {
+    label: 'Mobile v2',
+    to: '/mobile-v2',
+    visible: !botStore.canRunBacktest,
+    icon: 'i-mdi-cellphone-cog',
+  },
+  {
     label: 'Chart',
     to: '/graph',
     icon: 'i-mdi-chart-line',
