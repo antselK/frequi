@@ -111,12 +111,6 @@ const navItems = computed<NavItem[]>(() => [
     icon: 'i-mdi-currency-usd',
   },
   {
-    label: 'Dashboard',
-    to: '/dashboard',
-    visible: !botStore.canRunBacktest,
-    icon: 'i-mdi-view-dashboard',
-  },
-  {
     label: 'Mobile',
     to: '/mobile',
     visible: !botStore.canRunBacktest,
@@ -129,29 +123,40 @@ const navItems = computed<NavItem[]>(() => [
     icon: 'i-mdi-cellphone-cog',
   },
   {
-    label: 'Chart',
-    to: '/graph',
-    icon: 'i-mdi-chart-line',
-  },
-  {
-    label: 'Logs',
-    to: '/logs',
-    icon: 'i-mdi-format-list-bulleted',
-  },
-  {
-    label: 'VPS',
-    to: '/vps',
-    icon: 'i-mdi-server',
-  },
-  {
-    label: 'DWH',
-    to: '/dwh',
-    icon: 'i-mdi-database',
-  },
-  {
-    label: 'Reports',
-    to: '/reports',
-    icon: 'i-mdi-file-chart',
+    label: 'Tools',
+    icon: 'i-mdi-toolbox',
+    children: [
+      {
+        label: 'Dashboard',
+        to: '/dashboard',
+        icon: 'i-mdi-view-dashboard',
+      },
+      {
+        label: 'Chart',
+        to: '/graph',
+        icon: 'i-mdi-chart-line',
+      },
+      {
+        label: 'Logs',
+        to: '/logs',
+        icon: 'i-mdi-format-list-bulleted',
+      },
+      {
+        label: 'VPS',
+        to: '/vps',
+        icon: 'i-mdi-server',
+      },
+      {
+        label: 'DWH',
+        to: '/dwh',
+        icon: 'i-mdi-database',
+      },
+      {
+        label: 'Reports',
+        to: '/reports',
+        icon: 'i-mdi-file-chart',
+      },
+    ],
   },
   {
     label: 'Settings',
