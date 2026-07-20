@@ -30,12 +30,6 @@ onMounted(async () => {
 
 <template>
   <div class="mobile-compact w-full flex flex-col gap-2 p-1 text-[15px]">
-    <!-- Experimental banner + A/B link back to the current mobile view -->
-    <div class="flex items-center justify-between px-1">
-      <span class="text-xs text-surface-400">Mobile v2 · experimental</span>
-      <UButton to="/mobile" size="xs" color="neutral" variant="ghost" label="→ v1" />
-    </div>
-
     <!-- Bot Comparison -->
     <div class="border border-surface-300 dark:border-surface-700 rounded">
       <div
