@@ -7,6 +7,7 @@ import { execSync } from 'child_process';
 import { resolve } from 'path';
 import IconsResolve from 'unplugin-icons/resolver';
 import Icons from 'unplugin-icons/vite';
+import VueRouter from 'vue-router/vite';
 
 let commitHash: string = 'unknown';
 try {
@@ -34,6 +35,11 @@ export default defineConfig({
     __COMMIT_HASH__: JSON.stringify(commitHash),
   },
   plugins: [
+    // Must be registered before the Vue plugin so it can transform route blocks.
+    VueRouter({
+      routesFolder: 'src/pages',
+      dts: 'src/typed-router.d.ts',
+    }),
     createVuePlugin({
       script: {
         defineModel: true,

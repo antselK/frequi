@@ -19,6 +19,12 @@ import type {
   VpsUpdatePayload,
 } from '@/types/vps';
 
+definePage({
+  meta: {
+    allowAnonymous: true,
+  },
+});
+
 const toast = useToast();
 const vpsStore = useVpsStore();
 
