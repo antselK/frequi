@@ -195,6 +195,30 @@ async function copyUrl(id: string) {
   toast.add({ title: 'Copied', description: pairlistUrl(id), color: 'success' });
 }
 
+function duplicateConfig() {
+  const source = selected.value;
+  if (!source) return;
+  // A copy WITHOUT `source`, so its selection chain becomes editable. That is the
+  // whole point: fleet chains are owned by their file, a duplicate is owned here.
+  const spec = { ...source.spec } as PairlistSpec;
+  delete (spec as Record<string, unknown>).source;
+  draft.value = {
+    ...source,
+    id: '',
+    name: `${source.name} (copy)`,
+    created_at: '',
+    updated_at: '',
+    spec,
+  };
+  activeTab.value = 'edit';
+  preview.value = null;
+  toast.add({
+    title: 'Duplicated',
+    description: 'Give it an id, tune the Selection fields, then Preview or Save.',
+    color: 'info',
+  });
+}
+
 function newConfig() {
   draft.value = {
     id: '',
@@ -280,7 +304,7 @@ onMounted(loadAll);
 </script>
 
 <template>
-  <div class="p-4 space-y-4">
+  <div class="p-4 space-y-4 text-left">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold">Pairlist Generator</h1>
@@ -595,6 +619,7 @@ onMounted(loadAll);
         :previewing="previewing"
         @save="saveConfig"
         @preview="previewSpec"
+        @duplicate="duplicateConfig"
         @cancel="cancelEdit"
       />
 

@@ -798,6 +798,10 @@ export interface PairlistSpec {
   cron_minutes?: number[];
   /** Apply the blacklist as config rather than mid-chain — changes what the cap counts. */
   config_blacklist?: boolean;
+  /** 'chain_file' means the selection chain is owned by a file on disk and is read-only. */
+  source?: string;
+  /** Extra raw regexes excluded for this config, e.g. 'XYZ-.*'. */
+  extra_blacklist?: string[];
   filters?: PairlistFilters;
   sort?: PairlistSortSpec | null;
   limit?: number | null;

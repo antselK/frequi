@@ -2,21 +2,18 @@
 /**
  * The remotepairlist-style config editor.
  *
- * Field grouping deliberately mirrors the original service's page (Basics / Filter /
- * Special / Exchange-indicator-based / ranged filters / two-stage sort), because that
- * layout is what the fleet's operator already knows. The recovered spec for every
- * field lives in `freq-pairlist/docs/RECOVERED_UI.md`.
+ * Field grouping mirrors the original service's page (Basics / Selection / Filters /
+ * Exchange-indicator-based / ranged / two-stage sort) because that layout is what the
+ * operator already knows. Recovered spec: `freq-pairlist/docs/RECOVERED_UI.md`.
  *
- * Two shapes of config exist and the editor treats them differently:
+ * **`text-left` on the root is load-bearing.** `App.vue` sets a global
+ * `#app { text-align: center }`, which otherwise strands every label in the middle of
+ * its column and pushes checkbox text far from its box.
  *
- *  - **Seeded fleet chains** carry a `base_chain` — the fleet's own selection chain,
- *    run verbatim so its universe stays bit-identical to `test-pairlist`. That is not
- *    editable here; it is owned by `config_static/generator/chains/*.json` and is the
- *    documented rollback artefact. Extended filters and sorts layer on top.
- *  - **New configs** have no base_chain, so the editor builds one from the Selection
- *    fields below (volume pool, age, volatility window, parabolic guard, final count).
- *
- * A `-1` maximum means unbounded, matching the original.
+ * Selection is editable unless the config is file-backed (`spec.source === 'chain_file'`).
+ * Those three come from `config_static/generator/chains/`, which is the definition of
+ * what each chain selects, the input to the parity test, and the rollback artefact — so
+ * they are changed in the file, or duplicated into a config that is not file-backed.
  */
 import type { PairlistConfig, PairlistMetric, PairlistSpec } from '@/types/vps';
 
@@ -32,26 +29,31 @@ const emit = defineEmits<{
     payload: { id: string; name: string; spec: PairlistSpec; cadenceMin: number; enabled: boolean },
   ];
   preview: [spec: PairlistSpec];
+  duplicate: [];
   cancel: [];
 }>();
 
-// --- identity -------------------------------------------------------------
 const id = ref('');
 const name = ref('');
 const enabled = ref(true);
 const cadenceMin = ref(15);
 const cronMinutes = ref('');
-
 const exchange = ref('bybit');
 const market = ref<'spot' | 'futures'>('futures');
 const stake = ref('USDT');
 
 const EXCHANGES = ['binance', 'kucoin', 'okx', 'bybit', 'gate', 'kraken', 'hyperliquid'];
 const STAKES = ['USDT', 'USDC', 'USD', 'BTC', 'ETH'];
+const ORDERS = [
+  { label: 'Descending', value: 'desc' },
+  { label: 'Ascending', value: 'asc' },
+  { label: 'Shuffle', value: 'shuffle' },
+];
 
-// --- selection (only used when the config has no fleet base_chain) --------
+// --- selection ------------------------------------------------------------
 const volumeAssets = ref(200);
-const minVolume = ref(1000000);
+const minVolume = ref(1_000_000);
+const applyBlacklist = ref(true);
 const useAge = ref(true);
 const minDaysListed = ref(30);
 const useVolatilityWindow = ref(true);
@@ -60,23 +62,19 @@ const maxVolatility = ref(0.35);
 const useRangeStability = ref(true);
 const maxRateOfChange = ref(2.0);
 const finalCount = ref(50);
-// Defaults ON. A chain built here has no mid-chain RemotePairList handler, so
-// without this the config bypasses the entire exclusion set — CoinGecko, the
-// cross-exchange delist list, AND the account-restricted symbols. That is not a
-// cosmetic gap: it would let a new config enter a pair that is delisting or that
-// the live account cannot trade at all.
-const applyBlacklist = ref(true);
 
-// --- Filter / Special toggles --------------------------------------------
+const fileBacked = computed(() => props.config?.spec.source === 'chain_file');
+
+// --- toggles --------------------------------------------------------------
 const f = reactive<Record<string, boolean>>({
   meme: false,
   fantoken: false,
   leveraged: false,
   cryptopanic: false,
+  nfi: false,
   bothx: false,
   threex: false,
   no_max_supply: false,
-  nfi: false,
   bb_squeeze: false,
   macdhist_positive: false,
   zero_volume: false,
@@ -85,32 +83,65 @@ const f = reactive<Record<string, boolean>>({
   nhnl: false,
 });
 
+const TOKEN_CLASSES = [
+  { key: 'meme', label: 'Meme token' },
+  { key: 'fantoken', label: 'Fan token' },
+  { key: 'leveraged', label: 'Leveraged tokens' },
+  { key: 'cryptopanic', label: 'CryptoPanic filter' },
+  { key: 'nfi', label: 'NFI blacklist' },
+];
+const SPECIAL = [
+  { key: 'bothx', label: 'Exists on Binance and Kucoin' },
+  { key: 'threex', label: 'Exists on Binance, Kucoin and OKX' },
+  { key: 'no_max_supply', label: 'No max supply (CoinGecko)' },
+];
+const INDICATOR_TOGGLES = [
+  { key: 'bb_squeeze', label: 'bb_width at 180-day low (1d)' },
+  { key: 'macdhist_positive', label: 'macdhist > 0 (1d)' },
+  { key: 'linreg', label: 'Positive linear regression (1d)' },
+  { key: 'recent_pump', label: 'Recent pump (5m)' },
+  { key: 'zero_volume', label: 'Has a zero-volume candle (5m)' },
+  { key: 'nhnl', label: 'NHNL positive (30m)' },
+];
+
 const emaCross = ref<'' | 'above' | 'below'>('');
 const smiState = ref<'' | 'bullish' | 'bearish'>('');
-
 const useFng = ref(false);
 const fngMin = ref(20);
 const useSpread = ref(false);
 const spreadMax = ref(0.005);
 
-// --- ranged filters -------------------------------------------------------
 interface RangeField {
   key: string;
   label: string;
   enabled: boolean;
   min: number;
   max: number;
+  step: number;
 }
-
 const ranges = reactive<RangeField[]>([
-  { key: 'volatility', label: 'Volatility (10d avg)', enabled: false, min: 0.1, max: 0.35 },
-  { key: 'pearson', label: 'Pearson corr. to BTC (5m)', enabled: false, min: 0.1, max: 0.35 },
-  { key: 'price', label: 'Price (5m)', enabled: false, min: 1, max: -1 },
-  { key: 'volume24', label: 'Volume (24h rolling)', enabled: false, min: 1, max: -1 },
-  { key: 'rsi_14', label: 'RSI 14 (1h)', enabled: false, min: 0, max: 100 },
-  { key: 'adx_14', label: 'ADX 14 (1h)', enabled: false, min: 0, max: 100 },
-  { key: 'ad_ratio', label: 'Adratio (30m)', enabled: false, min: 1, max: 1000 },
-  { key: 'ad_line', label: 'Adline (30m)', enabled: false, min: 0, max: 1000 },
+  {
+    key: 'volatility',
+    label: 'Volatility (10d avg)',
+    enabled: false,
+    min: 0.1,
+    max: 0.35,
+    step: 0.01,
+  },
+  {
+    key: 'pearson',
+    label: 'Pearson corr. to BTC (5m)',
+    enabled: false,
+    min: 0.1,
+    max: 0.35,
+    step: 0.01,
+  },
+  { key: 'rsi_14', label: 'RSI 14 (1h)', enabled: false, min: 0, max: 100, step: 1 },
+  { key: 'adx_14', label: 'ADX 14 (1h)', enabled: false, min: 0, max: 100, step: 1 },
+  { key: 'price', label: 'Price (5m)', enabled: false, min: 1, max: -1, step: 0.1 },
+  { key: 'volume24', label: 'Volume (24h rolling)', enabled: false, min: 1, max: -1, step: 100000 },
+  { key: 'ad_ratio', label: 'Adratio (30m)', enabled: false, min: 1, max: 1000, step: 0.1 },
+  { key: 'ad_line', label: 'Adline (30m)', enabled: false, min: 0, max: 1000, step: 1 },
 ]);
 
 // --- sorting --------------------------------------------------------------
@@ -125,21 +156,42 @@ const sortOptions = computed(() => [
   { label: '— none —', value: '' },
   ...[...props.metrics]
     .sort((a, b) => (a.group ?? '').localeCompare(b.group ?? '') || a.key.localeCompare(b.key))
-    .map((m) => ({
-      label: `${m.key}  (${m.timeframe}) — ${m.description}`,
-      value: m.key,
-    })),
+    .map((m) => ({ label: `${m.key} · ${m.timeframe} — ${m.description}`, value: m.key })),
 ]);
 
-const ORDERS = [
-  { label: 'Descending', value: 'desc' },
-  { label: 'Ascending', value: 'asc' },
-  { label: 'Shuffle', value: 'shuffle' },
-];
+// --- load ------------------------------------------------------------------
+/**
+ * Pull the Selection fields back out of an existing chain, so duplicating one shows
+ * its real values instead of silently resetting them to defaults on the next save.
+ */
+function readSelection(chain: PairlistSpec['base_chain']) {
+  if (!chain?.length) return;
+  const find = (m: string) =>
+    chain.find((h) => h.method === m) as Record<string, number> | undefined;
 
-const hasFleetChain = computed(() => (props.config?.spec.base_chain?.length ?? 0) > 0);
+  const vol = find('VolumePairList');
+  if (vol) {
+    volumeAssets.value = vol.number_assets ?? volumeAssets.value;
+    minVolume.value = vol.min_value ?? minVolume.value;
+  }
+  const age = find('AgeFilter');
+  useAge.value = !!age;
+  if (age) minDaysListed.value = age.min_days_listed ?? minDaysListed.value;
 
-// --- load an existing config into the form --------------------------------
+  const rsf = find('RangeStabilityFilter');
+  useRangeStability.value = !!rsf;
+  if (rsf) maxRateOfChange.value = rsf.max_rate_of_change ?? maxRateOfChange.value;
+
+  const vf = find('VolatilityFilter');
+  useVolatilityWindow.value = !!vf;
+  if (vf) {
+    minVolatility.value = vf.min_volatility ?? minVolatility.value;
+    maxVolatility.value = vf.max_volatility ?? maxVolatility.value;
+  }
+  const off = find('OffsetFilter');
+  if (off) finalCount.value = off.number_assets ?? finalCount.value;
+}
+
 watch(
   () => props.config,
   (cfg) => {
@@ -153,12 +205,12 @@ watch(
     market.value = cfg.spec.market;
     stake.value = cfg.spec.stake;
     applyBlacklist.value = cfg.spec.config_blacklist !== false;
+    readSelection(cfg.spec.base_chain);
 
     const filters = cfg.spec.filters ?? {};
     for (const key of Object.keys(f)) f[key] = filters[key] === true;
     emaCross.value = (filters.ema_cross as 'above' | 'below') ?? '';
     smiState.value = (filters.smi_state as 'bullish' | 'bearish') ?? '';
-
     useFng.value = filters.fng_min != null;
     if (typeof filters.fng_min === 'number') fngMin.value = filters.fng_min;
     useSpread.value = filters.spread_max != null;
@@ -167,10 +219,7 @@ watch(
     for (const r of ranges) {
       const v = filters[r.key];
       r.enabled = Array.isArray(v);
-      if (Array.isArray(v)) {
-        r.min = v[0];
-        r.max = v[1];
-      }
+      if (Array.isArray(v)) [r.min, r.max] = v;
     }
 
     sortKey.value = cfg.spec.sort?.key ?? '';
@@ -183,7 +232,7 @@ watch(
   { immediate: true },
 );
 
-// --- build the spec -------------------------------------------------------
+// --- build -----------------------------------------------------------------
 function buildSelectionChain() {
   const chain: Record<string, unknown>[] = [
     {
@@ -234,17 +283,13 @@ function currentSpec(): PairlistSpec {
     market: market.value,
     stake: stake.value,
     mode: 'whitelist',
-    // Never synthesise over a fleet chain — that file is the definition of what the
-    // chain selects and the rollback artefact.
-    base_chain: hasFleetChain.value ? props.config!.spec.base_chain : buildSelectionChain(),
-    // Fleet chains carry their own mid-chain RemotePairList blacklist handlers, so
-    // they must NOT also get it as config — that changes what VolumePairList's cap
-    // counts and halves the candidate pool. Editor-built chains have no such
-    // handler, so this is how they get the exclusion set at all.
-    config_blacklist: hasFleetChain.value
+    base_chain: fileBacked.value ? props.config!.spec.base_chain : buildSelectionChain(),
+    cron_minutes: cron.length ? cron : undefined,
+    // Fleet chains carry their own mid-chain blacklist handlers; adding it as config
+    // too changes what VolumePairList's cap counts and halves the candidate pool.
+    config_blacklist: fileBacked.value
       ? (props.config?.spec.config_blacklist ?? false)
       : applyBlacklist.value,
-    cron_minutes: cron.length ? cron : undefined,
     filters,
     sort: sortKey.value ? { key: sortKey.value, order: sortOrder.value } : null,
     limit: limit.value ?? null,
@@ -267,158 +312,186 @@ function onSave() {
 </script>
 
 <template>
-  <div class="space-y-5">
+  <!-- text-left overrides the global #app { text-align: center } in App.vue -->
+  <div class="max-w-5xl space-y-6 text-left">
     <!-- Basics -->
-    <div>
-      <h3 class="mb-2 text-sm font-semibold">Basics</h3>
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Config id (used in the URL)</label>
+    <section>
+      <h3 class="mb-3 border-b border-surface-700 pb-1 text-sm font-semibold">Basics</h3>
+      <div class="grid gap-x-8 gap-y-3 lg:grid-cols-2">
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Config id</span>
           <UInput v-model="id" size="sm" placeholder="my_pairlist" />
-          <p v-if="id && !slugValid" class="mt-1 text-xs text-red-400">
-            letters, digits, dash and underscore only
-          </p>
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Name</label>
+        </label>
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Name</span>
           <UInput v-model="name" size="sm" placeholder="Human-readable name" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Exchange</label>
+        </label>
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Exchange</span>
           <USelect v-model="exchange" :items="EXCHANGES" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Market</label>
+        </label>
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Market</span>
           <USelect v-model="market" :items="['spot', 'futures']" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Stake currency</label>
+        </label>
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Stake currency</span>
           <USelect v-model="stake" :items="STAKES" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Rebuild every (min)</label>
+        </label>
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Rebuild every (min)</span>
           <UInputNumber v-model="cadenceMin" :min="1" :max="1440" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">
-            Build at minutes (blank = interval)
-          </label>
+        </label>
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Build at minutes</span>
           <UInput v-model="cronMinutes" size="sm" placeholder="10, 25, 40, 55" />
-        </div>
-        <div class="flex items-end">
+        </label>
+        <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Status</span>
           <UCheckbox v-model="enabled" label="Enabled" />
         </div>
       </div>
-      <p class="mt-1 text-xs text-surface-500">
-        Fixed minutes keep builds aligned to the candle close — the Bybit chains use
-        <code>10, 25, 40, 55</code> so a fresh list lands before the 15-minute candle at :15.
+      <p v-if="id && !slugValid" class="mt-2 text-xs text-red-400">
+        Config id may contain letters, digits, dash and underscore only.
       </p>
-    </div>
+      <p class="mt-2 text-xs text-surface-500">
+        Fixed minutes keep builds aligned to the candle close — the Bybit chains use
+        <code>10, 25, 40, 55</code> so a fresh list lands before the 15-minute candle at :15. Leave
+        blank to use the plain interval instead.
+      </p>
+    </section>
 
     <!-- Selection -->
-    <div>
-      <h3 class="mb-2 text-sm font-semibold">Selection</h3>
-      <UAlert
-        v-if="hasFleetChain"
-        color="info"
-        variant="subtle"
-        title="This config runs a fleet selection chain verbatim"
-        description="Its chain comes from config_static/generator/chains/ and is not editable here — that file is the definition of what the chain selects and the rollback artefact. The filters and sorts below still layer on top."
-        class="mb-2"
-      />
-      <div v-else class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Volume pool (candidates)</label>
+    <section>
+      <h3 class="mb-3 border-b border-surface-700 pb-1 text-sm font-semibold">Selection</h3>
+
+      <div
+        v-if="fileBacked"
+        class="rounded border border-surface-600 bg-surface-800/40 p-3 text-xs text-surface-300"
+      >
+        <p class="mb-2">
+          This config runs a <strong>fleet selection chain</strong> from
+          <code>config_static/generator/chains/</code>, so it is read-only here — that file is the
+          definition of what the chain selects, the input to the parity test, and the rollback
+          artefact.
+        </p>
+        <p class="mb-1">To change it (age 30 → 60, say) you have two options:</p>
+        <ul class="mb-3 ml-4 list-disc space-y-1">
+          <li>
+            <strong>Edit the chain file</strong> and restart the service — but note this also
+            changes what the existing production generator builds, so it affects the live fleet.
+          </li>
+          <li>
+            <strong>Duplicate</strong> into a fully editable config and tune that instead, leaving
+            the fleet untouched. Best for experimenting.
+          </li>
+        </ul>
+        <UButton
+          label="Duplicate as editable config"
+          size="xs"
+          color="primary"
+          variant="outline"
+          icon="i-mdi-content-duplicate"
+          @click="emit('duplicate')"
+        />
+      </div>
+
+      <div v-else class="grid gap-x-8 gap-y-3 lg:grid-cols-2">
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Volume pool</span>
           <UInputNumber v-model="volumeAssets" :min="10" :max="1000" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Min 24h quote volume</label>
+        </label>
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Min 24h volume</span>
           <UInputNumber v-model="minVolume" :min="0" :step="100000" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Final pair count</label>
+        </label>
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Final pair count</span>
           <UInputNumber v-model="finalCount" :min="1" :max="500" size="sm" />
-        </div>
-        <div class="flex items-end">
+        </label>
+        <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Blacklists</span>
           <UCheckbox v-model="applyBlacklist" label="Apply exclusion set" />
         </div>
-        <div class="flex items-end">
+        <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
           <UCheckbox v-model="useAge" label="Age filter" />
+          <UInputNumber v-if="useAge" v-model="minDaysListed" :min="1" :max="365" size="sm" />
         </div>
-        <div v-if="useAge">
-          <label class="mb-1 block text-xs text-surface-400">Min days listed</label>
-          <UInputNumber v-model="minDaysListed" :min="1" :max="365" size="sm" />
-        </div>
-        <div class="flex items-end">
-          <UCheckbox v-model="useVolatilityWindow" label="Volatility window (7d)" />
-        </div>
-        <div v-if="useVolatilityWindow">
-          <label class="mb-1 block text-xs text-surface-400">Min volatility</label>
-          <UInputNumber v-model="minVolatility" :step="0.01" size="sm" />
-        </div>
-        <div v-if="useVolatilityWindow">
-          <label class="mb-1 block text-xs text-surface-400">Max volatility</label>
-          <UInputNumber v-model="maxVolatility" :step="0.01" size="sm" />
-        </div>
-        <div class="flex items-end">
+        <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
           <UCheckbox v-model="useRangeStability" label="Parabolic guard" />
+          <UInputNumber
+            v-if="useRangeStability"
+            v-model="maxRateOfChange"
+            :step="0.5"
+            :min="0.5"
+            size="sm"
+          />
         </div>
-        <div v-if="useRangeStability">
-          <label class="mb-1 block text-xs text-surface-400">Max 10d range-of-change</label>
-          <UInputNumber v-model="maxRateOfChange" :step="0.5" :min="0.5" size="sm" />
+        <div class="grid grid-cols-[10rem_1fr] items-center gap-3 lg:col-span-2">
+          <UCheckbox v-model="useVolatilityWindow" label="Volatility window" />
+          <div v-if="useVolatilityWindow" class="flex items-center gap-2">
+            <UInputNumber v-model="minVolatility" :step="0.01" size="sm" class="w-32" />
+            <span class="text-xs text-surface-500">to</span>
+            <UInputNumber v-model="maxVolatility" :step="0.01" size="sm" class="w-32" />
+          </div>
         </div>
       </div>
-      <p v-if="!hasFleetChain" class="mt-1 text-xs text-surface-500">
+
+      <p v-if="!fileBacked" class="mt-2 text-xs text-surface-500">
         <strong>Apply exclusion set</strong> removes blacklisted symbols — CoinGecko categories,
         pairs delisting on Binance or Bybit, and symbols this account cannot trade. Leave it on
-        unless you specifically want the raw universe. The parabolic guard drops pairs whose 10-day
-        high/low range exceeds the threshold. Volatility measures dispersion, not drift, so it
-        cannot see a steady melt-up — this can.
+        unless you specifically want the raw universe. The <strong>parabolic guard</strong> drops
+        pairs whose 10-day high/low range exceeds the threshold: volatility measures dispersion, not
+        drift, so it cannot see a steady melt-up but this can.
       </p>
-    </div>
+    </section>
 
-    <!-- Filter / Special -->
-    <div class="grid gap-5 lg:grid-cols-2">
-      <div>
-        <h3 class="mb-2 text-sm font-semibold">Filter</h3>
-        <div class="space-y-1.5">
-          <UCheckbox v-model="f.meme" label="Meme token" />
-          <UCheckbox v-model="f.fantoken" label="Fan token" />
-          <UCheckbox v-model="f.leveraged" label="Leveraged tokens" />
-          <UCheckbox v-model="f.cryptopanic" label="CryptoPanic filter" />
-          <UCheckbox v-model="f.nfi" label="NFI blacklist" />
-        </div>
-      </div>
-      <div>
-        <h3 class="mb-2 text-sm font-semibold">Special</h3>
-        <div class="space-y-1.5">
-          <UCheckbox v-model="f.bothx" label="Exists on Binance and Kucoin" />
-          <UCheckbox v-model="f.threex" label="Exists on Binance, Kucoin and OKX" />
-          <UCheckbox v-model="f.no_max_supply" label="No max supply (CoinGecko)" />
-          <div class="flex items-center gap-2">
-            <UCheckbox v-model="useFng" label="Crypto Fear & Greed at least" />
-            <UInputNumber
-              v-if="useFng"
-              v-model="fngMin"
-              :min="0"
-              :max="100"
-              size="sm"
-              class="w-24"
+    <!-- Filters -->
+    <section>
+      <h3 class="mb-3 border-b border-surface-700 pb-1 text-sm font-semibold">Filters</h3>
+      <div class="grid gap-x-8 gap-y-4 lg:grid-cols-2">
+        <div>
+          <p class="mb-2 text-xs font-medium text-surface-300">Token classes</p>
+          <div class="space-y-1.5">
+            <UCheckbox
+              v-for="o in TOKEN_CLASSES"
+              :key="o.key"
+              v-model="f[o.key]"
+              :label="o.label"
             />
           </div>
-          <p v-if="useFng" class="text-xs text-surface-500">
-            Global gate: below this index the config serves no pairs at all.
-          </p>
+        </div>
+        <div>
+          <p class="mb-2 text-xs font-medium text-surface-300">Special</p>
+          <div class="space-y-1.5">
+            <UCheckbox v-for="o in SPECIAL" :key="o.key" v-model="f[o.key]" :label="o.label" />
+            <div class="flex items-center gap-3">
+              <UCheckbox v-model="useFng" label="Fear &amp; Greed at least" />
+              <UInputNumber
+                v-if="useFng"
+                v-model="fngMin"
+                :min="0"
+                :max="100"
+                size="sm"
+                class="w-24"
+              />
+            </div>
+            <p v-if="useFng" class="text-xs text-surface-500">
+              Global gate — below this index the config serves no pairs at all.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Indicator-based -->
-    <div>
-      <h3 class="mb-2 text-sm font-semibold">Exchange (indicator based)</h3>
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">EMA50 vs EMA200 (1h)</label>
+    <!-- Indicators -->
+    <section>
+      <h3 class="mb-3 border-b border-surface-700 pb-1 text-sm font-semibold">
+        Exchange (indicator based)
+      </h3>
+      <div class="grid gap-x-8 gap-y-3 lg:grid-cols-2">
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">EMA50 vs EMA200 (1h)</span>
           <USelect
             v-model="emaCross"
             :items="[
@@ -428,9 +501,9 @@ function onSave() {
             ]"
             size="sm"
           />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">SMI (4h)</label>
+        </label>
+        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">SMI (4h)</span>
           <USelect
             v-model="smiState"
             :items="[
@@ -440,77 +513,74 @@ function onSave() {
             ]"
             size="sm"
           />
+        </label>
+        <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <UCheckbox v-model="useSpread" label="Max spread (5m)" />
+          <UInputNumber v-if="useSpread" v-model="spreadMax" :step="0.001" size="sm" />
         </div>
-        <div class="flex items-center gap-2">
-          <UCheckbox v-model="useSpread" label="Max rolling spread (5m)" />
-          <UInputNumber v-if="useSpread" v-model="spreadMax" :step="0.001" size="sm" class="w-28" />
-        </div>
-        <UCheckbox v-model="f.bb_squeeze" label="bb_width at 180-day low (1d)" />
-        <UCheckbox v-model="f.macdhist_positive" label="macdhist > 0 (1d)" />
-        <UCheckbox v-model="f.linreg" label="Positive linear regression (1d)" />
-        <UCheckbox v-model="f.recent_pump" label="Recent pump (5m)" />
-        <UCheckbox v-model="f.zero_volume" label="Has a zero-volume candle (5m)" />
-        <UCheckbox v-model="f.nhnl" label="NHNL positive (30m)" />
       </div>
-    </div>
+      <div class="mt-4 grid gap-x-8 gap-y-1.5 lg:grid-cols-2">
+        <UCheckbox
+          v-for="o in INDICATOR_TOGGLES"
+          :key="o.key"
+          v-model="f[o.key]"
+          :label="o.label"
+        />
+      </div>
+    </section>
 
     <!-- Ranged -->
-    <div>
-      <h3 class="mb-2 text-sm font-semibold">Ranged filters</h3>
-      <p class="mb-2 text-xs text-surface-500">A max of <code>-1</code> means unbounded.</p>
-      <div class="grid gap-3 sm:grid-cols-2">
+    <section>
+      <h3 class="mb-3 border-b border-surface-700 pb-1 text-sm font-semibold">Ranged filters</h3>
+      <div class="space-y-1">
         <div
           v-for="r in ranges"
           :key="r.key"
-          class="flex items-center gap-2 rounded border border-surface-700 px-3 py-2"
+          class="grid grid-cols-[16rem_1fr] items-center gap-3 rounded px-2 py-1 hover:bg-surface-800/40"
         >
-          <UCheckbox v-model="r.enabled" :label="r.label" class="flex-1" />
-          <template v-if="r.enabled">
-            <UInputNumber v-model="r.min" :step="0.01" size="sm" class="w-24" />
+          <UCheckbox v-model="r.enabled" :label="r.label" />
+          <div v-if="r.enabled" class="flex items-center gap-2">
+            <UInputNumber v-model="r.min" :step="r.step" size="sm" class="w-36" />
             <span class="text-xs text-surface-500">to</span>
-            <UInputNumber v-model="r.max" :step="0.01" size="sm" class="w-24" />
-          </template>
+            <UInputNumber v-model="r.max" :step="r.step" size="sm" class="w-36" />
+          </div>
         </div>
       </div>
-    </div>
+      <p class="mt-2 text-xs text-surface-500">A max of <code>-1</code> means unbounded.</p>
+    </section>
 
     <!-- Sorting -->
-    <div>
-      <h3 class="mb-2 text-sm font-semibold">Sorting</h3>
-      <p class="mb-2 text-xs text-surface-500">
+    <section>
+      <h3 class="mb-3 border-b border-surface-700 pb-1 text-sm font-semibold">Sorting</h3>
+      <div class="space-y-2">
+        <div class="grid grid-cols-[10rem_minmax(0,1fr)_9rem_6rem] items-center gap-3">
+          <span class="text-xs text-surface-400">Sort by</span>
+          <USelectMenu v-model="sortKey" :items="sortOptions" value-key="value" size="sm" />
+          <USelect v-model="sortOrder" :items="ORDERS" size="sm" />
+          <UInputNumber v-model="limit" :min="1" :max="1000" size="sm" />
+        </div>
+        <div class="grid grid-cols-[10rem_minmax(0,1fr)_9rem_6rem] items-center gap-3">
+          <span class="text-xs text-surface-400">Then sort by</span>
+          <USelectMenu v-model="sort2Key" :items="sortOptions" value-key="value" size="sm" />
+          <USelect v-model="sort2Order" :items="ORDERS" size="sm" />
+          <UInputNumber v-model="limit2" :min="1" :max="1000" size="sm" />
+        </div>
+        <div class="grid grid-cols-[10rem_minmax(0,1fr)_9rem_6rem] gap-3">
+          <span></span><span></span>
+          <span class="text-xs text-surface-500">order</span>
+          <span class="text-xs text-surface-500">limit</span>
+        </div>
+      </div>
+      <p class="mt-2 text-xs text-surface-500">
         Rank by the first metric and cut to its limit, then re-rank <em>that subset</em> by the
         second. "Top 50 by volume, of those the 20 most oversold" needs both stages.
       </p>
-      <div class="grid gap-3 sm:grid-cols-3">
-        <div class="sm:col-span-1">
-          <label class="mb-1 block text-xs text-surface-400">Sort by</label>
-          <USelectMenu v-model="sortKey" :items="sortOptions" value-key="value" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Order</label>
-          <USelect v-model="sortOrder" :items="ORDERS" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Limit</label>
-          <UInputNumber v-model="limit" :min="1" :max="1000" size="sm" />
-        </div>
-        <div class="sm:col-span-1">
-          <label class="mb-1 block text-xs text-surface-400">Then sort by</label>
-          <USelectMenu v-model="sort2Key" :items="sortOptions" value-key="value" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Order</label>
-          <USelect v-model="sort2Order" :items="ORDERS" size="sm" />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs text-surface-400">Limit</label>
-          <UInputNumber v-model="limit2" :min="1" :max="1000" size="sm" />
-        </div>
-      </div>
-    </div>
+    </section>
 
     <!-- Actions -->
-    <div class="flex flex-wrap items-center gap-2 border-t border-surface-700 pt-3">
+    <div
+      class="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-surface-700 bg-surface-900/95 py-3"
+    >
       <UButton
         label="Preview"
         icon="i-mdi-eye"
