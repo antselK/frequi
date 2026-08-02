@@ -268,6 +268,15 @@ function buildSelectionChain() {
       });
     }
   }
+  // Free — reads already-loaded market data, no API call — and it is the only thing
+  // that catches a pair the exchange itself has scheduled for delisting. Bybit's
+  // measured notice is 1-4 days, so missing it means opening into a doomed pair, which
+  // for a strategy with stoploss disabled has no exit but the ROI ladder.
+  // Only binance/bitget/bybit publish a delisting date; elsewhere the handler refuses
+  // to start, so it must not be emitted.
+  if (['binance', 'bybit', 'bitget'].includes(exchange.value)) {
+    chain.push({ method: 'DelistFilter', max_days_from_now: 0 });
+  }
   if (useAge.value) chain.push({ method: 'AgeFilter', min_days_listed: minDaysListed.value });
   if (useRangeStability.value) {
     chain.push({
