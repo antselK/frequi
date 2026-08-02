@@ -54,6 +54,11 @@ const ORDERS = [
 const volumeAssets = ref(200);
 const minVolume = ref(1_000_000);
 const applyBlacklist = ref(true);
+// Bybit tags tokenised equities `stock` (159 symbols) and metals `commodity` (4).
+// Without this the volatility ranking pulls in INTC, MU, MRVL and friends — they are
+// volatile and liquid enough to rank well, and every fleet chain excludes them for
+// that reason. Only Bybit exposes info.symbolType, so it is a no-op elsewhere.
+const excludeEquities = ref(true);
 const useAge = ref(true);
 const minDaysListed = ref(30);
 const useVolatilityWindow = ref(true);
@@ -174,6 +179,8 @@ function readSelection(chain: PairlistSpec['base_chain']) {
   const find = (m: string) =>
     chain.find((h) => h.method === m) as Record<string, number> | undefined;
 
+  excludeEquities.value = chain.some((h) => h.method === 'PairInformationFilter');
+
   const vol = find('VolumePairList');
   if (vol) {
     volumeAssets.value = vol.number_assets ?? volumeAssets.value;
@@ -251,6 +258,16 @@ function buildSelectionChain() {
       min_value: minVolume.value,
     },
   ];
+  if (excludeEquities.value && exchange.value === 'bybit') {
+    for (const kind of ['stock', 'commodity']) {
+      chain.push({
+        method: 'PairInformationFilter',
+        info_key: 'info.symbolType',
+        info_compare_value: kind,
+        selection_mode: 'blacklist',
+      });
+    }
+  }
   if (useAge.value) chain.push({ method: 'AgeFilter', min_days_listed: minDaysListed.value });
   if (useRangeStability.value) {
     chain.push({
@@ -422,6 +439,10 @@ function onSave() {
           <span class="text-xs text-surface-400">Blacklists</span>
           <UCheckbox v-model="applyBlacklist" label="Apply exclusion set" />
         </div>
+        <div v-if="exchange === 'bybit'" class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Bybit only</span>
+          <UCheckbox v-model="excludeEquities" label="Exclude tokenised equities" />
+        </div>
         <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
           <UCheckbox v-model="useAge" label="Age filter" />
           <UInputNumber v-if="useAge" v-model="minDaysListed" :min="1" :max="365" size="sm" />
@@ -452,9 +473,12 @@ function onSave() {
       <p v-if="!fileBacked" class="mt-2 text-xs text-surface-500">
         <strong>Apply exclusion set</strong> removes blacklisted symbols — CoinGecko categories,
         pairs delisting on Binance or Bybit, and symbols this account cannot trade. Leave it on
-        unless you specifically want the raw universe. The <strong>parabolic guard</strong> drops
-        pairs whose 10-day high/low range exceeds the threshold: volatility measures dispersion, not
-        drift, so it cannot see a steady melt-up but this can.
+        unless you specifically want the raw universe.
+        <strong>Exclude tokenised equities</strong> drops Bybit's 159 <code>stock</code> and 4
+        <code>commodity</code> symbols — INTC, MU, MRVL and the like rank well on volatility, and
+        every fleet chain removes them. The <strong>parabolic guard</strong> drops pairs whose
+        10-day high/low range exceeds the threshold: volatility measures dispersion, not drift, so
+        it cannot see a steady melt-up but this can.
       </p>
     </section>
 
