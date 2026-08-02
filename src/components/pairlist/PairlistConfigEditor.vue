@@ -57,9 +57,14 @@ const applyBlacklist = ref(true);
 const useAge = ref(true);
 const minDaysListed = ref(30);
 const useVolatilityWindow = ref(true);
+const volatilityLookback = ref(7);
 const minVolatility = ref(0.07);
 const maxVolatility = ref(0.35);
 const useRangeStability = ref(true);
+// Deliberately longer than the volatility window. A 10-day range is what separates a
+// steady melt-up from ordinary chop cleanly — at 7 days the threshold has to be
+// squeezed against the pack and starts taking profitable pairs with it.
+const rangeLookback = ref(10);
 const maxRateOfChange = ref(2.0);
 const finalCount = ref(50);
 
@@ -180,13 +185,17 @@ function readSelection(chain: PairlistSpec['base_chain']) {
 
   const rsf = find('RangeStabilityFilter');
   useRangeStability.value = !!rsf;
-  if (rsf) maxRateOfChange.value = rsf.max_rate_of_change ?? maxRateOfChange.value;
+  if (rsf) {
+    maxRateOfChange.value = rsf.max_rate_of_change ?? maxRateOfChange.value;
+    rangeLookback.value = rsf.lookback_days ?? rangeLookback.value;
+  }
 
   const vf = find('VolatilityFilter');
   useVolatilityWindow.value = !!vf;
   if (vf) {
     minVolatility.value = vf.min_volatility ?? minVolatility.value;
     maxVolatility.value = vf.max_volatility ?? maxVolatility.value;
+    volatilityLookback.value = vf.lookback_days ?? volatilityLookback.value;
   }
   const off = find('OffsetFilter');
   if (off) finalCount.value = off.number_assets ?? finalCount.value;
@@ -246,14 +255,14 @@ function buildSelectionChain() {
   if (useRangeStability.value) {
     chain.push({
       method: 'RangeStabilityFilter',
-      lookback_days: 10,
+      lookback_days: rangeLookback.value,
       max_rate_of_change: maxRateOfChange.value,
     });
   }
   if (useVolatilityWindow.value) {
     chain.push({
       method: 'VolatilityFilter',
-      lookback_days: 7,
+      lookback_days: volatilityLookback.value,
       min_volatility: minVolatility.value,
       max_volatility: maxVolatility.value,
       sort_direction: 'desc',
@@ -417,22 +426,25 @@ function onSave() {
           <UCheckbox v-model="useAge" label="Age filter" />
           <UInputNumber v-if="useAge" v-model="minDaysListed" :min="1" :max="365" size="sm" />
         </div>
-        <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
+        <div class="grid grid-cols-[10rem_1fr] items-center gap-3 lg:col-span-2">
           <UCheckbox v-model="useRangeStability" label="Parabolic guard" />
-          <UInputNumber
-            v-if="useRangeStability"
-            v-model="maxRateOfChange"
-            :step="0.5"
-            :min="0.5"
-            size="sm"
-          />
+          <div v-if="useRangeStability" class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-surface-500">max range</span>
+            <UInputNumber v-model="maxRateOfChange" :step="0.5" :min="0.5" size="sm" class="w-28" />
+            <span class="text-xs text-surface-500">over</span>
+            <UInputNumber v-model="rangeLookback" :min="2" :max="365" size="sm" class="w-24" />
+            <span class="text-xs text-surface-500">days</span>
+          </div>
         </div>
         <div class="grid grid-cols-[10rem_1fr] items-center gap-3 lg:col-span-2">
           <UCheckbox v-model="useVolatilityWindow" label="Volatility window" />
-          <div v-if="useVolatilityWindow" class="flex items-center gap-2">
-            <UInputNumber v-model="minVolatility" :step="0.01" size="sm" class="w-32" />
+          <div v-if="useVolatilityWindow" class="flex flex-wrap items-center gap-2">
+            <UInputNumber v-model="minVolatility" :step="0.01" size="sm" class="w-28" />
             <span class="text-xs text-surface-500">to</span>
-            <UInputNumber v-model="maxVolatility" :step="0.01" size="sm" class="w-32" />
+            <UInputNumber v-model="maxVolatility" :step="0.01" size="sm" class="w-28" />
+            <span class="text-xs text-surface-500">over</span>
+            <UInputNumber v-model="volatilityLookback" :min="1" :max="365" size="sm" class="w-24" />
+            <span class="text-xs text-surface-500">days</span>
           </div>
         </div>
       </div>
