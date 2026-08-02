@@ -870,6 +870,8 @@ export interface PairlistMetric {
   key: string;
   timeframe: string;
   description: string;
+  /** 'indicator' (candle-derived) | 'breadth' | 'external' */
+  group?: string;
 }
 
 export interface PairlistBlacklistState {

@@ -12,6 +12,7 @@
  * uses the same `vpsApi` composable and `X-Admin-Token` as the DWH and Reports
  * pages — no CORS, no second auth scheme.
  */
+import PairlistConfigEditor from '@/components/pairlist/PairlistConfigEditor.vue';
 import { vpsApi } from '@/composables/vpsApi';
 import type {
   PairlistBlacklistState,
@@ -20,6 +21,7 @@ import type {
   PairlistHealth,
   PairlistMetric,
   PairlistPreview,
+  PairlistSpec,
 } from '@/types/vps';
 
 definePage({
@@ -43,9 +45,15 @@ const preview = ref<PairlistPreview | null>(null);
 const previewing = ref(false);
 const building = ref(false);
 const showBlacklist = ref(false);
-const activeTab = ref<'pairs' | 'filters' | 'builds'>('pairs');
+const activeTab = ref<'pairs' | 'filters' | 'builds' | 'edit'>('pairs');
+const saving = ref(false);
+// A blank draft for 'New config'. Kept separate from the list so creating one
+// never mutates an existing config.
+const draft = ref<PairlistConfig | null>(null);
 
-const selected = computed(() => configs.value.find((c) => c.id === selectedId.value) ?? null);
+const selected = computed(
+  () => draft.value ?? configs.value.find((c) => c.id === selectedId.value) ?? null,
+);
 
 const healthById = computed(() => {
   const map: Record<string, PairlistHealth['configs'][number]> = {};
@@ -187,7 +195,82 @@ async function copyUrl(id: string) {
   toast.add({ title: 'Copied', description: pairlistUrl(id), color: 'success' });
 }
 
+function newConfig() {
+  draft.value = {
+    id: '',
+    name: '',
+    enabled: true,
+    cadence_min: 15,
+    created_at: '',
+    updated_at: '',
+    spec: {
+      exchange: 'bybit',
+      market: 'futures',
+      stake: 'USDT',
+      mode: 'whitelist',
+      filters: {},
+      sort: null,
+      sort2: null,
+    },
+  };
+  activeTab.value = 'edit';
+  preview.value = null;
+}
+
+async function saveConfig(payload: {
+  id: string;
+  name: string;
+  spec: PairlistSpec;
+  cadenceMin: number;
+  enabled: boolean;
+}) {
+  error.value = '';
+  saving.value = true;
+  try {
+    await vpsApi.pairlistSaveConfig(
+      payload.id,
+      payload.name,
+      payload.spec,
+      payload.cadenceMin,
+      payload.enabled,
+    );
+    toast.add({
+      title: 'Saved',
+      description: `${payload.name} — builds on its next slot; use Build now to run immediately.`,
+      color: 'success',
+    });
+    draft.value = null;
+    await loadAll();
+    selectedId.value = payload.id;
+    activeTab.value = 'pairs';
+  } catch (err) {
+    error.value = describeError(err, 'Saving config');
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function previewSpec(spec: PairlistSpec) {
+  error.value = '';
+  previewing.value = true;
+  preview.value = null;
+  try {
+    preview.value = await vpsApi.pairlistPreview(spec);
+    activeTab.value = 'pairs';
+  } catch (err) {
+    error.value = describeError(err, 'Preview');
+  } finally {
+    previewing.value = false;
+  }
+}
+
+function cancelEdit() {
+  draft.value = null;
+  activeTab.value = 'pairs';
+}
+
 watch(selectedId, (id) => {
+  draft.value = null;
   preview.value = null;
   activeTab.value = 'pairs';
   if (id) loadBuilds(id);
@@ -214,6 +297,14 @@ onMounted(loadAll);
             health.status === 'ok' ? 'success' : health.status === 'warning' ? 'warning' : 'error'
           "
           variant="subtle"
+        />
+        <UButton
+          label="New config"
+          size="sm"
+          color="primary"
+          variant="outline"
+          icon="i-mdi-plus"
+          @click="newConfig"
         />
         <UButton
           label="Blacklist"
@@ -303,7 +394,9 @@ onMounted(loadAll);
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div class="flex items-center gap-3">
-            <h2 class="font-semibold">{{ selected.name }}</h2>
+            <h2 class="font-semibold">
+              {{ selected.name || (draft ? 'New config' : selected.id) }}
+            </h2>
             <UBadge :label="selected.spec.exchange" variant="subtle" color="neutral" />
             <UBadge :label="selected.spec.stake" variant="subtle" color="neutral" />
             <UBadge :label="selected.spec.market" variant="subtle" color="neutral" />
@@ -333,10 +426,16 @@ onMounted(loadAll);
 
       <div class="mb-3 flex gap-2">
         <UButton
-          v-for="tab in ['pairs', 'filters', 'builds'] as const"
+          v-for="tab in ['pairs', 'filters', 'builds', 'edit'] as const"
           :key="tab"
           :label="
-            tab === 'pairs' ? 'Pairs' : tab === 'filters' ? 'Chain & filters' : 'Build history'
+            tab === 'pairs'
+              ? 'Pairs'
+              : tab === 'filters'
+                ? 'Chain & filters'
+                : tab === 'builds'
+                  ? 'Build history'
+                  : 'Configure'
           "
           size="xs"
           :color="activeTab === tab ? 'primary' : 'neutral'"
@@ -487,8 +586,20 @@ onMounted(loadAll);
         </div>
       </div>
 
+      <!-- Configure -->
+      <PairlistConfigEditor
+        v-else-if="activeTab === 'edit'"
+        :config="selected"
+        :metrics="metrics"
+        :saving="saving"
+        :previewing="previewing"
+        @save="saveConfig"
+        @preview="previewSpec"
+        @cancel="cancelEdit"
+      />
+
       <!-- Build history -->
-      <div v-else class="overflow-x-auto">
+      <div v-else-if="activeTab === 'builds'" class="overflow-x-auto">
         <table class="w-full text-sm border-collapse">
           <thead>
             <tr class="border-b border-surface-600 text-left text-surface-300">
