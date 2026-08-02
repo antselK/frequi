@@ -60,6 +60,12 @@ const maxVolatility = ref(0.35);
 const useRangeStability = ref(true);
 const maxRateOfChange = ref(2.0);
 const finalCount = ref(50);
+// Defaults ON. A chain built here has no mid-chain RemotePairList handler, so
+// without this the config bypasses the entire exclusion set — CoinGecko, the
+// cross-exchange delist list, AND the account-restricted symbols. That is not a
+// cosmetic gap: it would let a new config enter a pair that is delisting or that
+// the live account cannot trade at all.
+const applyBlacklist = ref(true);
 
 // --- Filter / Special toggles --------------------------------------------
 const f = reactive<Record<string, boolean>>({
@@ -146,6 +152,7 @@ watch(
     exchange.value = cfg.spec.exchange;
     market.value = cfg.spec.market;
     stake.value = cfg.spec.stake;
+    applyBlacklist.value = cfg.spec.config_blacklist !== false;
 
     const filters = cfg.spec.filters ?? {};
     for (const key of Object.keys(f)) f[key] = filters[key] === true;
@@ -230,6 +237,13 @@ function currentSpec(): PairlistSpec {
     // Never synthesise over a fleet chain — that file is the definition of what the
     // chain selects and the rollback artefact.
     base_chain: hasFleetChain.value ? props.config!.spec.base_chain : buildSelectionChain(),
+    // Fleet chains carry their own mid-chain RemotePairList blacklist handlers, so
+    // they must NOT also get it as config — that changes what VolumePairList's cap
+    // counts and halves the candidate pool. Editor-built chains have no such
+    // handler, so this is how they get the exclusion set at all.
+    config_blacklist: hasFleetChain.value
+      ? (props.config?.spec.config_blacklist ?? false)
+      : applyBlacklist.value,
     cron_minutes: cron.length ? cron : undefined,
     filters,
     sort: sortKey.value ? { key: sortKey.value, order: sortOrder.value } : null,
@@ -326,6 +340,9 @@ function onSave() {
           <UInputNumber v-model="finalCount" :min="1" :max="500" size="sm" />
         </div>
         <div class="flex items-end">
+          <UCheckbox v-model="applyBlacklist" label="Apply exclusion set" />
+        </div>
+        <div class="flex items-end">
           <UCheckbox v-model="useAge" label="Age filter" />
         </div>
         <div v-if="useAge">
@@ -352,8 +369,11 @@ function onSave() {
         </div>
       </div>
       <p v-if="!hasFleetChain" class="mt-1 text-xs text-surface-500">
-        The parabolic guard drops pairs whose 10-day high/low range exceeds the threshold.
-        Volatility measures dispersion, not drift, so it cannot see a steady melt-up — this can.
+        <strong>Apply exclusion set</strong> removes blacklisted symbols — CoinGecko categories,
+        pairs delisting on Binance or Bybit, and symbols this account cannot trade. Leave it on
+        unless you specifically want the raw universe. The parabolic guard drops pairs whose 10-day
+        high/low range exceeds the threshold. Volatility measures dispersion, not drift, so it
+        cannot see a steady melt-up — this can.
       </p>
     </div>
 
