@@ -82,6 +82,32 @@ function formatTs(ts: string | null | undefined): string {
   return new Date(ts).toISOString().slice(0, 19).replace('T', ' ') + 'Z';
 }
 
+/**
+ * A useful error string.
+ *
+ * `String(err)` yields "AxiosError: Request failed with status code 404" — no URL,
+ * no method, no server detail. Chasing one of those through the whole stack is what
+ * prompted this: include what actually failed so the next one is self-diagnosing.
+ */
+function describeError(err: unknown, action: string): string {
+  const e = err as {
+    response?: { status?: number; data?: { detail?: string } };
+    config?: { method?: string; url?: string };
+    message?: string;
+  };
+  const status = e?.response?.status;
+  const detail = e?.response?.data?.detail;
+  const where = e?.config ? `${(e.config.method ?? '').toUpperCase()} ${e.config.url ?? ''}` : '';
+  return [
+    `${action} failed`,
+    status ? `HTTP ${status}` : null,
+    where || null,
+    detail ?? e?.message ?? String(err),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 async function loadAll() {
   loading.value = true;
   error.value = '';
@@ -99,7 +125,7 @@ async function loadAll() {
     }
     if (selectedId.value) await loadBuilds(selectedId.value);
   } catch (err) {
-    error.value = String(err);
+    error.value = describeError(err, 'Loading pairlist configs');
   } finally {
     loading.value = false;
   }
@@ -110,27 +136,29 @@ async function loadBuilds(id: string) {
     const { builds: rows } = await vpsApi.pairlistBuilds(id, 20);
     builds.value = rows;
   } catch (err) {
-    error.value = String(err);
+    error.value = describeError(err, 'Loading build history');
   }
 }
 
 async function loadBlacklist() {
+  error.value = '';
   try {
     blacklist.value = await vpsApi.pairlistBlacklist();
     showBlacklist.value = true;
   } catch (err) {
-    error.value = String(err);
+    error.value = describeError(err, 'Loading blacklist');
   }
 }
 
 async function runPreview() {
   if (!selected.value) return;
+  error.value = '';
   previewing.value = true;
   preview.value = null;
   try {
     preview.value = await vpsApi.pairlistPreview(selected.value.spec);
   } catch (err) {
-    error.value = String(err);
+    error.value = describeError(err, 'Preview');
   } finally {
     previewing.value = false;
   }
@@ -138,6 +166,7 @@ async function runPreview() {
 
 async function triggerBuild() {
   if (!selected.value) return;
+  error.value = '';
   building.value = true;
   try {
     await vpsApi.pairlistTriggerBuild(selected.value.id);
@@ -147,7 +176,7 @@ async function triggerBuild() {
       color: 'info',
     });
   } catch (err) {
-    error.value = String(err);
+    error.value = describeError(err, 'Build');
   } finally {
     building.value = false;
   }
