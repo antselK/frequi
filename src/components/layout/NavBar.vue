@@ -156,6 +156,11 @@ const navItems = computed<NavItem[]>(() => [
         to: '/reports',
         icon: 'i-mdi-file-chart',
       },
+      {
+        label: 'Pairlists',
+        to: '/pairlist_generator',
+        icon: 'i-mdi-filter-variant',
+      },
     ],
   },
   {

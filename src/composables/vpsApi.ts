@@ -2,6 +2,14 @@ import axios from 'axios';
 
 import type {
   AuditLogEntry,
+  PairlistBlacklistState,
+  PairlistBuild,
+  PairlistConfig,
+  PairlistConfigList,
+  PairlistHealth,
+  PairlistMetric,
+  PairlistPreview,
+  PairlistSpec,
   ContainerSetStrategyResult,
   ContainerStrategies,
   DwhAlertConfig,
@@ -226,11 +234,9 @@ export const vpsApi = {
     return data;
   },
   async rebootVps(vpsId: number): Promise<VpsActionResult> {
-    const { data } = await vpsApiClient.post<VpsActionResult>(
-      `/vps/${vpsId}/reboot`,
-      undefined,
-      { timeout: 15_000 },
-    );
+    const { data } = await vpsApiClient.post<VpsActionResult>(`/vps/${vpsId}/reboot`, undefined, {
+      timeout: 15_000,
+    });
     return data;
   },
   async containerLogs(vpsId: number, containerName: string, tail = 200): Promise<VpsLogsResult> {
@@ -757,5 +763,73 @@ export const vpsApi = {
 
   async saveReportLayout(layout: ReportLayoutSettings): Promise<void> {
     await vpsApiClient.put('/settings/report-layout', { value: layout });
+  },
+  // --- freq-pairlist service (via the control-plane proxy) -------------------
+
+  async pairlistHealth(): Promise<PairlistHealth> {
+    const { data } = await vpsApiClient.get<PairlistHealth>('/pairlist/health');
+    return data;
+  },
+
+  async pairlistConfigs(): Promise<PairlistConfigList> {
+    const { data } = await vpsApiClient.get<PairlistConfigList>('/pairlist/configs');
+    return data;
+  },
+
+  async pairlistConfig(id: string): Promise<PairlistConfig> {
+    const { data } = await vpsApiClient.get<PairlistConfig>(`/pairlist/configs/${id}`);
+    return data;
+  },
+
+  async pairlistSaveConfig(
+    id: string,
+    name: string,
+    spec: PairlistSpec,
+    cadenceMin: number,
+    enabled: boolean,
+  ): Promise<PairlistConfig> {
+    const { data } = await vpsApiClient.put<PairlistConfig>(`/pairlist/configs/${id}`, {
+      name,
+      spec,
+      cadence_min: cadenceMin,
+      enabled,
+    });
+    return data;
+  },
+
+  async pairlistDeleteConfig(id: string): Promise<void> {
+    await vpsApiClient.delete(`/pairlist/configs/${id}`);
+  },
+
+  async pairlistBuilds(id: string, limit = 20): Promise<{ builds: PairlistBuild[] }> {
+    const { data } = await vpsApiClient.get<{ builds: PairlistBuild[] }>(
+      `/pairlist/configs/${id}/builds`,
+      { params: { limit } },
+    );
+    return data;
+  },
+
+  async pairlistTriggerBuild(id: string): Promise<void> {
+    await vpsApiClient.post(`/pairlist/configs/${id}/build`);
+  },
+
+  /** Run a spec without saving it. Slow on Hyperliquid — the venue is 1 req/s. */
+  async pairlistPreview(spec: PairlistSpec): Promise<PairlistPreview> {
+    const { data } = await vpsApiClient.post<PairlistPreview>(
+      '/pairlist/preview',
+      { spec },
+      { timeout: 300_000 },
+    );
+    return data;
+  },
+
+  async pairlistMetrics(): Promise<{ metrics: PairlistMetric[] }> {
+    const { data } = await vpsApiClient.get<{ metrics: PairlistMetric[] }>('/pairlist/metrics');
+    return data;
+  },
+
+  async pairlistBlacklist(): Promise<PairlistBlacklistState> {
+    const { data } = await vpsApiClient.get<PairlistBlacklistState>('/pairlist/blacklist');
+    return data;
   },
 };

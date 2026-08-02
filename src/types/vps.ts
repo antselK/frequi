@@ -765,3 +765,118 @@ export interface ReportLayoutSettings {
   categoryOrder: string[];
   subcategories: Record<string, ReportSubcategorySettings>;
 }
+
+// ---------------------------------------------------------------------------
+// freq-pairlist service (self-hosted remotepairlist replacement)
+// ---------------------------------------------------------------------------
+
+/** A single handler in a freqtrade-shaped `pairlists` array. */
+export interface PairlistChainHandler {
+  method: string;
+  [key: string]: unknown;
+}
+
+export interface PairlistSortSpec {
+  key: string;
+  order: 'desc' | 'asc' | 'shuffle';
+}
+
+/**
+ * The filter layer. Booleans are on/off switches; a `[min, max]` tuple is a range
+ * where `-1` means unbounded, matching the original remotepairlist UI.
+ */
+export type PairlistFilters = Record<string, boolean | string | number | [number, number] | null>;
+
+export interface PairlistSpec {
+  exchange: string;
+  market: 'spot' | 'futures';
+  stake: string;
+  mode?: 'whitelist' | 'blacklist';
+  /** Parity path: the fleet's own selection chain, run verbatim. */
+  base_chain?: PairlistChainHandler[];
+  /** Build at these minutes past the hour, for candle alignment. */
+  cron_minutes?: number[];
+  /** Apply the blacklist as config rather than mid-chain — changes what the cap counts. */
+  config_blacklist?: boolean;
+  filters?: PairlistFilters;
+  sort?: PairlistSortSpec | null;
+  limit?: number | null;
+  sort2?: PairlistSortSpec | null;
+  limit2?: number | null;
+}
+
+export interface PairlistConfig {
+  id: string;
+  name: string;
+  enabled: boolean;
+  spec: PairlistSpec;
+  cadence_min: number;
+  created_at: string;
+  updated_at: string;
+  pair_count?: number;
+  generated_at?: string | null;
+  degraded?: boolean;
+}
+
+export interface PairlistConfigList {
+  total: number;
+  configs: PairlistConfig[];
+}
+
+export interface PairlistStageCount {
+  stage: string;
+  before: number;
+  after: number;
+  removed: number;
+}
+
+export interface PairlistBuild {
+  id: number;
+  config_id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: 'running' | 'ok' | 'refused' | 'failed';
+  pair_count: number | null;
+  stage_counts: PairlistStageCount[] | null;
+  error: string | null;
+}
+
+export interface PairlistHealthEntry {
+  id: string;
+  name: string;
+  enabled: boolean;
+  status: 'ok' | 'stale' | 'degraded' | 'no_result' | 'disabled';
+  pair_count: number;
+  generated_at: string | null;
+  age_seconds: number | null;
+  stale_after_seconds: number;
+  note: string | null;
+}
+
+export interface PairlistHealth {
+  status: 'ok' | 'warning' | 'error';
+  checked_at: string;
+  configs: PairlistHealthEntry[];
+}
+
+export interface PairlistPreview {
+  pairs: string[];
+  count: number;
+  stages: PairlistStageCount[];
+  notes: string[];
+}
+
+export interface PairlistMetric {
+  key: string;
+  timeframe: string;
+  description: string;
+}
+
+export interface PairlistBlacklistState {
+  summary: string;
+  counts: Record<string, number>;
+  static: string[];
+  auto_restricted: string[];
+  delistings: string[];
+  retired: { symbol: string; removed_at: string; retests: number }[];
+}
