@@ -15,13 +15,21 @@
  * what each chain selects, the input to the parity test, and the rollback artefact — so
  * they are changed in the file, or duplicated into a config that is not file-backed.
  */
-import type { PairlistClassCount, PairlistConfig, PairlistMetric, PairlistSpec } from '@/types/vps';
+import type {
+  PairlistClassCount,
+  PairlistConfig,
+  PairlistExclusionCount,
+  PairlistMetric,
+  PairlistSpec,
+} from '@/types/vps';
 
 const props = defineProps<{
   config: PairlistConfig | null;
   metrics: PairlistMetric[];
   /** Per-token-class removal impact from the last Preview — see `classLabel`. */
   classCounts?: Record<string, PairlistClassCount> | null;
+  /** Per-exclusion-source removal impact from the last Preview — see `exclusionLabel`. */
+  exclusionCounts?: Record<string, PairlistExclusionCount> | null;
   saving?: boolean;
   previewing?: boolean;
 }>();
@@ -80,16 +88,6 @@ const fileBacked = computed(() => props.config?.spec.source === 'chain_file');
 // --- toggles --------------------------------------------------------------
 const f = reactive<Record<string, boolean>>({
   meme: false,
-  // Unlike every other key here, `trending` defaults ON: CoinGecko trending
-  // coins/categories were an always-applied part of the shared blacklist until
-  // 2026-08-05, when they were split out to be a per-config opt-out (the churn
-  // problem — up to ~500 symbols, re-ranked hourly — was drowning small
-  // candidate pools). Defaulting true here preserves that behaviour for any
-  // config that hasn't touched this checkbox; see the two special-cased spots
-  // below (load + currentSpec) that keep `filters.trending` explicit rather
-  // than relying on the generic "omit when false" serialization the other
-  // toggles use.
-  trending: true,
   fantoken: false,
   leveraged: false,
   cryptopanic: false,
@@ -105,13 +103,12 @@ const f = reactive<Record<string, boolean>>({
   nhnl: false,
 });
 
+// NB "Trending token" used to sit here. It moved to EXCLUSION_SOURCES below, where it
+// belongs: these are post-pool symbol filters, whereas trending gates a source of the
+// upstream exclusion set. Leaving it here as well would have meant two checkboxes
+// bound to the same key.
 const TOKEN_CLASSES = [
   { key: 'meme', label: 'Meme token' },
-  // Checked = excluded, same sense as every other row here. Unlike them it
-  // defaults ON (see the `f` declaration above) — unchecking it is what
-  // recovers CoinGecko's trending coins/categories when a config is running
-  // short on candidates.
-  { key: 'trending', label: 'Trending token' },
   { key: 'fantoken', label: 'Fan token' },
   { key: 'leveraged', label: 'Leveraged tokens' },
   { key: 'cryptopanic', label: 'CryptoPanic filter' },
@@ -120,21 +117,56 @@ const TOKEN_CLASSES = [
 /**
  * "Meme token (21)" — how many candidate pairs ticking the box would remove.
  *
- * Three deliberate choices, each guarding against a misleading number:
- * - No suffix at all when the count is null (source data not fetched this cycle) or
- *   before a Preview has run. "(0)" would read as "ticking this is free".
- * - The `universe` basis (only Trending, which excludes upstream of ranking) is
- *   labelled so it is not mistaken for the exact pool impact the others report —
- *   unticking it does not add that many pairs, since OffsetFilter still caps.
- * - Preview-driven rather than read from the last saved build: the counts depend on
- *   the whole spec, so a stored number goes stale as soon as anything is edited.
+ * No suffix when the count is null (source data not fetched this cycle) or before a
+ * Preview has run: "(0)" would read as "ticking this is free". Preview-driven rather
+ * than read from the last saved build, because the counts depend on the whole spec, so
+ * a stored number goes stale as soon as anything is edited.
+ *
+ * Every class here is pool-measured. The upstream-acting sources live in
+ * EXCLUSION_SOURCES / `exclusionLabel`, which count against the venue universe — see
+ * the backend's exclusion_component_counts for why they cannot share this denominator.
  */
 function classLabel(o: { key: string; label: string }): string {
   const entry = props.classCounts?.[o.key];
   if (!entry || entry.count === null) return o.label;
-  return entry.basis === 'universe'
-    ? `${o.label} (${entry.count} upstream)`
-    : `${o.label} (${entry.count})`;
+  return `${o.label} (${entry.count})`;
+}
+
+/**
+ * The exclusion set's five independent sources.
+ *
+ * All default ON. That inverts the convention used by `f` above, and deliberately:
+ * these were applied unconditionally until they became toggleable, so an absent key
+ * has to keep meaning "applied" — on the backend (`include_exclusion_component`) and
+ * here — or a config-editor round-trip would silently loosen the exclusion set.
+ *
+ * Keys are written prefixed (`excl_static`, …) because `filters` is one flat namespace
+ * shared with the metric filters, where a bare `static` or `coingecko` would be
+ * ambiguous. `trending` shipped bare earlier and is read as a legacy alias on load.
+ */
+const EXCLUSION_SOURCES = [
+  { key: 'static', label: 'Hand-kept blacklist' },
+  { key: 'auto_restricted', label: 'Account-restricted symbols' },
+  { key: 'coingecko', label: 'CoinGecko memes' },
+  { key: 'trending', label: 'CoinGecko trending' },
+  { key: 'delistings', label: 'Delisting (Binance + Bybit)' },
+];
+const excl = reactive<Record<string, boolean>>(
+  Object.fromEntries(EXCLUSION_SOURCES.map((s) => [s.key, true])),
+);
+
+/**
+ * "CoinGecko trending (56)" — pairs this source removes from the venue's tradeable
+ * universe. Universe, not the candidate pool: these all apply upstream of ranking, so
+ * an excluded pair never reaches the pool. The count is what the source *would*
+ * remove either way, so it does not vanish when you untick the box. No suffix when
+ * the count is null (no data yet) — "(0)" would read as "this source excludes
+ * nothing".
+ */
+function exclusionLabel(s: { key: string; label: string }): string {
+  const entry = props.exclusionCounts?.[s.key];
+  if (!entry || entry.count === null) return s.label;
+  return `${s.label} (${entry.count})`;
 }
 
 const SPECIAL = [
@@ -274,10 +306,14 @@ watch(
 
     const filters = cfg.spec.filters ?? {};
     for (const key of Object.keys(f)) f[key] = filters[key] === true;
-    // `trending` inverts that default: absent (every config saved before
-    // 2026-08-05) or explicitly `true` means checked; only an explicit `false`
-    // unchecks it. Matches the backend's `filters.get("trending", True)`.
-    f.trending = filters.trending !== false;
+    // Exclusion sources invert that default — absent means applied. Prefixed key
+    // wins; bare `trending` is the legacy alias from the first shape that shipped,
+    // so a config still carrying `trending: false` keeps its opt-out.
+    for (const s of EXCLUSION_SOURCES) {
+      const prefixed = filters[`excl_${s.key}`];
+      const legacy = s.key === 'trending' ? filters.trending : undefined;
+      excl[s.key] = (prefixed ?? legacy) !== false;
+    }
     emaCross.value = (filters.ema_cross as 'above' | 'below') ?? '';
     smiState.value = (filters.smi_state as 'bullish' | 'bearish') ?? '';
     useFng.value = filters.fng_min != null;
@@ -354,12 +390,12 @@ function buildSelectionChain() {
 function currentSpec(): PairlistSpec {
   const filters: Record<string, unknown> = {};
   for (const [key, on] of Object.entries(f)) if (on) filters[key] = true;
-  // `trending` must be written explicitly, true or false — never omitted like
-  // the other toggles above. The backend's default-on behaviour only applies
-  // when the key is *absent*; if unchecking it just omitted the key (the
-  // generic rule above), saving any unrelated field on this config would
-  // silently re-enable trending exclusion on the next load/save round-trip.
-  filters.trending = f.trending;
+  // Exclusion sources are written explicitly, true or false — never omitted like the
+  // toggles above. The backend's default-on only applies to an *absent* key, so if an
+  // unchecked source just omitted its key, saving any unrelated field would silently
+  // re-enable it on the next load/save round-trip. `filters` is rebuilt from scratch
+  // each save, so the legacy bare `trending` key drops out here by construction.
+  for (const s of EXCLUSION_SOURCES) filters[`excl_${s.key}`] = excl[s.key];
   if (emaCross.value) filters.ema_cross = emaCross.value;
   if (smiState.value) filters.smi_state = smiState.value;
   if (useFng.value) filters.fng_min = fngMin.value;
@@ -556,16 +592,50 @@ function onSave() {
         configs, so rendering it unconditionally would show an editable control whose value is
         silently discarded on save.
       -->
-      <div v-if="!fileBacked" class="mb-4 border-b border-surface-800 pb-3">
+      <div class="mb-4 border-b border-surface-800 pb-3">
         <p class="mb-2 text-xs font-medium text-surface-300">Exclusion set</p>
-        <UCheckbox v-model="applyBlacklist" label="Apply exclusion set" />
-        <p class="mt-1.5 text-xs text-surface-500">
-          Removes blacklisted symbols — CoinGecko's meme and trending sets, pairs delisting on
-          Binance or Bybit, and symbols this account cannot trade. Leave it on unless you
-          specifically want the raw universe; turning it off also drops the delisting and
-          account-restricted protection, not just the category exclusions. Note it applies
-          <em>inside</em> the volume pool, before <strong>Volume pool</strong> in Selection caps it,
-          so toggling it changes which pairs that cap counts as well as which survive.
+
+        <!--
+          The master switch is `!fileBacked` because currentSpec() forces
+          config_blacklist from the stored spec for chain-file configs. The five
+          sources below are NOT gated: a chain-file config's `filters` ARE editable
+          (only base_chain and config_blacklist are forced), and it receives the
+          exclusion set through its mid-chain RemotePairList handlers, so these
+          checkboxes work for it even though the master switch does not apply.
+        -->
+        <UCheckbox
+          v-if="!fileBacked"
+          v-model="applyBlacklist"
+          label="Apply exclusion set"
+          class="mb-2"
+        />
+        <div class="grid gap-1.5 sm:grid-cols-2">
+          <UCheckbox
+            v-for="s in EXCLUSION_SOURCES"
+            :key="s.key"
+            v-model="excl[s.key]"
+            :label="exclusionLabel(s)"
+          />
+        </div>
+
+        <p class="mt-2 text-xs text-surface-500">
+          Five independent sources — unchecking one leaves the others applied. Counts are pairs
+          removed from the venue's whole tradeable universe, because these apply
+          <em>before</em> ranking: they bite inside the volume pool, ahead of
+          <strong>Volume pool</strong> in Selection, so they change what that cap counts as well as
+          what survives. The sources overlap, so the counts do not add up to the total.
+          <strong>Keep Delisting and Account-restricted on.</strong> A delisting force-settles a
+          position with no exit under a disabled stoploss, and a restricted symbol silently burns
+          entry signals on every attempt — those two are protection, not preference, while the
+          CoinGecko sets are the tunable part.
+          <template v-if="!fileBacked">
+            <strong>Apply exclusion set</strong> is the master switch: with it off, none of the five
+            reach this config.
+          </template>
+          <template v-else>
+            This config takes the exclusion set through its chain file's mid-chain handlers, so it
+            has no master switch — but these five still apply to it.
+          </template>
         </p>
       </div>
 

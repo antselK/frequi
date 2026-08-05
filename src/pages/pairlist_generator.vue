@@ -616,6 +616,7 @@ onMounted(loadAll);
         :config="selected"
         :metrics="metrics"
         :class-counts="preview?.class_counts"
+        :exclusion-counts="preview?.exclusion_counts"
         :saving="saving"
         :previewing="previewing"
         @save="saveConfig"

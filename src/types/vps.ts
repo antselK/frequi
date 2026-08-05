@@ -880,12 +880,31 @@ export interface PairlistClassCount {
   basis: 'pool' | 'universe';
 }
 
+/**
+ * How many of the venue's tradeable pairs one exclusion source removes.
+ *
+ * Measured against the whole venue universe, not the candidate pool — every source
+ * applies upstream of ranking, so an excluded pair never reaches the pool and a pool
+ * count would read 0 for whichever sources are switched on.
+ *
+ * `count` is what the source *would* remove regardless of `enabled`, so the number
+ * doesn't vanish when you untick the box. `null` means the source has no data yet
+ * (before the first post-restart build) — render as unknown, never 0. Sources
+ * overlap, so counts do not sum to the union.
+ */
+export interface PairlistExclusionCount {
+  count: number | null;
+  enabled: boolean;
+  total: number;
+}
+
 export interface PairlistPreview {
   pairs: string[];
   count: number;
   stages: PairlistStageCount[];
   notes: string[];
   class_counts?: Record<string, PairlistClassCount>;
+  exclusion_counts?: Record<string, PairlistExclusionCount>;
 }
 
 export interface PairlistMetric {
