@@ -153,10 +153,14 @@ const ranges = reactive<RangeField[]>([
   { key: 'ad_ratio', label: 'Adratio (30m)', enabled: false, min: 1, max: 1000, step: 0.1 },
   { key: 'ad_line', label: 'Adline (30m)', enabled: false, min: 0, max: 1000, step: 1 },
   {
+    // min:11 excludes the top 10 by market cap too (apply_range's bounds are
+    // inclusive, so 11 is the first *kept* rank) — folded in from the CoinGecko
+    // top-10 blacklist component (market.TOP_MARKETCAP_COUNT, disabled 2026-08-05)
+    // now that real CoinMarketCap rank data covers the same intent per config.
     key: 'cm_marketcap_rank',
-    label: 'CoinMarketCap rank (max)',
+    label: 'CoinMarketCap rank (min / max)',
     enabled: false,
-    min: -1,
+    min: 11,
     max: 500,
     step: 1,
   },
