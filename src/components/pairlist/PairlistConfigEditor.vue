@@ -78,6 +78,16 @@ const fileBacked = computed(() => props.config?.spec.source === 'chain_file');
 // --- toggles --------------------------------------------------------------
 const f = reactive<Record<string, boolean>>({
   meme: false,
+  // Unlike every other key here, `trending` defaults ON: CoinGecko trending
+  // coins/categories were an always-applied part of the shared blacklist until
+  // 2026-08-05, when they were split out to be a per-config opt-out (the churn
+  // problem — up to ~500 symbols, re-ranked hourly — was drowning small
+  // candidate pools). Defaulting true here preserves that behaviour for any
+  // config that hasn't touched this checkbox; see the two special-cased spots
+  // below (load + currentSpec) that keep `filters.trending` explicit rather
+  // than relying on the generic "omit when false" serialization the other
+  // toggles use.
+  trending: true,
   fantoken: false,
   leveraged: false,
   cryptopanic: false,
@@ -95,6 +105,11 @@ const f = reactive<Record<string, boolean>>({
 
 const TOKEN_CLASSES = [
   { key: 'meme', label: 'Meme token' },
+  // Checked = excluded, same sense as every other row here. Unlike them it
+  // defaults ON (see the `f` declaration above) — unchecking it is what
+  // recovers CoinGecko's trending coins/categories when a config is running
+  // short on candidates.
+  { key: 'trending', label: 'Trending token' },
   { key: 'fantoken', label: 'Fan token' },
   { key: 'leveraged', label: 'Leveraged tokens' },
   { key: 'cryptopanic', label: 'CryptoPanic filter' },
@@ -237,6 +252,10 @@ watch(
 
     const filters = cfg.spec.filters ?? {};
     for (const key of Object.keys(f)) f[key] = filters[key] === true;
+    // `trending` inverts that default: absent (every config saved before
+    // 2026-08-05) or explicitly `true` means checked; only an explicit `false`
+    // unchecks it. Matches the backend's `filters.get("trending", True)`.
+    f.trending = filters.trending !== false;
     emaCross.value = (filters.ema_cross as 'above' | 'below') ?? '';
     smiState.value = (filters.smi_state as 'bullish' | 'bearish') ?? '';
     useFng.value = filters.fng_min != null;
@@ -313,6 +332,12 @@ function buildSelectionChain() {
 function currentSpec(): PairlistSpec {
   const filters: Record<string, unknown> = {};
   for (const [key, on] of Object.entries(f)) if (on) filters[key] = true;
+  // `trending` must be written explicitly, true or false — never omitted like
+  // the other toggles above. The backend's default-on behaviour only applies
+  // when the key is *absent*; if unchecking it just omitted the key (the
+  // generic rule above), saving any unrelated field on this config would
+  // silently re-enable trending exclusion on the next load/save round-trip.
+  filters.trending = f.trending;
   if (emaCross.value) filters.ema_cross = emaCross.value;
   if (smiState.value) filters.smi_state = smiState.value;
   if (useFng.value) filters.fng_min = fngMin.value;
