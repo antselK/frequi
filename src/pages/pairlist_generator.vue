@@ -615,6 +615,7 @@ onMounted(loadAll);
         v-else-if="activeTab === 'edit'"
         :config="selected"
         :metrics="metrics"
+        :class-counts="preview?.class_counts"
         :saving="saving"
         :previewing="previewing"
         @save="saveConfig"

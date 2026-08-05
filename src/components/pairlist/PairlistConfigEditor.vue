@@ -15,11 +15,13 @@
  * what each chain selects, the input to the parity test, and the rollback artefact — so
  * they are changed in the file, or duplicated into a config that is not file-backed.
  */
-import type { PairlistConfig, PairlistMetric, PairlistSpec } from '@/types/vps';
+import type { PairlistClassCount, PairlistConfig, PairlistMetric, PairlistSpec } from '@/types/vps';
 
 const props = defineProps<{
   config: PairlistConfig | null;
   metrics: PairlistMetric[];
+  /** Per-token-class removal impact from the last Preview — see `classLabel`. */
+  classCounts?: Record<string, PairlistClassCount> | null;
   saving?: boolean;
   previewing?: boolean;
 }>();
@@ -115,6 +117,26 @@ const TOKEN_CLASSES = [
   { key: 'cryptopanic', label: 'CryptoPanic filter' },
   { key: 'nfi', label: 'NFI blacklist' },
 ];
+/**
+ * "Meme token (21)" — how many candidate pairs ticking the box would remove.
+ *
+ * Three deliberate choices, each guarding against a misleading number:
+ * - No suffix at all when the count is null (source data not fetched this cycle) or
+ *   before a Preview has run. "(0)" would read as "ticking this is free".
+ * - The `universe` basis (only Trending, which excludes upstream of ranking) is
+ *   labelled so it is not mistaken for the exact pool impact the others report —
+ *   unticking it does not add that many pairs, since OffsetFilter still caps.
+ * - Preview-driven rather than read from the last saved build: the counts depend on
+ *   the whole spec, so a stored number goes stale as soon as anything is edited.
+ */
+function classLabel(o: { key: string; label: string }): string {
+  const entry = props.classCounts?.[o.key];
+  if (!entry || entry.count === null) return o.label;
+  return entry.basis === 'universe'
+    ? `${o.label} (${entry.count} upstream)`
+    : `${o.label} (${entry.count})`;
+}
+
 const SPECIAL = [
   { key: 'bothx', label: 'Exists on Binance and Kucoin' },
   { key: 'threex', label: 'Exists on Binance, Kucoin and OKX' },
@@ -539,14 +561,19 @@ function onSave() {
               v-for="o in TOKEN_CLASSES"
               :key="o.key"
               v-model="f[o.key]"
-              :label="o.label"
+              :label="classLabel(o)"
             />
           </div>
         </div>
         <div>
           <p class="mb-2 text-xs font-medium text-surface-300">Special</p>
           <div class="space-y-1.5">
-            <UCheckbox v-for="o in SPECIAL" :key="o.key" v-model="f[o.key]" :label="o.label" />
+            <UCheckbox
+              v-for="o in SPECIAL"
+              :key="o.key"
+              v-model="f[o.key]"
+              :label="classLabel(o)"
+            />
             <div class="flex items-center gap-3">
               <UCheckbox v-model="useFng" label="Fear &amp; Greed at least" />
               <UInputNumber
@@ -564,6 +591,27 @@ function onSave() {
           </div>
         </div>
       </div>
+
+      <p class="mt-3 text-xs text-surface-500">
+        <template v-if="classCounts">
+          The number after each class is how many of <em>this</em> spec's candidate pairs ticking it
+          would remove — measured before any of these filters apply, so it does not change depending
+          on which boxes are already on. <strong>(0)</strong> most often means the exclusion set
+          already removed that class upstream: <em>Apply exclusion set</em> covers CoinGecko's meme
+          and trending sets on its own, so with it on, these boxes are a redundant second pass and
+          genuinely have nothing left to take. A class with <em>no</em> number is different — its
+          data was not fetched this cycle (most are only fetched while some config uses them), so
+          the impact is unknown rather than zero. <strong>Trending</strong> is marked
+          <em>upstream</em> because it gates that exclusion set rather than filtering here:
+          unticking it returns that many pairs to the candidate pool, but the final list is still
+          capped by the count in Selection.
+        </template>
+        <template v-else>
+          Run <strong>Preview</strong> to see how many pairs each class would remove. The counts
+          depend on the whole spec — the volume pool, the volatility window — so they are measured
+          per preview rather than stored.
+        </template>
+      </p>
     </section>
 
     <!-- Indicators -->

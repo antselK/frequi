@@ -863,11 +863,29 @@ export interface PairlistHealth {
   configs: PairlistHealthEntry[];
 }
 
+/**
+ * How many pairs a token-class toggle would remove, for the editor's "(N)" labels.
+ *
+ * `count: null` means the class's source data was not fetched this cycle — render it
+ * as unknown, never as 0, which would read as "ticking this is free".
+ *
+ * `basis` says what the number is measured against, and the two are not
+ * interchangeable: `pool` is the exact number of candidates ticking the box removes,
+ * while `universe` (only `trending`) is how many candidates the class withholds
+ * upstream of ranking — unticking it does not add that many to the final list,
+ * because OffsetFilter still caps it.
+ */
+export interface PairlistClassCount {
+  count: number | null;
+  basis: 'pool' | 'universe';
+}
+
 export interface PairlistPreview {
   pairs: string[];
   count: number;
   stages: PairlistStageCount[];
   notes: string[];
+  class_counts?: Record<string, PairlistClassCount>;
 }
 
 export interface PairlistMetric {
