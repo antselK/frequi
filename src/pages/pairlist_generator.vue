@@ -180,7 +180,10 @@ async function triggerBuild() {
     await vpsApi.pairlistTriggerBuild(selected.value.id);
     toast.add({
       title: 'Build started',
-      description: 'Runs in the background — Hyperliquid takes ~16 minutes.',
+      // Was "Hyperliquid takes ~16 minutes" — that venue was retired 2026-08-02, so the
+      // only remaining cost is a market-data refresh (~90s measured on a cold external
+      // cache, seconds once it is warm).
+      description: 'Runs in the background — check Build history in a minute.',
       color: 'info',
     });
   } catch (err) {
@@ -472,7 +475,7 @@ onMounted(loadAll);
       <div v-if="activeTab === 'pairs'">
         <div v-if="previewing" class="flex items-center gap-2 text-sm text-surface-400">
           <UIcon name="i-lucide-loader-circle" class="animate-spin" />
-          Running the chain live — Hyperliquid is rate-limited to 1 req/s and can take ~16 minutes.
+          Running the chain live — can take a minute or so if market data needs refreshing.
         </div>
 
         <div v-else-if="preview">
