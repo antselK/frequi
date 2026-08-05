@@ -503,10 +503,6 @@ function onSave() {
           <span class="text-xs text-surface-400">Final pair count</span>
           <UInputNumber v-model="finalCount" :min="1" :max="500" size="sm" />
         </label>
-        <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
-          <span class="text-xs text-surface-400">Blacklists</span>
-          <UCheckbox v-model="applyBlacklist" label="Apply exclusion set" />
-        </div>
         <div v-if="exchange === 'bybit'" class="grid grid-cols-[10rem_1fr] items-center gap-3">
           <span class="text-xs text-surface-400">Bybit only</span>
           <UCheckbox v-model="excludeEquities" label="Exclude tokenised equities" />
@@ -539,9 +535,6 @@ function onSave() {
       </div>
 
       <p v-if="!fileBacked" class="mt-2 text-xs text-surface-500">
-        <strong>Apply exclusion set</strong> removes blacklisted symbols — CoinGecko categories,
-        pairs delisting on Binance or Bybit, and symbols this account cannot trade. Leave it on
-        unless you specifically want the raw universe.
         <strong>Exclude tokenised equities</strong> drops Bybit's 159 <code>stock</code> and 4
         <code>commodity</code> symbols — INTC, MU, MRVL and the like rank well on volatility, and
         every fleet chain removes them. The <strong>parabolic guard</strong> drops pairs whose
@@ -553,6 +546,29 @@ function onSave() {
     <!-- Filters -->
     <section>
       <h3 class="mb-3 border-b border-surface-700 pb-1 text-sm font-semibold">Filters</h3>
+
+      <!--
+        Moved here from Selection (2026-08-05) so every filter lives in one section. It sits ABOVE
+        the two columns rather than inside them because it is a superset, not a peer: it already
+        covers CoinGecko's meme and trending sets, which is why "Meme token" reads (0) on a config
+        that has this on. Kept `!fileBacked` — the Selection grid it came from was `v-else` on
+        fileBacked, and currentSpec() forces config_blacklist from the stored spec for chain-file
+        configs, so rendering it unconditionally would show an editable control whose value is
+        silently discarded on save.
+      -->
+      <div v-if="!fileBacked" class="mb-4 border-b border-surface-800 pb-3">
+        <p class="mb-2 text-xs font-medium text-surface-300">Exclusion set</p>
+        <UCheckbox v-model="applyBlacklist" label="Apply exclusion set" />
+        <p class="mt-1.5 text-xs text-surface-500">
+          Removes blacklisted symbols — CoinGecko's meme and trending sets, pairs delisting on
+          Binance or Bybit, and symbols this account cannot trade. Leave it on unless you
+          specifically want the raw universe; turning it off also drops the delisting and
+          account-restricted protection, not just the category exclusions. Note it applies
+          <em>inside</em> the volume pool, before <strong>Volume pool</strong> in Selection caps it,
+          so toggling it changes which pairs that cap counts as well as which survive.
+        </p>
+      </div>
+
       <div class="grid gap-x-8 gap-y-4 lg:grid-cols-2">
         <div>
           <p class="mb-2 text-xs font-medium text-surface-300">Token classes</p>
