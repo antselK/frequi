@@ -21,8 +21,8 @@
     "@noction/vue-draggable-grid": "1.9.16",
     "@nuxt/ui": "^4.10.0",
     "@tanstack/vue-table": "^8.21.3",
-    "@vueuse/core": "^14.3.0",
-    "@vueuse/integrations": "^14.3.0",
+    "@vueuse/core": "^14.4.0",
+    "@vueuse/integrations": "^14.4.0",
     "axios": "^1.18.1",
     "date-fns": "^4.4.0",
     "date-fns-tz": "^3.2.0",
@@ -41,10 +41,10 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@iconify-json/mdi": "^1.2.3",
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.62.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tsconfig/node22": "^22.0.5",
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.1.2",
     "@types/sortablejs": "^1.15.9",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/compiler-sfc": "3.5.40",
@@ -52,10 +52,10 @@
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/test-utils": "^2.4.11",
     "@vue/tsconfig": "^0.9.1",
-    "eslint": "^10.7.0",
+    "eslint": "^10.8.0",
     "eslint-plugin-vue": "^10.10.0",
-    "globals": "^17.7.0",
-    "happy-dom": "^20.11.0",
+    "globals": "^17.8.0",
+    "happy-dom": "^20.11.1",
     "prettier": "^3.9.6",
     "sass-embedded": "^1.100.0",
     "tailwindcss": "^4.3.3",
@@ -63,7 +63,7 @@
     "unplugin-icons": "^23.0.1",
     "vite": "^8.1.5",
     "vitest": "^4.1.10",
-    "vue-tsc": "^3.3.7"
+    "vue-tsc": "^3.3.8"
   },
-  "packageManager": "pnpm@11.17.0+sha512.cca3cea332ad254bb84145f966d19f4879615210346fc92c79a047f23a0d7b3cca3c3792f0076ba1f1831d277efbcf0a9119b31a9a60eca7fb3d6231f331ef72"
+  "packageManager": "pnpm@11.20.0+sha512.9a6f330a95b66446ea088faf1521405a8a01f07fde7124cc9958dfed52d4bb436737e65b08f85f37b46fcba375092558ac51262b816844b22f63406ed166bfee"
 }
