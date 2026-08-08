@@ -204,7 +204,15 @@ function duplicateConfig() {
   // A copy WITHOUT `source`, so its selection chain becomes editable. That is the
   // whole point: fleet chains are owned by their file, a duplicate is owned here.
   const spec = { ...source.spec } as PairlistSpec;
+  const wasFileBacked = spec.source === 'chain_file';
   delete (spec as Record<string, unknown>).source;
+  // A chain-file config receives the exclusion set through the mid-chain
+  // RemotePairList(blacklist) handlers its file carries, which is why it stores
+  // config_blacklist:false. The copy is no longer file-backed, so its chain gets
+  // rebuilt by buildSelectionChain(), which never emits those handlers — inheriting
+  // `false` would leave it with no exclusion route at all and every build refused by
+  // the no-exclusion guard, showing up only as a permanently empty pair list.
+  if (wasFileBacked) spec.config_blacklist = true;
   draft.value = {
     ...source,
     id: '',
