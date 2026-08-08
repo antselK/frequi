@@ -205,7 +205,7 @@ function duplicateConfig() {
   // whole point: fleet chains are owned by their file, a duplicate is owned here.
   const spec = { ...source.spec } as PairlistSpec;
   const wasFileBacked = spec.source === 'chain_file';
-  delete (spec as Record<string, unknown>).source;
+  delete spec.source;
   // A chain-file config receives the exclusion set through the mid-chain
   // RemotePairList(blacklist) handlers its file carries, which is why it stores
   // config_blacklist:false. The copy is no longer file-backed, so its chain gets
