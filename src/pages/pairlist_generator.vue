@@ -164,7 +164,7 @@ async function runPreview() {
   previewing.value = true;
   preview.value = null;
   try {
-    preview.value = await vpsApi.pairlistPreview(selected.value.spec);
+    preview.value = await vpsApi.pairlistPreview(selected.value.spec, selected.value.id);
   } catch (err) {
     error.value = describeError(err, 'Preview');
   } finally {
@@ -290,7 +290,9 @@ async function previewSpec(spec: PairlistSpec) {
   previewing.value = true;
   preview.value = null;
   try {
-    preview.value = await vpsApi.pairlistPreview(spec);
+    // The edited spec belongs to the selected config, and the cooling-off rule needs
+    // that identity to read the right presence ledger. Read-only on the backend.
+    preview.value = await vpsApi.pairlistPreview(spec, selected.value?.id);
     activeTab.value = 'pairs';
   } catch (err) {
     error.value = describeError(err, 'Preview');
@@ -490,6 +492,9 @@ onMounted(loadAll);
           <div class="mb-2 text-sm">
             Preview: <span class="font-bold">{{ preview.count }}</span> pairs
             <span class="text-surface-400">(not saved — bots still serve the stored list)</span>
+          </div>
+          <div v-if="preview.cooling?.length" class="mb-2 text-xs text-sky-400">
+            Cooling off ({{ preview.cooling.length }}): {{ preview.cooling.join(', ') }}
           </div>
           <div v-if="preview.notes.length" class="mb-2 text-xs text-amber-400">
             {{ preview.notes.join('; ') }}

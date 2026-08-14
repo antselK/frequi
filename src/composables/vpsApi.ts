@@ -813,11 +813,16 @@ export const vpsApi = {
     await vpsApiClient.post(`/pairlist/configs/${id}/build`);
   },
 
-  /** Run a spec without saving it. Slow on Hyperliquid — the venue is 1 req/s. */
-  async pairlistPreview(spec: PairlistSpec): Promise<PairlistPreview> {
+  /**
+   * Run a spec without saving it. Slow on Hyperliquid — the venue is 1 req/s.
+   *
+   * `configId` is optional and read-only: the cooling-off rule is per-config state, so
+   * without it the preview cannot evaluate that filter. It never writes to the ledger.
+   */
+  async pairlistPreview(spec: PairlistSpec, configId?: string): Promise<PairlistPreview> {
     const { data } = await vpsApiClient.post<PairlistPreview>(
       '/pairlist/preview',
-      { spec },
+      { spec, config_id: configId },
       { timeout: 300_000 },
     );
     return data;

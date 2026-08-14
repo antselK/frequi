@@ -905,6 +905,12 @@ export interface PairlistPreview {
   notes: string[];
   class_counts?: Record<string, PairlistClassCount>;
   exclusion_counts?: Record<string, PairlistExclusionCount>;
+  /**
+   * Pairs the new-pair cooling-off rule is holding. Only populated when the preview
+   * was sent with a `config_id` (the ledger is per-config state). In "Log only" mode
+   * these are still listed here but remain in `pairs`.
+   */
+  cooling?: string[];
 }
 
 export interface PairlistMetric {

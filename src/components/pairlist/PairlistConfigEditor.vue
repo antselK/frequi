@@ -52,7 +52,41 @@ const exchange = ref('bybit');
 const market = ref<'spot' | 'futures'>('futures');
 const stake = ref('USDT');
 
-const EXCHANGES = ['binance', 'kucoin', 'okx', 'bybit', 'gate', 'kraken', 'hyperliquid'];
+// `krakenfutures` is a distinct ccxt exchange from `kraken` (spot) and is what the live
+// Kraken config uses. It was missing here until 2026-08-14, so opening that config gave
+// the select no matching item and touching it would have silently rewritten the venue to
+// Kraken spot.
+const EXCHANGES = [
+  'binance',
+  'kucoin',
+  'okx',
+  'bybit',
+  'gate',
+  'kraken',
+  'krakenfutures',
+  'hyperliquid',
+];
+
+// Non-crypto instrument classes to exclude via PairInformationFilter, per venue — keyed
+// on the field each exchange actually exposes. Hyperliquid exposes neither field, so it
+// gets no handlers.
+//
+// This has to be venue-aware. It was gated on `exchange === 'bybit'` until 2026-08-14,
+// which meant saving the Kraken config from this editor silently dropped its three
+// handlers and readmitted 14 xStocks (TSLAX, SPCXX, …) plus ANTHROPICX/OPENAIX as
+// tradeable candidates, with no checkbox rendered to hint that anything had been lost.
+const PAIR_INFO_EXCLUSIONS: Record<string, { infoKey: string; values: string[]; label: string }> = {
+  bybit: {
+    infoKey: 'info.symbolType',
+    values: ['stock', 'commodity'],
+    label: 'Exclude tokenised equities',
+  },
+  krakenfutures: {
+    infoKey: 'info.category',
+    values: ['xStocks', 'Pre-IPO', 'Forex'],
+    label: 'Exclude equities, pre-IPO & forex',
+  },
+};
 const STAKES = ['USDT', 'USDC', 'USD', 'BTC', 'ETH'];
 const ORDERS = [
   { label: 'Descending', value: 'desc' },
@@ -64,11 +98,14 @@ const ORDERS = [
 const volumeAssets = ref(200);
 const minVolume = ref(1_000_000);
 const applyBlacklist = ref(true);
-// Bybit tags tokenised equities `stock` (159 symbols) and metals `commodity` (4).
-// Without this the volatility ranking pulls in INTC, MU, MRVL and friends — they are
-// volatile and liquid enough to rank well, and every fleet chain excludes them for
-// that reason. Only Bybit exposes info.symbolType, so it is a no-op elsewhere.
+// Bybit tags tokenised equities `stock` (159 symbols) and metals `commodity` (4);
+// Kraken Futures tags them `xStocks` (14) plus `Pre-IPO` (2) and `Forex` (3). Without
+// this the volatility ranking pulls in INTC, MU, MRVL, TSLAX and friends — they are
+// volatile and liquid enough to rank well, and every fleet chain excludes them for that
+// reason. Venues exposing neither field (Hyperliquid) get no handlers; see
+// PAIR_INFO_EXCLUSIONS.
 const excludeEquities = ref(true);
+const pairInfoExclusion = computed(() => PAIR_INFO_EXCLUSIONS[exchange.value]);
 const useAge = ref(true);
 const minDaysListed = ref(30);
 const useVolatilityWindow = ref(true);
@@ -189,6 +226,13 @@ const useFng = ref(false);
 const fngMin = ref(20);
 const useSpread = ref(false);
 const spreadMax = ref(0.005);
+// New-pair cooling-off. Two windows, because the rule is a conjunction — see the
+// help text below and PAIRLIST_REFERENCE. Defaults match the measured recommendation.
+const useNewPairCooldown = ref(false);
+const newPairMaturityDays = ref(30);
+const newPairCooldownHours = ref(6);
+const newPairCooldownGraceMin = ref(120);
+const newPairCooldownObserve = ref(false);
 
 interface RangeField {
   key: string;
@@ -321,6 +365,18 @@ watch(
     useSpread.value = filters.spread_max != null;
     if (typeof filters.spread_max === 'number') spreadMax.value = filters.spread_max;
 
+    // Both windows must be present for the backend to consider the rule enabled, so
+    // the checkbox reflects that same condition rather than either key alone.
+    useNewPairCooldown.value =
+      filters.new_pair_maturity_days != null && filters.new_pair_cooldown_hours != null;
+    if (typeof filters.new_pair_maturity_days === 'number')
+      newPairMaturityDays.value = filters.new_pair_maturity_days;
+    if (typeof filters.new_pair_cooldown_hours === 'number')
+      newPairCooldownHours.value = filters.new_pair_cooldown_hours;
+    if (typeof filters.new_pair_cooldown_grace_min === 'number')
+      newPairCooldownGraceMin.value = filters.new_pair_cooldown_grace_min;
+    newPairCooldownObserve.value = filters.new_pair_cooldown_observe === true;
+
     for (const r of ranges) {
       const v = filters[r.key];
       r.enabled = Array.isArray(v);
@@ -347,11 +403,11 @@ function buildSelectionChain() {
       min_value: minVolume.value,
     },
   ];
-  if (excludeEquities.value && exchange.value === 'bybit') {
-    for (const kind of ['stock', 'commodity']) {
+  if (excludeEquities.value && pairInfoExclusion.value) {
+    for (const kind of pairInfoExclusion.value.values) {
       chain.push({
         method: 'PairInformationFilter',
-        info_key: 'info.symbolType',
+        info_key: pairInfoExclusion.value.infoKey,
         info_compare_value: kind,
         selection_mode: 'blacklist',
       });
@@ -400,6 +456,12 @@ function currentSpec(): PairlistSpec {
   if (smiState.value) filters.smi_state = smiState.value;
   if (useFng.value) filters.fng_min = fngMin.value;
   if (useSpread.value) filters.spread_max = spreadMax.value;
+  if (useNewPairCooldown.value) {
+    filters.new_pair_maturity_days = newPairMaturityDays.value;
+    filters.new_pair_cooldown_hours = newPairCooldownHours.value;
+    filters.new_pair_cooldown_grace_min = newPairCooldownGraceMin.value;
+    filters.new_pair_cooldown_observe = newPairCooldownObserve.value;
+  }
   for (const r of ranges) if (r.enabled) filters[r.key] = [r.min, r.max];
 
   const cron = cronMinutes.value
@@ -539,9 +601,9 @@ function onSave() {
           <span class="text-xs text-surface-400">Final pair count</span>
           <UInputNumber v-model="finalCount" :min="1" :max="500" size="sm" />
         </label>
-        <div v-if="exchange === 'bybit'" class="grid grid-cols-[10rem_1fr] items-center gap-3">
-          <span class="text-xs text-surface-400">Bybit only</span>
-          <UCheckbox v-model="excludeEquities" label="Exclude tokenised equities" />
+        <div v-if="pairInfoExclusion" class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Non-crypto</span>
+          <UCheckbox v-model="excludeEquities" :label="pairInfoExclusion.label" />
         </div>
         <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
           <UCheckbox v-model="useAge" label="Age filter" />
@@ -676,6 +738,54 @@ function onSave() {
             </p>
           </div>
         </div>
+      </div>
+
+      <div class="mt-4 rounded border border-surface-700 p-3">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <UCheckbox v-model="useNewPairCooldown" label="Cooling-off for newly-promoted pairs" />
+          <div v-if="useNewPairCooldown" class="flex flex-wrap items-center gap-2">
+            <span class="text-xs text-surface-500">new for</span>
+            <UInputNumber
+              v-model="newPairMaturityDays"
+              :min="1"
+              :max="365"
+              size="sm"
+              class="w-24"
+            />
+            <span class="text-xs text-surface-500">days · hold</span>
+            <UInputNumber
+              v-model="newPairCooldownHours"
+              :min="1"
+              :max="720"
+              size="sm"
+              class="w-24"
+            />
+            <span class="text-xs text-surface-500">hours · grace</span>
+            <UInputNumber
+              v-model="newPairCooldownGraceMin"
+              :min="0"
+              :max="1440"
+              size="sm"
+              class="w-24"
+            />
+            <span class="text-xs text-surface-500">min</span>
+            <UCheckbox v-model="newPairCooldownObserve" label="Log only" />
+          </div>
+        </div>
+        <p v-if="useNewPairCooldown" class="mt-2 text-xs text-surface-500">
+          A pair is held out of the published list only when <em>both</em> are true: this config
+          first saw it less than <strong>{{ newPairMaturityDays }} days</strong> ago,
+          <em>and</em> it (re)entered the list less than
+          <strong>{{ newPairCooldownHours }} hours</strong> ago. Both halves are needed — the
+          volatility ranking promotes a pair <em>because</em> it just started moving violently, and
+          on 7,371 closed trades that intersection held 11 of 12 catastrophic losses. Holding on
+          recency alone would also block established pairs that merely went quiet and came back:
+          1,775 trades, +15,442 USDT, zero tail events. <strong>Grace</strong> is how long a pair
+          may be absent without restarting its hold — a pair flickering in and out on the volume
+          floor would otherwise be banned rather than cooled. Held pairs are
+          <em>removed, not replaced</em>, so the list just gets shorter.
+          <strong>Log only</strong> reports what would be held without changing the published list.
+        </p>
       </div>
 
       <p class="mt-3 text-xs text-surface-500">
