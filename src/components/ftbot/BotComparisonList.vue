@@ -52,6 +52,7 @@ const tableItems = computed<ComparisonTableItems[]>(() => {
       //   `${thisBotStore.botName} - ${botStore.availableBots[k].botName}` || thisBotStore.botId,
 
       botName: thisBotStore.uiBotName || thisBotStore.botId,
+      strategy: shortStrategyName(botStore.allBotState[k]?.strategy),
       trades: `${botStore.allOpenTradeCount[k]} / ${
         botStore.allBotState[k]?.max_open_trades || 'N/A'
       }`,
@@ -131,7 +132,12 @@ const columns: TableColumn<ComparisonTableItems>[] = [
                 .isSelected
             "
             title="Show this bot in Dashboard"
-            >{{ row.original.botName }}</BaseCheckbox
+            >{{ row.original.botName
+            }}<span
+              v-if="row.original.strategy"
+              class="ms-1 text-[10px] text-surface-500 dark:text-surface-400"
+              >({{ row.original.strategy }})</span
+            ></BaseCheckbox
           >
           <BaseCheckbox
             v-if="!row.original.botId && botStore.botCount > 1"
@@ -140,7 +146,14 @@ const columns: TableColumn<ComparisonTableItems>[] = [
             class="font-bold"
             >{{ row.original.botName }}</BaseCheckbox
           >
-          <span v-if="botStore.botCount <= 1">{{ row.original.botName }}</span>
+          <span v-if="botStore.botCount <= 1"
+            >{{ row.original.botName
+            }}<span
+              v-if="row.original.strategy"
+              class="ms-1 text-[10px] text-surface-500 dark:text-surface-400"
+              >({{ row.original.strategy }})</span
+            ></span
+          >
         </div>
         <UBadge
           v-if="row.original.isLoggedIn === false"

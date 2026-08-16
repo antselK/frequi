@@ -280,7 +280,14 @@ const rowSelection = computed({
         ><DateTimeTZ :date="row.original.close_timestamp ?? 0"
       /></template>
       <template #exit_reason-cell="{ row }">{{ row.original.exit_reason }}</template>
-      <template #botName-cell="{ row }">{{ row.original.botName }}</template>
+      <template #botName-cell="{ row }"
+        >{{ row.original.botName
+        }}<span
+          v-if="row.original.strategy"
+          class="ms-1 text-[10px] text-surface-500 dark:text-surface-400"
+          >({{ shortStrategyName(row.original.strategy) }})</span
+        ></template
+      >
     </UTable>
 
     <div v-if="showFilter" class="flex justify-end gap-2 p-2">

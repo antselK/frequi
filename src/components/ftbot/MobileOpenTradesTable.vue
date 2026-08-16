@@ -164,7 +164,14 @@ function isSelectedRow(t: Trade) {
           :class="isSelectedRow(t) ? 'bg-primary-100 dark:bg-primary-900/30' : ''"
           @click="onRowClicked(t)"
         >
-          <td v-if="multiBotView" class="py-1 pe-2 whitespace-nowrap text-xs">{{ t.botName }}</td>
+          <td v-if="multiBotView" class="py-1 pe-2 whitespace-nowrap text-xs">
+            {{ t.botName
+            }}<span
+              v-if="t.strategy"
+              class="ms-1 text-[10px] text-surface-500 dark:text-surface-400"
+              >({{ shortStrategyName(t.strategy) }})</span
+            >
+          </td>
           <td class="py-1 pe-2 whitespace-nowrap font-mono text-xs">
             {{ t.trade_id }}
             <span v-if="t.trading_mode !== 'spot'" class="text-surface-400">

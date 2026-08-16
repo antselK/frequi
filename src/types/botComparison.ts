@@ -1,6 +1,8 @@
 export interface ComparisonTableItems {
   botId: string | undefined;
   botName: string;
+  /** Shortened strategy name shown beside botName. Empty for the summary row. */
+  strategy?: string;
   trades?: string;
   profitClosed: number;
   profitClosedRatio?: number;
