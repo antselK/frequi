@@ -97,6 +97,16 @@ const ORDERS = [
 // --- selection ------------------------------------------------------------
 const volumeAssets = ref(200);
 const minVolume = ref(1_000_000);
+// 0 ranks on the ticker's 24h `quoteVolume`; >0 switches VolumePairList to a rolling
+// sum over that many days, which changes what `min_value` is measured against. Editable
+// because it was previously unreachable: `buildSelectionChain()` never emitted it and
+// `readSelection()` never read it back, so saving a copy of a rolling-window chain
+// silently applied its 7-day $7M floor to a 24h figure — 200 candidates became 62 and
+// every build was refused under the pair floor (bybit_7dRollingVol_optimized, 2026-08-18).
+const volumeLookbackDays = ref(0);
+const volumeWindowHint = computed(() =>
+  volumeLookbackDays.value > 0 ? 'rolling sum' : "0 = ticker's 24h volume",
+);
 const applyBlacklist = ref(true);
 // Bybit tags tokenised equities `stock` (159 symbols) and metals `commodity` (4);
 // Kraken Futures tags them `xStocks` (14) plus `Pre-IPO` (2) and `Forex` (3). Without
@@ -310,6 +320,10 @@ function readSelection(chain: PairlistSpec['base_chain']) {
   if (vol) {
     volumeAssets.value = vol.number_assets ?? volumeAssets.value;
     minVolume.value = vol.min_value ?? minVolume.value;
+    // Falls back to 0, not to the current ref: an absent `lookback_days` means this
+    // chain really is in 24h mode, and carrying over the previously-loaded config's
+    // window would invent a rolling sum the chain never asked for.
+    volumeLookbackDays.value = vol.lookback_days ?? 0;
   }
   const age = find('AgeFilter');
   useAge.value = !!age;
@@ -395,14 +409,16 @@ watch(
 
 // --- build -----------------------------------------------------------------
 function buildSelectionChain() {
-  const chain: Record<string, unknown>[] = [
-    {
-      method: 'VolumePairList',
-      number_assets: volumeAssets.value,
-      sort_key: 'quoteVolume',
-      min_value: minVolume.value,
-    },
-  ];
+  const volume: Record<string, unknown> = {
+    method: 'VolumePairList',
+    number_assets: volumeAssets.value,
+    sort_key: 'quoteVolume',
+    min_value: minVolume.value,
+  };
+  // Omitted rather than sent as 0, so a 24h-mode chain keeps the exact shape the fleet
+  // chain files use and a diff against one stays clean.
+  if (volumeLookbackDays.value > 0) volume.lookback_days = volumeLookbackDays.value;
+  const chain: Record<string, unknown>[] = [volume];
   if (excludeEquities.value && pairInfoExclusion.value) {
     for (const kind of pairInfoExclusion.value.values) {
       chain.push({
@@ -593,10 +609,15 @@ function onSave() {
           <span class="text-xs text-surface-400">Volume pool</span>
           <UInputNumber v-model="volumeAssets" :min="10" :max="1000" size="sm" />
         </label>
-        <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
-          <span class="text-xs text-surface-400">Min 24h volume</span>
-          <UInputNumber v-model="minVolume" :min="0" :step="100000" size="sm" />
-        </label>
+        <div class="grid grid-cols-[10rem_1fr] items-center gap-3 lg:col-span-2">
+          <span class="text-xs text-surface-400">Min volume</span>
+          <div class="flex flex-wrap items-center gap-2">
+            <UInputNumber v-model="minVolume" :min="0" :step="100000" size="sm" class="w-40" />
+            <span class="text-xs text-surface-500">over</span>
+            <UInputNumber v-model="volumeLookbackDays" :min="0" :max="30" size="sm" class="w-24" />
+            <span class="text-xs text-surface-500">days ({{ volumeWindowHint }})</span>
+          </div>
+        </div>
         <label class="grid grid-cols-[10rem_1fr] items-center gap-3">
           <span class="text-xs text-surface-400">Final pair count</span>
           <UInputNumber v-model="finalCount" :min="1" :max="500" size="sm" />
