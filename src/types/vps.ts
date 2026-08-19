@@ -61,6 +61,8 @@ export interface VpsContainer {
   config_mismatch: boolean;
   is_freqtrade: boolean;
   enabled: boolean;
+  /** ISO-8601 UTC. Render with timestampmsWithTimezone() - never pre-formatted server-side. */
+  last_seen_at: string;
   created_at: string;
   updated_at: string;
 }

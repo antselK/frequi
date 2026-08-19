@@ -813,6 +813,7 @@ onBeforeUnmount(() => {
               <th class="p-2 font-semibold">Container</th>
               <th class="p-2 font-semibold">Image</th>
               <th class="p-2 font-semibold">Status</th>
+              <th class="p-2 font-semibold">Last seen</th>
               <th class="p-2 font-semibold">Strategy</th>
               <th class="p-2 font-semibold">Freqtrade</th>
               <th class="p-2 font-semibold">Mismatch</th>
@@ -829,6 +830,13 @@ onBeforeUnmount(() => {
               <td class="p-2 align-middle">{{ container.container_name }}</td>
               <td class="p-2 align-middle">{{ container.image }}</td>
               <td class="p-2 align-middle">{{ container.status }}</td>
+              <td class="p-2 align-middle whitespace-nowrap text-xs">
+                {{
+                  timestampmsWithTimezone(
+                    container.last_seen_at ? new Date(container.last_seen_at) : null,
+                  )
+                }}
+              </td>
               <td class="p-2 align-middle font-mono text-xs">{{ container.strategy ?? '—' }}</td>
               <td class="p-2 align-middle">
                 <UBadge
@@ -865,7 +873,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="!selectedContainers.length">
-              <td colspan="8" class="p-3 text-center text-surface-400">No containers</td>
+              <td colspan="9" class="p-3 text-center text-surface-400">No containers</td>
             </tr>
           </tbody>
         </table>
