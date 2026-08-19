@@ -19,6 +19,8 @@ interface DiscoveredBotRow {
   vpsIp: string;
   containerName: string;
   status: string;
+  /** Container start (ISO-8601 UTC) - rendered as a live duration, may be null pre-sweep. */
+  containerStartedAt: string | null;
   strategy: string;
   exchange: string;
   pairlist: string;
@@ -54,6 +56,7 @@ function toDiscoveredRow(vps: VpsServer, container: VpsContainer): DiscoveredBot
     vpsIp: vps.ip,
     containerName: container.container_name,
     status: container.status,
+    containerStartedAt: container.container_started_at,
     strategy: container.strategy || '—',
     exchange: container.exchange || '—',
     pairlist: container.pairlist || '—',
@@ -401,6 +404,7 @@ onMounted(async () => {
             <th class="p-2 font-semibold">VPS</th>
             <th class="p-2 font-semibold">Container</th>
             <th class="p-2 font-semibold">Status</th>
+            <th class="p-2 font-semibold">Uptime</th>
             <th class="p-2 font-semibold">Strategy</th>
             <th class="p-2 font-semibold">Exchange</th>
             <th class="p-2 font-semibold">Pairlist</th>
@@ -425,6 +429,17 @@ onMounted(async () => {
             <td class="p-2 align-middle">{{ row.vpsName }}</td>
             <td class="p-2 align-middle">{{ row.containerName }}</td>
             <td class="p-2 align-middle">{{ row.status }}</td>
+            <td
+              class="p-2 align-middle whitespace-nowrap text-xs"
+              :class="isRecentlyRestarted(row.containerStartedAt) ? 'text-amber-400' : ''"
+              :title="
+                isRecentlyRestarted(row.containerStartedAt)
+                  ? 'Restarted recently — possibly by the autoheal watchdog'
+                  : ''
+              "
+            >
+              {{ containerUptime(row.containerStartedAt) }}
+            </td>
             <td class="p-2 align-middle">{{ row.strategy }}</td>
             <td class="p-2 align-middle">{{ row.exchange }}</td>
             <td class="p-2 align-middle">{{ row.pairlist }}</td>
@@ -464,7 +479,7 @@ onMounted(async () => {
             <td colspan="14" class="p-3 text-center text-surface-400">Loading...</td>
           </tr>
           <tr v-else-if="!filteredRows.length">
-            <td colspan="14" class="p-3 text-center text-surface-400">No discovered bots</td>
+            <td colspan="15" class="p-3 text-center text-surface-400">No discovered bots</td>
           </tr>
         </tbody>
       </table>

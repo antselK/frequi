@@ -814,6 +814,7 @@ onBeforeUnmount(() => {
               <th class="p-2 font-semibold">Image</th>
               <th class="p-2 font-semibold">Status</th>
               <th class="p-2 font-semibold">Last seen</th>
+              <th class="p-2 font-semibold">Uptime</th>
               <th class="p-2 font-semibold">Strategy</th>
               <th class="p-2 font-semibold">Freqtrade</th>
               <th class="p-2 font-semibold">Mismatch</th>
@@ -836,6 +837,17 @@ onBeforeUnmount(() => {
                     container.last_seen_at ? new Date(container.last_seen_at) : null,
                   )
                 }}
+              </td>
+              <td
+                class="p-2 align-middle whitespace-nowrap text-xs"
+                :class="isRecentlyRestarted(container.container_started_at) ? 'text-amber-400' : ''"
+                :title="
+                  isRecentlyRestarted(container.container_started_at)
+                    ? 'Restarted recently — possibly by the autoheal watchdog'
+                    : ''
+                "
+              >
+                {{ containerUptime(container.container_started_at) }}
               </td>
               <td class="p-2 align-middle font-mono text-xs">{{ container.strategy ?? '—' }}</td>
               <td class="p-2 align-middle">
@@ -873,7 +885,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="!selectedContainers.length">
-              <td colspan="9" class="p-3 text-center text-surface-400">No containers</td>
+              <td colspan="10" class="p-3 text-center text-surface-400">No containers</td>
             </tr>
           </tbody>
         </table>

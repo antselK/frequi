@@ -27,6 +27,7 @@ declare global {
   const computedEager: typeof import('@vueuse/core').computedEager
   const computedInject: typeof import('@vueuse/core').computedInject
   const computedWithControl: typeof import('@vueuse/core').computedWithControl
+  const containerUptime: typeof import('./utils/containerUptime').containerUptime
   const controlledComputed: typeof import('@vueuse/core').controlledComputed
   const controlledRef: typeof import('@vueuse/core').controlledRef
   const createApp: typeof import('vue').createApp
@@ -111,6 +112,7 @@ declare global {
   const isProxy: typeof import('vue').isProxy
   const isReactive: typeof import('vue').isReactive
   const isReadonly: typeof import('vue').isReadonly
+  const isRecentlyRestarted: typeof import('./utils/containerUptime').isRecentlyRestarted
   const isRef: typeof import('vue').isRef
   const isShallow: typeof import('vue').isShallow
   const loggedInBots: typeof import('./composables/loginInfo').loggedInBots
@@ -494,6 +496,7 @@ declare module 'vue' {
     readonly computedEager: UnwrapRef<typeof import('@vueuse/core')['computedEager']>
     readonly computedInject: UnwrapRef<typeof import('@vueuse/core')['computedInject']>
     readonly computedWithControl: UnwrapRef<typeof import('@vueuse/core')['computedWithControl']>
+    readonly containerUptime: UnwrapRef<typeof import('./utils/containerUptime')['containerUptime']>
     readonly controlledComputed: UnwrapRef<typeof import('@vueuse/core')['controlledComputed']>
     readonly controlledRef: UnwrapRef<typeof import('@vueuse/core')['controlledRef']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>
@@ -573,6 +576,7 @@ declare module 'vue' {
     readonly isProxy: UnwrapRef<typeof import('vue')['isProxy']>
     readonly isReactive: UnwrapRef<typeof import('vue')['isReactive']>
     readonly isReadonly: UnwrapRef<typeof import('vue')['isReadonly']>
+    readonly isRecentlyRestarted: UnwrapRef<typeof import('./utils/containerUptime')['isRecentlyRestarted']>
     readonly isRef: UnwrapRef<typeof import('vue')['isRef']>
     readonly isShallow: UnwrapRef<typeof import('vue')['isShallow']>
     readonly loggedInBots: UnwrapRef<typeof import('./composables/loginInfo')['loggedInBots']>

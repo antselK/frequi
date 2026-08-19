@@ -63,6 +63,8 @@ export interface VpsContainer {
   enabled: boolean;
   /** ISO-8601 UTC. Render with timestampmsWithTimezone() - never pre-formatted server-side. */
   last_seen_at: string;
+  /** Container start (docker .State.StartedAt), ISO-8601 UTC. Render with containerUptime(). */
+  container_started_at: string | null;
   created_at: string;
   updated_at: string;
 }
