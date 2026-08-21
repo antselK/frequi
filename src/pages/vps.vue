@@ -48,6 +48,8 @@ const strategySelected = ref<string | undefined>(undefined);
 const strategyRestart = ref(true);
 const strategyLoading = ref(false);
 const strategyApplying = ref(false);
+/** Reserved config id: StaticPairList over an empty whitelist. Mirrors the backend. */
+const PAIRLIST_NONE_ID = '__none__';
 const pairlistModalVisible = ref(false);
 const pairlistContainerName = ref('');
 const pairlistFragments = ref<ContainerPairlistOption[]>([]);
@@ -691,9 +693,13 @@ async function openPairlistModal(containerName: string) {
     pairlistCurrentConfigId.value = result.current_config_id;
     pairlistCurrentMode.value = result.mode;
     pairlistIsLive.value = result.is_live;
-    // An inline chain has no fragment to preselect, so open in advanced mode.
-    pairlistAdvanced.value = result.mode === 'inline';
-    pairlistSelectedFragment.value = result.current_fragment ?? undefined;
+    // An inline chain has no fragment to preselect, so open in advanced mode —
+    // except the reserved "no pairs" state, which lives in the simple dropdown.
+    const isNone = result.current_config_id === PAIRLIST_NONE_ID;
+    pairlistAdvanced.value = result.mode === 'inline' && !isNone;
+    pairlistSelectedFragment.value = isNone
+      ? PAIRLIST_NONE_ID
+      : (result.current_fragment ?? undefined);
     pairlistSelectedConfigId.value = result.current_config_id ?? undefined;
   } catch (error) {
     handleActionToast(`Pairlist — ${containerName}`, String(error), false);
@@ -703,11 +709,35 @@ async function openPairlistModal(containerName: string) {
   }
 }
 
-const pairlistFragmentItems = computed(() =>
-  pairlistFragments.value.map((option) => ({
+/** The reserved "no pairs" option, served in the config-id list by the backend. */
+const pairlistNoneOption = computed(() =>
+  pairlistConfigIds.value.find((o) => o.config_id === PAIRLIST_NONE_ID),
+);
+
+// Offered in the simple dropdown too, so stopping a bot from opening new trades
+// does not require the advanced toggle. It is exchange-agnostic, so it is valid
+// for every bot regardless of venue.
+const pairlistFragmentItems = computed(() => [
+  ...(pairlistNoneOption.value
+    ? [{ label: pairlistNoneOption.value.label, value: PAIRLIST_NONE_ID }]
+    : []),
+  ...pairlistFragments.value.map((option) => ({
     label: option.label,
     value: option.fragment as string,
   })),
+]);
+
+const pairlistNoneSelected = computed(
+  () =>
+    (!pairlistAdvanced.value && pairlistSelectedFragment.value === PAIRLIST_NONE_ID) ||
+    (pairlistAdvanced.value && pairlistSelectedConfigId.value === PAIRLIST_NONE_ID),
+);
+
+/** What is live right now, as a dropdown value, so re-picking it counts as no change. */
+const pairlistCurrentKey = computed(() =>
+  pairlistCurrentMode.value === 'inline' && pairlistCurrentConfigId.value === PAIRLIST_NONE_ID
+    ? PAIRLIST_NONE_ID
+    : pairlistCurrentFragment.value,
 );
 
 const pairlistConfigIdItems = computed(() =>
@@ -718,11 +748,14 @@ const pairlistConfigIdItems = computed(() =>
 );
 
 /** The option the user is about to apply, for the exchange-mismatch hint. */
-const pairlistSelectedOption = computed(() =>
-  pairlistAdvanced.value
+const pairlistSelectedOption = computed(() => {
+  if (pairlistNoneSelected.value) {
+    return pairlistNoneOption.value;
+  }
+  return pairlistAdvanced.value
     ? pairlistConfigIds.value.find((o) => o.config_id === pairlistSelectedConfigId.value)
-    : pairlistFragments.value.find((o) => o.fragment === pairlistSelectedFragment.value),
-);
+    : pairlistFragments.value.find((o) => o.fragment === pairlistSelectedFragment.value);
+});
 
 const pairlistExchangeMismatch = computed(() => {
   const container = selectedVpsId.value
@@ -746,9 +779,7 @@ const pairlistCanApply = computed(() => {
   }
   return (
     !!pairlistSelectedFragment.value &&
-    (pairlistCurrentMode.value !== 'fragment' ||
-      pairlistSelectedFragment.value !== pairlistCurrentFragment.value ||
-      pairlistRestart.value)
+    (pairlistSelectedFragment.value !== pairlistCurrentKey.value || pairlistRestart.value)
   );
 });
 
@@ -756,9 +787,12 @@ async function applyPairlist() {
   if (!selectedVpsId.value) {
     return;
   }
-  const selection = pairlistAdvanced.value
-    ? { configId: pairlistSelectedConfigId.value }
-    : { fragment: pairlistSelectedFragment.value };
+  // The reserved option is a config id even when picked from the simple list.
+  const selection = pairlistNoneSelected.value
+    ? { configId: PAIRLIST_NONE_ID }
+    : pairlistAdvanced.value
+      ? { configId: pairlistSelectedConfigId.value }
+      : { fragment: pairlistSelectedFragment.value };
   if (!selection.configId && !selection.fragment) {
     return;
   }
@@ -1172,7 +1206,11 @@ onBeforeUnmount(() => {
                 Current:
                 <span class="font-mono">{{
                   pairlistCurrentFragment ??
-                  (pairlistCurrentMode === 'inline' ? 'inline chain' : '—')
+                  (pairlistCurrentConfigId === PAIRLIST_NONE_ID
+                    ? 'no pairs (StaticPairList)'
+                    : pairlistCurrentMode === 'inline'
+                      ? 'inline chain'
+                      : '—')
                 }}</span>
               </div>
               <div class="text-surface-400 text-xs">
@@ -1209,7 +1247,14 @@ onBeforeUnmount(() => {
             />
 
             <UAlert
-              v-if="pairlistAdvanced"
+              v-if="pairlistNoneSelected"
+              color="warning"
+              variant="subtle"
+              title="Bot will open no new trades"
+              description="An empty StaticPairList. Open trades are still managed — exits (ROI/trailing/stop) and DCA adds keep running, since freqtrade adds open-trade pairs to the active whitelist itself. Unlike the Pause button, DCA is not blocked. Persists across restarts until you pick another pairlist."
+            />
+            <UAlert
+              v-if="pairlistAdvanced && !pairlistNoneSelected"
               color="info"
               variant="subtle"
               title="Inline chain"
