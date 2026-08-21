@@ -1207,7 +1207,7 @@ onBeforeUnmount(() => {
                 <span class="font-mono">{{
                   pairlistCurrentFragment ??
                   (pairlistCurrentConfigId === PAIRLIST_NONE_ID
-                    ? 'no pairs (StaticPairList)'
+                    ? 'no trading (0 pairs)'
                     : pairlistCurrentMode === 'inline'
                       ? 'inline chain'
                       : '—')
@@ -1251,7 +1251,7 @@ onBeforeUnmount(() => {
               color="warning"
               variant="subtle"
               title="Bot will open no new trades"
-              description="An empty StaticPairList. Open trades are still managed — exits (ROI/trailing/stop) and DCA adds keep running, since freqtrade adds open-trade pairs to the active whitelist itself. Unlike the Pause button, DCA is not blocked. Persists across restarts until you pick another pairlist."
+              description="Parks the bot on a whitelist that resolves to 0 pairs, so no entry can fire. Open trades are still managed — exits (ROI/trailing/stop) and DCA adds keep running, since freqtrade adds open-trade pairs to the active whitelist itself. Unlike the Pause button, DCA is not blocked. It also stops polling freq-pairlist entirely. Persists across restarts until you pick another pairlist."
             />
             <UAlert
               v-if="pairlistAdvanced && !pairlistNoneSelected"
