@@ -2,6 +2,8 @@ import axios from 'axios';
 
 import type {
   AuditLogEntry,
+  ContainerPairlists,
+  ContainerSetPairlistResult,
   ContainerSetStrategyResult,
   ContainerStrategies,
   VpsActionResult,
@@ -264,6 +266,47 @@ export const useVpsStore = defineStore('vpsStore', {
       this.lastError = '';
       try {
         return await vpsApi.containerStrategies(vpsId, containerName);
+      } catch (error) {
+        this.setError(error);
+        throw error;
+      } finally {
+        this.actionLoading = false;
+      }
+    },
+    async loadContainerPairlists(
+      vpsId: number,
+      containerName: string,
+    ): Promise<ContainerPairlists> {
+      this.actionLoading = true;
+      this.lastError = '';
+      try {
+        return await vpsApi.containerPairlists(vpsId, containerName);
+      } catch (error) {
+        this.setError(error);
+        throw error;
+      } finally {
+        this.actionLoading = false;
+      }
+    },
+    async setContainerPairlist(
+      vpsId: number,
+      containerName: string,
+      selection: { fragment?: string; configId?: string },
+      restart: boolean,
+      force = false,
+    ): Promise<ContainerSetPairlistResult> {
+      this.actionLoading = true;
+      this.lastError = '';
+      try {
+        const result = await vpsApi.setContainerPairlist(
+          vpsId,
+          containerName,
+          selection,
+          restart,
+          force,
+        );
+        await this.refreshContainersQuietly(vpsId);
+        return result;
       } catch (error) {
         this.setError(error);
         throw error;

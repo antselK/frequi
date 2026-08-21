@@ -12,6 +12,7 @@ import {
 import type { DropdownMenuItem } from '@nuxt/ui';
 import type {
   AuditLogEntry,
+  ContainerPairlistOption,
   VpsContainer,
   VpsCreatePayload,
   VpsServer,
@@ -47,6 +48,21 @@ const strategySelected = ref<string | undefined>(undefined);
 const strategyRestart = ref(true);
 const strategyLoading = ref(false);
 const strategyApplying = ref(false);
+const pairlistModalVisible = ref(false);
+const pairlistContainerName = ref('');
+const pairlistFragments = ref<ContainerPairlistOption[]>([]);
+const pairlistConfigIds = ref<ContainerPairlistOption[]>([]);
+const pairlistCurrentFragment = ref<string | null>(null);
+const pairlistCurrentConfigId = ref<string | null>(null);
+const pairlistCurrentMode = ref<'fragment' | 'inline' | 'none'>('none');
+const pairlistIsLive = ref(false);
+const pairlistAdvanced = ref(false);
+const pairlistSelectedFragment = ref<string | undefined>(undefined);
+const pairlistSelectedConfigId = ref<string | undefined>(undefined);
+const pairlistRestart = ref(true);
+const pairlistForce = ref(false);
+const pairlistLoading = ref(false);
+const pairlistApplying = ref(false);
 const streamConnected = ref(false);
 const streamStatusText = computed(() => (streamConnected.value ? 'Live' : 'Polling'));
 const actorOptions = getControlPlaneActorOptions();
@@ -649,6 +665,127 @@ async function applyStrategy() {
   }
 }
 
+async function openPairlistModal(containerName: string) {
+  if (!selectedVpsId.value) {
+    return;
+  }
+  pairlistContainerName.value = containerName;
+  pairlistFragments.value = [];
+  pairlistConfigIds.value = [];
+  pairlistCurrentFragment.value = null;
+  pairlistCurrentConfigId.value = null;
+  pairlistCurrentMode.value = 'none';
+  pairlistIsLive.value = false;
+  pairlistAdvanced.value = false;
+  pairlistSelectedFragment.value = undefined;
+  pairlistSelectedConfigId.value = undefined;
+  pairlistRestart.value = true;
+  pairlistForce.value = false;
+  pairlistModalVisible.value = true;
+  pairlistLoading.value = true;
+  try {
+    const result = await vpsStore.loadContainerPairlists(selectedVpsId.value, containerName);
+    pairlistFragments.value = result.available_fragments;
+    pairlistConfigIds.value = result.available_config_ids;
+    pairlistCurrentFragment.value = result.current_fragment;
+    pairlistCurrentConfigId.value = result.current_config_id;
+    pairlistCurrentMode.value = result.mode;
+    pairlistIsLive.value = result.is_live;
+    // An inline chain has no fragment to preselect, so open in advanced mode.
+    pairlistAdvanced.value = result.mode === 'inline';
+    pairlistSelectedFragment.value = result.current_fragment ?? undefined;
+    pairlistSelectedConfigId.value = result.current_config_id ?? undefined;
+  } catch (error) {
+    handleActionToast(`Pairlist — ${containerName}`, String(error), false);
+    pairlistModalVisible.value = false;
+  } finally {
+    pairlistLoading.value = false;
+  }
+}
+
+const pairlistFragmentItems = computed(() =>
+  pairlistFragments.value.map((option) => ({
+    label: option.label,
+    value: option.fragment as string,
+  })),
+);
+
+const pairlistConfigIdItems = computed(() =>
+  pairlistConfigIds.value.map((option) => ({
+    label: option.label,
+    value: option.config_id as string,
+  })),
+);
+
+/** The option the user is about to apply, for the exchange-mismatch hint. */
+const pairlistSelectedOption = computed(() =>
+  pairlistAdvanced.value
+    ? pairlistConfigIds.value.find((o) => o.config_id === pairlistSelectedConfigId.value)
+    : pairlistFragments.value.find((o) => o.fragment === pairlistSelectedFragment.value),
+);
+
+const pairlistExchangeMismatch = computed(() => {
+  const container = selectedVpsId.value
+    ? vpsStore
+        .getContainersForVps(selectedVpsId.value)
+        .find((c) => c.container_name === pairlistContainerName.value)
+    : undefined;
+  const botExchange = container?.exchange?.toLowerCase();
+  const optionExchange = pairlistSelectedOption.value?.exchange?.toLowerCase();
+  return !!botExchange && !!optionExchange && botExchange !== optionExchange;
+});
+
+const pairlistCanApply = computed(() => {
+  if (pairlistAdvanced.value) {
+    return (
+      !!pairlistSelectedConfigId.value &&
+      (pairlistCurrentMode.value !== 'inline' ||
+        pairlistSelectedConfigId.value !== pairlistCurrentConfigId.value ||
+        pairlistRestart.value)
+    );
+  }
+  return (
+    !!pairlistSelectedFragment.value &&
+    (pairlistCurrentMode.value !== 'fragment' ||
+      pairlistSelectedFragment.value !== pairlistCurrentFragment.value ||
+      pairlistRestart.value)
+  );
+});
+
+async function applyPairlist() {
+  if (!selectedVpsId.value) {
+    return;
+  }
+  const selection = pairlistAdvanced.value
+    ? { configId: pairlistSelectedConfigId.value }
+    : { fragment: pairlistSelectedFragment.value };
+  if (!selection.configId && !selection.fragment) {
+    return;
+  }
+  pairlistApplying.value = true;
+  try {
+    const result = await vpsStore.setContainerPairlist(
+      selectedVpsId.value,
+      pairlistContainerName.value,
+      selection,
+      pairlistRestart.value,
+      pairlistForce.value,
+    );
+    const detail =
+      result.preflight_pairs === null
+        ? result.message
+        : `${result.message} — source served ${result.preflight_pairs} pairs`;
+    handleActionToast(`Pairlist — ${pairlistContainerName.value}`, detail, result.ok);
+    if (result.ok) {
+      pairlistModalVisible.value = false;
+    }
+  } catch (error) {
+    handleActionToast(`Pairlist — ${pairlistContainerName.value}`, String(error), false);
+  } finally {
+    pairlistApplying.value = false;
+  }
+}
+
 function containerActionItems(container: VpsContainer): DropdownMenuItem[][] {
   const groups: DropdownMenuItem[][] = [
     [
@@ -690,6 +827,11 @@ function containerActionItems(container: VpsContainer): DropdownMenuItem[][] {
         label: 'Change strategy',
         icon: 'i-mdi-swap-horizontal',
         onSelect: () => openStrategyModal(container.container_name),
+      },
+      {
+        label: 'Change pairlist',
+        icon: 'i-mdi-format-list-bulleted',
+        onSelect: () => openPairlistModal(container.container_name),
       },
       {
         label: 'Purge DWH',
@@ -816,6 +958,7 @@ onBeforeUnmount(() => {
               <th class="p-2 font-semibold">Last seen</th>
               <th class="p-2 font-semibold">Uptime</th>
               <th class="p-2 font-semibold">Strategy</th>
+              <th class="p-2 font-semibold">Pairlist</th>
               <th class="p-2 font-semibold">Freqtrade</th>
               <th class="p-2 font-semibold">Mismatch</th>
               <th class="p-2 font-semibold">Enabled</th>
@@ -850,6 +993,7 @@ onBeforeUnmount(() => {
                 {{ containerUptime(container.container_started_at) }}
               </td>
               <td class="p-2 align-middle font-mono text-xs">{{ container.strategy ?? '—' }}</td>
+              <td class="p-2 align-middle font-mono text-xs">{{ container.pairlist ?? '—' }}</td>
               <td class="p-2 align-middle">
                 <UBadge
                   :label="container.is_freqtrade ? 'Yes' : 'No'"
@@ -885,7 +1029,7 @@ onBeforeUnmount(() => {
               </td>
             </tr>
             <tr v-if="!selectedContainers.length">
-              <td colspan="10" class="p-3 text-center text-surface-400">No containers</td>
+              <td colspan="11" class="p-3 text-center text-surface-400">No containers</td>
             </tr>
           </tbody>
         </table>
@@ -1011,6 +1155,113 @@ onBeforeUnmount(() => {
       :loading="logsLoading"
       @refresh="refreshLogs"
     />
+
+    <UModal
+      v-model:open="pairlistModalVisible"
+      :title="`Change pairlist — ${pairlistContainerName}`"
+    >
+      <template #body>
+        <div class="flex flex-col gap-4">
+          <div v-if="pairlistLoading" class="flex items-center gap-2 text-sm text-surface-400">
+            <UIcon name="i-lucide-loader-circle" class="animate-spin" />
+            Loading available pairlists…
+          </div>
+          <template v-else>
+            <div class="text-sm space-y-1">
+              <div>
+                Current:
+                <span class="font-mono">{{
+                  pairlistCurrentFragment ??
+                  (pairlistCurrentMode === 'inline' ? 'inline chain' : '—')
+                }}</span>
+              </div>
+              <div class="text-surface-400 text-xs">
+                Serves
+                <span class="font-mono">{{ pairlistCurrentConfigId ?? '—' }}</span>
+                · mode <span class="font-mono">{{ pairlistCurrentMode }}</span>
+              </div>
+            </div>
+
+            <UAlert
+              v-if="pairlistIsLive"
+              color="error"
+              variant="subtle"
+              title="Live-money bot"
+              description="This bot pulls in a _LIVE exchange config. Changing its pairlist changes what it trades with real funds."
+            />
+
+            <UCheckbox
+              v-model="pairlistAdvanced"
+              label="Advanced: pick a freq-pairlist config id directly"
+            />
+
+            <USelect
+              v-if="!pairlistAdvanced"
+              v-model="pairlistSelectedFragment"
+              :items="pairlistFragmentItems"
+              placeholder="Select a pairlist fragment"
+            />
+            <USelect
+              v-else
+              v-model="pairlistSelectedConfigId"
+              :items="pairlistConfigIdItems"
+              placeholder="Select a service config id"
+            />
+
+            <UAlert
+              v-if="pairlistAdvanced"
+              color="info"
+              variant="subtle"
+              title="Inline chain"
+              description="Writes the handler chain straight into the bot config instead of using a shared fragment. Needs no file on the host, but the fragment name no longer documents which list the bot runs."
+            />
+            <UAlert
+              v-if="pairlistExchangeMismatch"
+              color="warning"
+              variant="subtle"
+              title="Exchange mismatch"
+              :description="`This selection is for ${pairlistSelectedOption?.exchange}, but the bot trades elsewhere. It will be rejected unless you override.`"
+            />
+
+            <UCheckbox v-model="pairlistRestart" label="Restart bot now to apply" />
+            <UCheckbox
+              v-model="pairlistForce"
+              label="Override checks (skip pre-flight, exchange match)"
+            />
+            <UAlert
+              v-if="pairlistForce"
+              color="error"
+              variant="subtle"
+              title="Checks disabled"
+              description="The whitelist URL will not be fetched first. RemotePairList raises at startup, so an unreachable or empty source means the bot will not come back up after a restart."
+            />
+            <UAlert
+              v-else-if="!pairlistRestart"
+              color="warning"
+              variant="subtle"
+              title="Restart required"
+              description="The new pairlist is written to the config but only takes effect after the bot restarts."
+            />
+          </template>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-2 w-full">
+          <UButton
+            label="Cancel"
+            color="neutral"
+            variant="outline"
+            @click="pairlistModalVisible = false"
+          />
+          <UButton
+            label="Apply"
+            :loading="pairlistApplying"
+            :disabled="pairlistLoading || !pairlistCanApply"
+            @click="applyPairlist"
+          />
+        </div>
+      </template>
+    </UModal>
 
     <UModal
       v-model:open="strategyModalVisible"

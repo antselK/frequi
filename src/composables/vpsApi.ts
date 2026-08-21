@@ -10,6 +10,8 @@ import type {
   PairlistMetric,
   PairlistPreview,
   PairlistSpec,
+  ContainerPairlists,
+  ContainerSetPairlistResult,
   ContainerSetStrategyResult,
   ContainerStrategies,
   DwhAlertConfig,
@@ -284,6 +286,26 @@ export const vpsApi = {
     const { data } = await vpsApiClient.patch<ContainerSetStrategyResult>(
       `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/strategy`,
       { strategy, restart },
+      { timeout: 90_000 },
+    );
+    return data;
+  },
+  async containerPairlists(vpsId: number, containerName: string): Promise<ContainerPairlists> {
+    const { data } = await vpsApiClient.get<ContainerPairlists>(
+      `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/pairlists`,
+    );
+    return data;
+  },
+  async setContainerPairlist(
+    vpsId: number,
+    containerName: string,
+    selection: { fragment?: string; configId?: string },
+    restart: boolean,
+    force = false,
+  ): Promise<ContainerSetPairlistResult> {
+    const { data } = await vpsApiClient.patch<ContainerSetPairlistResult>(
+      `/vps/${vpsId}/containers/${encodeURIComponent(containerName)}/pairlist`,
+      { fragment: selection.fragment, config_id: selection.configId, restart, force },
       { timeout: 90_000 },
     );
     return data;

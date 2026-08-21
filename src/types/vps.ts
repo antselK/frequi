@@ -107,6 +107,38 @@ export interface ContainerSetStrategyResult {
   config_path: string;
 }
 
+export interface ContainerPairlistOption {
+  /** `config_static/pairlists/*.json` filename, or null for a service config id. */
+  fragment: string | null;
+  /** freq-pairlist service config id this option resolves to. */
+  config_id: string | null;
+  exchange: string | null;
+  label: string;
+}
+
+export interface ContainerPairlists {
+  container_name: string;
+  /** 'fragment' = add_config_files entry, 'inline' = `pairlists` in the bot config. */
+  mode: 'fragment' | 'inline' | 'none';
+  /** Heuristic (a `..._LIVE.json` exchange fragment) — warn only, never a gate. */
+  is_live: boolean;
+  current_fragment: string | null;
+  current_config_id: string | null;
+  available_fragments: ContainerPairlistOption[];
+  available_config_ids: ContainerPairlistOption[];
+}
+
+export interface ContainerSetPairlistResult {
+  ok: boolean;
+  message: string;
+  mode: 'fragment' | 'inline';
+  pairlist: string | null;
+  config_id: string | null;
+  restarted: boolean;
+  config_path: string;
+  preflight_pairs: number | null;
+}
+
 export interface VpsContainerAuthHint {
   found: boolean;
   config_path: string;
