@@ -107,6 +107,7 @@ declare global {
   const initBots: typeof import('./stores/ftbotwrapper').initBots
   const inject: typeof import('vue').inject
   const injectLocal: typeof import('@vueuse/core').injectLocal
+  const inputToTimeRangePart: typeof import('./utils/timeRange').inputToTimeRangePart
   const isDefined: typeof import('@vueuse/core').isDefined
   const isNotUndefined: typeof import('./utils/formatters/numberformat').isNotUndefined
   const isProxy: typeof import('vue').isProxy
@@ -192,6 +193,7 @@ declare global {
   const templateRef: typeof import('@vueuse/core').templateRef
   const throttledRef: typeof import('@vueuse/core').throttledRef
   const throttledWatch: typeof import('@vueuse/core').throttledWatch
+  const timeRangePartToInput: typeof import('./utils/timeRange').timeRangePartToInput
   const timeformat: typeof import('./utils/formatters/timeformat').default
   const timestampHour: typeof import('./utils/formatters/timeformat').timestampHour
   const timestampShort: typeof import('./utils/formatters/timeformat').timestampShort
@@ -469,6 +471,9 @@ declare global {
   // @ts-ignore
   export type { ChartTooltipState } from './utils/reportCharts'
   import('./utils/reportCharts')
+  // @ts-ignore
+  export type { TimeRangePart } from './utils/timeRange'
+  import('./utils/timeRange')
 }
 
 // for vue template auto import
@@ -571,6 +576,7 @@ declare module 'vue' {
     readonly initBots: UnwrapRef<typeof import('./stores/ftbotwrapper')['initBots']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
+    readonly inputToTimeRangePart: UnwrapRef<typeof import('./utils/timeRange')['inputToTimeRangePart']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
     readonly isNotUndefined: UnwrapRef<typeof import('./utils/formatters/numberformat')['isNotUndefined']>
     readonly isProxy: UnwrapRef<typeof import('vue')['isProxy']>
@@ -652,6 +658,7 @@ declare module 'vue' {
     readonly templateRef: UnwrapRef<typeof import('@vueuse/core')['templateRef']>
     readonly throttledRef: UnwrapRef<typeof import('@vueuse/core')['throttledRef']>
     readonly throttledWatch: UnwrapRef<typeof import('@vueuse/core')['throttledWatch']>
+    readonly timeRangePartToInput: UnwrapRef<typeof import('./utils/timeRange')['timeRangePartToInput']>
     readonly timeformat: UnwrapRef<typeof import('./utils/formatters/timeformat')['default']>
     readonly timestampHour: UnwrapRef<typeof import('./utils/formatters/timeformat')['timestampHour']>
     readonly timestampShort: UnwrapRef<typeof import('./utils/formatters/timeformat')['timestampShort']>
