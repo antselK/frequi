@@ -30,7 +30,7 @@
     "echarts": "^6.1.0",
     "favico.js": "^0.3.10",
     "humanize-duration": "^3.34.0",
-    "pinia": "4.0.2",
+    "pinia": "4.0.3",
     "pinia-plugin-persistedstate": "^4.7.1",
     "reka-ui": "^2.10.3",
     "sortablejs": "^1.15.7",
@@ -43,7 +43,7 @@
     "@iconify-json/mdi": "^1.2.3",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
-    "@tsconfig/node22": "^22.0.5",
+    "@tsconfig/node22": "^22.0.6",
     "@types/node": "^26.2.0",
     "@types/sortablejs": "^1.15.9",
     "@vitejs/plugin-vue": "^6.0.8",
@@ -54,16 +54,16 @@
     "@vue/tsconfig": "^0.9.1",
     "eslint": "^10.8.1",
     "eslint-plugin-vue": "^10.10.0",
-    "globals": "^17.10.0",
+    "globals": "^17.11.0",
     "happy-dom": "^20.11.2",
     "prettier": "^3.9.6",
-    "sass-embedded": "^1.100.0",
+    "sass-embedded": "^1.102.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "unplugin-icons": "^23.0.1",
     "vite": "^8.2.1",
-    "vitest": "^4.1.10",
-    "vue-tsc": "^3.3.9"
+    "vitest": "^4.1.11",
+    "vue-tsc": "^3.3.10"
   },
   "packageManager": "pnpm@11.22.0+sha512.1ff870c4c6133dfd88fb2afc46dd13d47f09c9794b438c6fdb47ca98caf3bc16381ee0be93a091b8e3824cf01f889f46d7d9e20910fb0be1ab0fb5baa80dd621"
 }
