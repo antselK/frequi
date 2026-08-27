@@ -13,6 +13,7 @@
  * pages — no CORS, no second auth scheme.
  */
 import PairlistConfigEditor from '@/components/pairlist/PairlistConfigEditor.vue';
+import { useTableSort } from '@/composables/useTableSort';
 import { vpsApi } from '@/composables/vpsApi';
 import type {
   PairlistBlacklistState,
@@ -60,6 +61,61 @@ const healthById = computed(() => {
   for (const entry of health.value?.configs ?? []) map[entry.id] = entry;
   return map;
 });
+
+/**
+ * One flat row per config for the overview table.
+ *
+ * Flattened rather than reached into from the template because `useTableSort`
+ * sorts on a top-level key — `spec.exchange` and the separate health lookup are
+ * not addressable that way.
+ */
+interface ConfigRow {
+  id: string;
+  name: string;
+  venue: string;
+  market: string;
+  pairs: number;
+  ageSeconds: number | null;
+  cadence: number;
+  cronMinutes: number[] | null;
+  status: string;
+  note: string | null;
+}
+
+const configRows = computed<ConfigRow[]>(() =>
+  configs.value.map((cfg) => {
+    const entry = healthById.value[cfg.id];
+    return {
+      id: cfg.id,
+      name: cfg.name,
+      venue: `${cfg.spec.exchange} · ${cfg.spec.stake}`,
+      market: cfg.spec.market,
+      pairs: cfg.pair_count ?? 0,
+      // Left null for a never-built config: formatAge renders that as '—', and
+      // useTableSort already pushes nulls to the bottom in both directions.
+      ageSeconds: entry?.age_seconds ?? null,
+      cadence: cfg.cadence_min,
+      cronMinutes: cfg.spec.cron_minutes ?? null,
+      status: entry?.status ?? (cfg.enabled ? 'unknown' : 'disabled'),
+      note: entry?.note ?? null,
+    };
+  }),
+);
+
+// Venue-first by default so the three exchanges group. Array.prototype.sort is
+// stable, so ids keep the service's own order inside each venue.
+const sortCol = ref<keyof ConfigRow & string>('venue');
+const sortAsc = ref(true);
+const sortedRows = useTableSort(configRows, sortCol, sortAsc);
+
+function sortBy(col: keyof ConfigRow & string) {
+  if (sortCol.value === col) sortAsc.value = !sortAsc.value;
+  else {
+    sortCol.value = col;
+    // Text columns read naturally A→Z; numbers are most interesting largest-first.
+    sortAsc.value = col === 'id' || col === 'name' || col === 'venue';
+  }
+}
 
 /**
  * The bot-facing URL. Bots reach the service directly over Tailscale rather than
@@ -373,57 +429,117 @@ onMounted(loadAll);
       @update:open="error = ''"
     />
 
-    <!-- Config cards. Staleness is the headline number: a frozen pairlist is the
-         failure that went unnoticed for 15 days when the old service died. -->
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <UCard
-        v-for="cfg in configs"
-        :key="cfg.id"
-        class="cursor-pointer transition"
-        :class="cfg.id === selectedId ? 'ring-2 ring-primary-500' : 'hover:bg-surface-800/40'"
-        @click="selectedId = cfg.id"
-      >
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="font-medium truncate">{{ cfg.name }}</div>
-            <div class="font-mono text-xs text-surface-400 truncate">{{ cfg.id }}</div>
-          </div>
-          <UBadge
-            :label="healthById[cfg.id]?.status ?? (cfg.enabled ? 'unknown' : 'disabled')"
-            :color="statusColor(healthById[cfg.id]?.status)"
-            variant="subtle"
-          />
-        </div>
-
-        <div class="mt-3 flex items-baseline gap-2">
-          <span class="text-2xl font-bold">{{ cfg.pair_count ?? 0 }}</span>
-          <span class="text-xs text-surface-400">pairs</span>
-        </div>
-
-        <div class="mt-1 text-xs text-surface-400">
-          built {{ formatAge(healthById[cfg.id]?.age_seconds) }} · every {{ cfg.cadence_min }}m
-          <span v-if="cfg.spec.cron_minutes?.length">
-            (:{{ cfg.spec.cron_minutes.join(', :') }})
-          </span>
-        </div>
-
-        <div v-if="healthById[cfg.id]?.note" class="mt-2 text-xs text-amber-400">
-          {{ healthById[cfg.id]?.note }}
-        </div>
-
-        <div class="mt-3 flex items-center gap-2" @click.stop>
-          <code class="flex-1 truncate rounded bg-surface-800/60 px-2 py-1 text-xs">
-            {{ pairlistUrl(cfg.id) }}
-          </code>
-          <UButton
-            icon="i-mdi-content-copy"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            @click="copyUrl(cfg.id)"
-          />
-        </div>
-      </UCard>
+    <!-- Config overview. Staleness is the headline number: a frozen pairlist is
+         the failure that went unnoticed for 15 days when the old service died.
+         The long health note is an icon here and renders in full in the panel
+         below — every config carries one, so inlining them buries the table. -->
+    <div class="overflow-x-auto w-full">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="border-b border-surface-600 text-left text-surface-300">
+            <th class="py-2 pe-3 whitespace-nowrap">Status</th>
+            <th
+              class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+              :class="sortCol === 'id' ? 'text-primary-400' : ''"
+              @click="sortBy('id')"
+            >
+              Config {{ sortCol === 'id' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th
+              class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+              :class="sortCol === 'name' ? 'text-primary-400' : ''"
+              @click="sortBy('name')"
+            >
+              Name {{ sortCol === 'name' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th
+              class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap"
+              :class="sortCol === 'venue' ? 'text-primary-400' : ''"
+              @click="sortBy('venue')"
+            >
+              Venue {{ sortCol === 'venue' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th
+              class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+              :class="sortCol === 'pairs' ? 'text-primary-400' : ''"
+              @click="sortBy('pairs')"
+            >
+              Pairs {{ sortCol === 'pairs' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th
+              class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+              :class="sortCol === 'ageSeconds' ? 'text-primary-400' : ''"
+              @click="sortBy('ageSeconds')"
+            >
+              Built {{ sortCol === 'ageSeconds' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th
+              class="py-2 pe-3 cursor-pointer select-none whitespace-nowrap text-right"
+              :class="sortCol === 'cadence' ? 'text-primary-400' : ''"
+              @click="sortBy('cadence')"
+            >
+              Every {{ sortCol === 'cadence' ? (sortAsc ? '↑' : '↓') : '' }}
+            </th>
+            <th class="py-2 pe-3 whitespace-nowrap text-right">URL</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="row in sortedRows"
+            :key="row.id"
+            class="border-b border-surface-700/70 cursor-pointer"
+            :class="row.id === selectedId ? 'bg-primary-500/10' : 'hover:bg-surface-700/30'"
+            @click="selectedId = row.id"
+          >
+            <td class="py-1.5 pe-3">
+              <UBadge :label="row.status" :color="statusColor(row.status)" variant="subtle" />
+            </td>
+            <td
+              class="py-1.5 pe-3 font-mono text-xs whitespace-nowrap"
+              :class="row.id === selectedId ? 'text-primary-400' : ''"
+            >
+              {{ row.id }}
+            </td>
+            <td class="py-1.5 pe-3 max-w-56 truncate text-surface-300" :title="row.name">
+              {{ row.name }}
+            </td>
+            <td class="py-1.5 pe-3 whitespace-nowrap text-xs text-surface-400">
+              {{ row.venue }} · {{ row.market }}
+            </td>
+            <td class="py-1.5 pe-3 text-right font-mono font-bold">{{ row.pairs }}</td>
+            <td class="py-1.5 pe-3 text-right whitespace-nowrap text-surface-400">
+              {{ formatAge(row.ageSeconds) }}
+            </td>
+            <!-- Cron minutes are a tooltip, not a column: the whole fleet shares one
+                 schedule, so inlining them repeats the same 24 chars on every row. -->
+            <td
+              class="py-1.5 pe-3 text-right whitespace-nowrap text-xs text-surface-400"
+              :title="
+                row.cronMinutes?.length
+                  ? `at :${row.cronMinutes.join(', :')} past the hour`
+                  : undefined
+              "
+            >
+              {{ row.cadence }}m<span v-if="row.cronMinutes?.length" class="text-surface-500"
+                >*</span
+              >
+            </td>
+            <td class="py-1.5 pe-3 text-right whitespace-nowrap" @click.stop>
+              <span v-if="row.note" :title="row.note">
+                <UIcon name="i-mdi-alert" class="me-1 align-middle text-amber-400" />
+              </span>
+              <UButton
+                icon="i-mdi-content-copy"
+                size="xs"
+                color="neutral"
+                variant="ghost"
+                :title="pairlistUrl(row.id)"
+                @click="copyUrl(row.id)"
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <!-- Selected config -->
@@ -460,6 +576,27 @@ onMounted(loadAll);
           </div>
         </div>
       </template>
+
+      <!-- The URL and the health note used to live on the config tile and nowhere
+           else. The table can't carry either at full width, so they land here. -->
+      <div v-if="!draft" class="mb-3 space-y-2">
+        <div class="flex items-center gap-2">
+          <code class="min-w-0 flex-1 truncate rounded bg-surface-800/60 px-2 py-1 text-xs">
+            {{ pairlistUrl(selected.id) }}
+          </code>
+          <UButton
+            icon="i-mdi-content-copy"
+            size="xs"
+            color="neutral"
+            variant="ghost"
+            @click="copyUrl(selected.id)"
+          />
+        </div>
+        <div v-if="healthById[selected.id]?.note" class="flex gap-2 text-xs text-amber-400">
+          <UIcon name="i-mdi-alert" class="mt-0.5 shrink-0" />
+          <span>{{ healthById[selected.id]?.note }}</span>
+        </div>
+      </div>
 
       <div class="mb-3 flex gap-2">
         <UButton
