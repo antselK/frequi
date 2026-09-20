@@ -33,7 +33,7 @@ jobs:
       with:
         persist-credentials: false
 
-    - uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+    - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
       with:
         runtime: node@${{ matrix.node }}
 
@@ -106,7 +106,7 @@ jobs:
   call-docker-workflow:
     needs: build
     if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'release') && github.repository == 'freqtrade/frequi'
-    uses: ./.github/workflows/docker.yml
+    uses: $/.github/workflows/docker.yml
     permissions:
       packages: write  # Needed to push Docker images to ghcr.
       contents: read

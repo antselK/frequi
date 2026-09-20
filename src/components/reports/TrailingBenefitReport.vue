@@ -1104,8 +1104,7 @@ onMounted(() => {
       <pre
         v-if="showTrailingAnalysisQuery"
         class="mt-2 text-xs bg-surface-900 border border-surface-700 rounded p-3 overflow-x-auto whitespace-pre-wrap select-all"
-        >{{ trailingAnalysisQuery }}</pre
-      >
+        >{{ trailingAnalysisQuery }}</pre>
     </div>
 
     <div class="flex flex-wrap items-center justify-between gap-3">

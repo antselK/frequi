@@ -113,7 +113,7 @@ onMounted(async () => {
   font-size: 0.88rem;
 }
 /* UCard header (Discovered Bots panel) — shrink chrome */
-.mobile-compact :deep([class*="card"] > [class*="header"]) {
+.mobile-compact :deep([class*='card'] > [class*='header']) {
   padding: 0.25rem 0.5rem;
 }
 /* Pagination + filter strip inside TradeList */
