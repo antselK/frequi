@@ -68,6 +68,7 @@ import type {
   VpsLogsResult,
   VpsOpenTradesSummary,
   VpsServer,
+  DwhPairlistComparison,
 } from '@/types/vps';
 
 function resolveControlPlaneBaseUrl(): string {
@@ -773,6 +774,28 @@ export const vpsApi = {
         direction: direction && direction !== 'all' ? direction : undefined,
       },
     });
+    return data;
+  },
+
+  async dwhPairlistComparison(
+    dateFrom?: string,
+    dateTo?: string,
+    exchange?: string,
+    botId?: number | null,
+    maxSnapshotAgeDays?: number,
+  ): Promise<DwhPairlistComparison> {
+    const { data } = await vpsApiClient.get<DwhPairlistComparison>(
+      '/dwh/reports/pairlist-comparison',
+      {
+        params: {
+          date_from: dateFrom,
+          date_to: dateTo,
+          exchange: exchange && exchange !== 'all' ? exchange : undefined,
+          bot_id: botId ?? undefined,
+          max_snapshot_age_days: maxSnapshotAgeDays,
+        },
+      },
+    );
     return data;
   },
 

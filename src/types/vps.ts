@@ -965,3 +965,77 @@ export interface PairlistBlacklistState {
   delistings: string[];
   retired: { symbol: string; removed_at: string; retests: number }[];
 }
+
+// --- Pairlist Comparison ---------------------------------------------------
+// Counterfactual coverage: every pairlist config scored against the SAME trade
+// population (was the pair in that config's published set when the trade opened).
+// Comparing bots directly cannot answer "which pairlist is better" — two bots on the
+// same list returned +10,919 vs +1,487, so a bot-grouped number measures strategy.
+
+export interface DwhPairlistSeriesPoint {
+  date: string;
+  config_id: string;
+  trades: number;
+  profit_abs: number;
+  cumulative_profit_abs: number;
+  cumulative_trades: number;
+  avg_quality: number | null;
+}
+
+export interface DwhPairlistGridCell {
+  config_id: string;
+  bot_id: number;
+  container_name: string | null;
+  vps_name: string | null;
+  strategy: string | null;
+  /** true = this bot is wired to this pairlist, so the cell is a real measurement.
+   *  false = counterfactual: the bot's trades filtered to what the list was serving. */
+  as_run: boolean;
+  trades: number;
+  profit_abs: number;
+  avg_profit_pct: number | null;
+  median_quality: number | null;
+  tail_events: number;
+  worst_trade_abs: number | null;
+  deep_dca_trades: number;
+  pair_days: number | null;
+  profit_per_pair_day: number | null;
+}
+
+export interface DwhPairlistSummary {
+  config_id: string;
+  exchange: string | null;
+  covered_trades: number;
+  excluded_trades: number;
+  coverage_pct: number | null;
+  profit_abs: number;
+  median_quality: number | null;
+  tail_events: number;
+  excluded_profit_abs: number;
+  excluded_median_quality: number | null;
+  avg_pair_count: number | null;
+  profit_per_pair_day: number | null;
+  as_run_bot_ids: number[];
+}
+
+export interface DwhPairlistPersistence {
+  testable: boolean;
+  reason: string | null;
+  spearman: number | null;
+  first_half_trades: number;
+  second_half_trades: number;
+  stable: boolean;
+  first_half_order: string[];
+  second_half_order: string[];
+}
+
+export interface DwhPairlistComparison {
+  snapshot_start: string | null;
+  snapshot_count: number;
+  scoreable_trades: number;
+  unscoreable_trades: number;
+  summary: DwhPairlistSummary[];
+  grid: DwhPairlistGridCell[];
+  series: DwhPairlistSeriesPoint[];
+  persistence: DwhPairlistPersistence;
+}

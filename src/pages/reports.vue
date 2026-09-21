@@ -7,6 +7,7 @@ import ReportsAdminDialog from '@/components/ReportsAdminDialog.vue';
 import BotPerformanceReport from '@/components/reports/BotPerformanceReport.vue';
 import EntryTagPerformanceReport from '@/components/reports/EntryTagPerformanceReport.vue';
 import DcaAnalysisReport from '@/components/reports/DcaAnalysisReport.vue';
+import PairlistComparisonReport from '@/components/reports/PairlistComparisonReport.vue';
 import TodDurationReport from '@/components/reports/TodDurationReport.vue';
 import ReportStub from '@/components/reports/ReportStub.vue';
 import MissedTradesReport from '@/components/reports/MissedTradesReport.vue';
@@ -141,6 +142,11 @@ const _subcategoryDefs: Record<ReportCategory, ReportOption[]> = {
       todo: 'TODO: Sum dwh_orders.fee_base per trade vs gross profit_abs. What % of profit goes to fees per bot/pair?',
     },
     // ── Tier 3: interesting, lower urgency ───────────────────────────────
+    {
+      value: 'pairlist-comparison',
+      label: 'Pairlist Comparison',
+      todo: 'Compares the generated pairlists against each other over time. Every config is scored against the SAME trade population by counterfactual coverage — for each trade, was its pair in that config\'s published set at the moment the trade opened? That removes the strategy/bot confound a bot-grouped comparison cannot escape. Chart: cumulative PnL, trade count or avg quality per pairlist. Tables: per-pairlist summary (coverage, PnL, median quality, tail events, PnL per pair-day, and the median quality of the trades it did NOT cover) plus a per-bot breakdown marking which cells are real measurements ("as run") versus counterfactual. A ranking is only reported as stable if it survives a split-half test. Forward-only: pair-set recording began 2026-09-21, so trades that opened earlier can never be scored.',
+    },
     {
       value: 'tod-duration',
       label: 'Time-of-Day Duration',
@@ -743,6 +749,7 @@ onMounted(async () => {
           <!-- Stub report pages — Tier 3                               -->
           <!-- ============================================================ -->
 
+          <PairlistComparisonReport v-if="selectedSubCategory === 'pairlist-comparison'" />
           <TodDurationReport v-if="selectedSubCategory === 'tod-duration'" />
 
           <ReportStub
