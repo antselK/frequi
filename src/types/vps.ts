@@ -1018,12 +1018,35 @@ export interface DwhPairlistSummary {
   as_run_bot_ids: number[];
 }
 
+/** How much two configs' covered-trade sets coincide. A list and its cooling-off
+ *  variant measured J=0.98 (a complete subset), so counting them as two independent
+ *  agreements inflated the replication test. */
+export interface DwhPairlistOverlap {
+  venue: string;
+  config_a: string;
+  config_b: string;
+  shared_trades: number;
+  jaccard: number;
+  containment: number;
+  near_duplicate: boolean;
+}
+
 export interface DwhPairlistPersistence {
+  /** Scoped to one venue — pooled, the ordering is just a venue ranking. */
+  venue: string | null;
   testable: boolean;
   reason: string | null;
   spearman: number | null;
+  /** One-sided permutation p. Reported because rho alone says nothing at small n. */
+  p_value: number | null;
+  /** The p a PERFECT match would earn at this group count — the ceiling on what the
+   *  test can prove with the pairlists available. At 3 groups it is 0.167. */
+  best_possible_p: number | null;
   first_half_trades: number;
   second_half_trades: number;
+  distinct_groups: number;
+  /** Each inner list is a near-duplicate group; first entry entered the correlation. */
+  groups: string[][];
   stable: boolean;
   first_half_order: string[];
   second_half_order: string[];
@@ -1037,5 +1060,7 @@ export interface DwhPairlistComparison {
   summary: DwhPairlistSummary[];
   grid: DwhPairlistGridCell[];
   series: DwhPairlistSeriesPoint[];
-  persistence: DwhPairlistPersistence;
+  overlaps: DwhPairlistOverlap[];
+  /** One entry per venue, never pooled. */
+  persistence: DwhPairlistPersistence[];
 }

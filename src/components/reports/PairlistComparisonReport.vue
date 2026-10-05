@@ -5,7 +5,7 @@ import { useReportsContext } from '@/composables/useReportsContext';
 import { vpsApi } from '@/composables/vpsApi';
 import { niceTickInterval } from '@/utils/reportCharts';
 import { daysAgoStr, todayStr } from '@/utils/reportDates';
-import type { DwhPairlistComparison } from '@/types/vps';
+import type { DwhPairlistComparison, DwhPairlistPersistence } from '@/types/vps';
 
 const { reportsError, botSelectOptions, showChartTooltip, hideChartTooltip } = useReportsContext();
 
@@ -246,6 +246,41 @@ function onMouseLeave() {
   hideChartTooltip();
 }
 
+function venueLabel(v: string | null): string {
+  if (v === 'krakenfutures') return 'Kraken Futures';
+  if (!v) return 'All venues';
+  return v.charAt(0).toUpperCase() + v.slice(1);
+}
+
+function persistenceTitle(p: DwhPairlistPersistence): string {
+  const v = venueLabel(p.venue);
+  if (!p.testable) return `${v}: ranking not yet testable`;
+  if (p.stable) return `${v}: ranking replicates (rho ${fmt(p.spearman)}, p ${fmt(p.p_value, 3)})`;
+  return `${v}: ranking is NOT established (rho ${fmt(p.spearman)}, p ${fmt(p.p_value, 3)})`;
+}
+
+/** The reason text matters more than the number here: at 3 independent pairlists even
+ *  a perfect match is p=0.167, so "not established" means "not enough distinct lists",
+ *  not "the halves disagree". */
+function persistenceDetail(p: DwhPairlistPersistence): string {
+  if (!p.testable) return p.reason ?? '';
+  const dupes = p.groups.filter((g) => g.length > 1);
+  const parts: string[] = [];
+  if (p.reason) parts.push(p.reason);
+  parts.push(
+    `${p.distinct_groups} independent pairlists; ${p.first_half_trades} / ${p.second_half_trades} trades per half.`,
+  );
+  if (dupes.length > 0) {
+    parts.push(`Collapsed as near-duplicates: ${dupes.map((g) => g.join(' = ')).join('; ')}.`);
+  }
+  if (p.stable) {
+    parts.push(
+      `First half: ${p.first_half_order.join(' > ')} — second half: ${p.second_half_order.join(' > ')}`,
+    );
+  }
+  return parts.join(' ');
+}
+
 function fmt(v: number | null | undefined, digits = 2): string {
   return v === null || v === undefined ? '—' : v.toFixed(digits);
 }
@@ -287,24 +322,18 @@ function fmt(v: number | null | undefined, digits = 2): string {
       title="No scoreable trades yet"
       :description="`Pair-set recording began ${data.snapshot_start?.slice(0, 16) ?? 'recently'} (${data.snapshot_count} snapshots). A trade can only be scored if a snapshot was in force when it opened, so the ${data.unscoreable_trades} trades that opened earlier can never be scored. This fills in on its own as new trades open and close.`"
     />
-    <UAlert
-      v-else-if="loaded && data && !data.persistence.testable"
-      color="info"
-      title="Ranking not yet testable"
-      :description="`${data.persistence.reason}. Until the split-half test can run, treat the ordering below as provisional — a ranking that holds in one window and not the next is exactly how earlier pairlist studies produced confident wrong answers.`"
-    />
-    <UAlert
-      v-else-if="loaded && data && data.persistence.testable && !data.persistence.stable"
-      color="error"
-      :title="`Ranking is NOT stable (Spearman ${fmt(data.persistence.spearman)})`"
-      description="The two halves of this window disagree about which pairlists are best. Do not act on the ordering below."
-    />
-    <UAlert
-      v-else-if="loaded && data && data.persistence.stable"
-      color="success"
-      :title="`Ranking replicates across halves (Spearman ${fmt(data.persistence.spearman)})`"
-      :description="`First half: ${data.persistence.first_half_order.join(' > ')} — second half: ${data.persistence.second_half_order.join(' > ')}`"
-    />
+    <!-- One alert per venue. Pooled across venues the ordering is just a venue
+         ranking (all Bybit, then Kraken, then Hyperliquid), which is how the first
+         live run reported a spurious "stable" at rho 0.982. -->
+    <template v-else-if="loaded && data">
+      <UAlert
+        v-for="p in data.persistence"
+        :key="p.venue ?? 'all'"
+        :color="p.stable ? 'success' : p.testable ? 'warning' : 'info'"
+        :title="persistenceTitle(p)"
+        :description="persistenceDetail(p)"
+      />
+    </template>
 
     <div v-if="loaded && data" class="flex flex-wrap gap-3 text-sm">
       <div class="rounded border border-surface-600 px-3 py-2 min-w-28 text-center">
@@ -512,6 +541,63 @@ function fmt(v: number | null | undefined, digits = 2): string {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- Overlap: which "different" pairlists are actually the same trades -->
+    <div v-if="data && data.overlaps.length > 0" class="space-y-2">
+      <h6 class="font-semibold text-sm">Pairlist overlap</h6>
+      <p class="text-xs text-surface-400">
+        How much of each pair of lists' covered trades coincide. A list and its cooling-off variant
+        is typically a complete subset, so the two cannot count as independent agreement in the
+        replication test above — they are collapsed into one group.
+        <span class="font-mono">J</span> is Jaccard (shared / combined); containment is 1.0 when one
+        list's trades are wholly inside the other's.
+      </p>
+      <div class="overflow-x-auto w-full">
+        <table class="w-full text-sm border-collapse">
+          <thead>
+            <tr class="border-b border-surface-600 text-left text-surface-300">
+              <th class="py-2 pe-3 whitespace-nowrap">Venue</th>
+              <th class="py-2 pe-3 whitespace-nowrap">Pairlist A</th>
+              <th class="py-2 pe-3 whitespace-nowrap">Pairlist B</th>
+              <th class="py-2 pe-3 whitespace-nowrap text-right">Shared</th>
+              <th class="py-2 pe-3 whitespace-nowrap text-right">J</th>
+              <th class="py-2 pe-3 whitespace-nowrap text-right">Containment</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="o in data.overlaps"
+              :key="`${o.config_a}-${o.config_b}`"
+              class="border-b border-surface-700/70 hover:bg-surface-700/30"
+            >
+              <td class="py-1.5 pe-3 text-xs text-surface-400">{{ venueLabel(o.venue) }}</td>
+              <td class="py-1.5 pe-3 font-mono text-xs">{{ o.config_a }}</td>
+              <td class="py-1.5 pe-3 font-mono text-xs">
+                {{ o.config_b }}
+                <UBadge
+                  v-if="o.near_duplicate"
+                  label="near-duplicate"
+                  color="warning"
+                  variant="subtle"
+                  size="xs"
+                  class="ms-1"
+                />
+              </td>
+              <td class="py-1.5 pe-3 text-right">{{ o.shared_trades }}</td>
+              <td
+                class="py-1.5 pe-3 text-right font-mono"
+                :class="o.near_duplicate ? 'text-orange-400' : 'text-surface-300'"
+              >
+                {{ fmt(o.jaccard, 3) }}
+              </td>
+              <td class="py-1.5 pe-3 text-right font-mono text-xs text-surface-400">
+                {{ fmt(o.containment, 3) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Pairlist x bot grid -->
