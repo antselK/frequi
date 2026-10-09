@@ -11,7 +11,9 @@ declare global {
   const ColorPreferences: typeof import('./stores/colors').ColorPreferences
   const DashboardLayout: typeof import('./stores/layout').DashboardLayout
   const EffectScope: typeof import('vue').EffectScope
+  const MAX_LEVERAGE_EXCLUSIONS: typeof import('./utils/pairlistChain').MAX_LEVERAGE_EXCLUSIONS
   const OpenTradeVizOptions: typeof import('./stores/settings').OpenTradeVizOptions
+  const PAIR_INFO_EXCLUSIONS: typeof import('./utils/pairlistChain').PAIR_INFO_EXCLUSIONS
   const ROUND_CLOSER: typeof import('./utils/roundTimeframe').ROUND_CLOSER
   const ROUND_DOWN: typeof import('./utils/roundTimeframe').ROUND_DOWN
   const ROUND_UP: typeof import('./utils/roundTimeframe').ROUND_UP
@@ -154,6 +156,7 @@ declare global {
   const onUnmounted: typeof import('vue').onUnmounted
   const onUpdated: typeof import('vue').onUpdated
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
+  const pairInfoChain: typeof import('./utils/pairlistChain').pairInfoChain
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
   const plotConfigColumns: typeof import('./utils/charts/plotConfigColumns').plotConfigColumns
   const profitColor: typeof import('./utils/reportColors').profitColor
@@ -168,6 +171,7 @@ declare global {
   const reactiveComputed: typeof import('@vueuse/core').reactiveComputed
   const reactiveOmit: typeof import('@vueuse/core').reactiveOmit
   const reactivePick: typeof import('@vueuse/core').reactivePick
+  const readPairInfoToggles: typeof import('./utils/pairlistChain').readPairInfoToggles
   const readonly: typeof import('vue').readonly
   const ref: typeof import('vue').ref
   const refAutoReset: typeof import('@vueuse/core').refAutoReset
@@ -479,6 +483,9 @@ declare global {
   export type { SupportedSeriesTypes } from './utils/charts/candleChartSeries'
   import('./utils/charts/candleChartSeries')
   // @ts-ignore
+  export type { PairInfoGroup, PairInfoToggles } from './utils/pairlistChain'
+  import('./utils/pairlistChain')
+  // @ts-ignore
   export type { ChartTooltipState } from './utils/reportCharts'
   import('./utils/reportCharts')
   // @ts-ignore
@@ -494,7 +501,9 @@ declare module 'vue' {
     readonly ColorPreferences: UnwrapRef<typeof import('./stores/colors')['ColorPreferences']>
     readonly DashboardLayout: UnwrapRef<typeof import('./stores/layout')['DashboardLayout']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly MAX_LEVERAGE_EXCLUSIONS: UnwrapRef<typeof import('./utils/pairlistChain')['MAX_LEVERAGE_EXCLUSIONS']>
     readonly OpenTradeVizOptions: UnwrapRef<typeof import('./stores/settings')['OpenTradeVizOptions']>
+    readonly PAIR_INFO_EXCLUSIONS: UnwrapRef<typeof import('./utils/pairlistChain')['PAIR_INFO_EXCLUSIONS']>
     readonly ROUND_CLOSER: UnwrapRef<typeof import('./utils/roundTimeframe')['ROUND_CLOSER']>
     readonly ROUND_DOWN: UnwrapRef<typeof import('./utils/roundTimeframe')['ROUND_DOWN']>
     readonly ROUND_UP: UnwrapRef<typeof import('./utils/roundTimeframe')['ROUND_UP']>
@@ -629,6 +638,7 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly pairInfoChain: UnwrapRef<typeof import('./utils/pairlistChain')['pairInfoChain']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly plotConfigColumns: UnwrapRef<typeof import('./utils/charts/plotConfigColumns')['plotConfigColumns']>
     readonly profitColor: UnwrapRef<typeof import('./utils/reportColors')['profitColor']>
@@ -643,6 +653,7 @@ declare module 'vue' {
     readonly reactiveComputed: UnwrapRef<typeof import('@vueuse/core')['reactiveComputed']>
     readonly reactiveOmit: UnwrapRef<typeof import('@vueuse/core')['reactiveOmit']>
     readonly reactivePick: UnwrapRef<typeof import('@vueuse/core')['reactivePick']>
+    readonly readPairInfoToggles: UnwrapRef<typeof import('./utils/pairlistChain')['readPairInfoToggles']>
     readonly readonly: UnwrapRef<typeof import('vue')['readonly']>
     readonly ref: UnwrapRef<typeof import('vue')['ref']>
     readonly refAutoReset: UnwrapRef<typeof import('@vueuse/core')['refAutoReset']>

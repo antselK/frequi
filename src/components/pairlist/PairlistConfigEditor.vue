@@ -67,26 +67,6 @@ const EXCHANGES = [
   'hyperliquid',
 ];
 
-// Non-crypto instrument classes to exclude via PairInformationFilter, per venue — keyed
-// on the field each exchange actually exposes. Hyperliquid exposes neither field, so it
-// gets no handlers.
-//
-// This has to be venue-aware. It was gated on `exchange === 'bybit'` until 2026-08-14,
-// which meant saving the Kraken config from this editor silently dropped its three
-// handlers and readmitted 14 xStocks (TSLAX, SPCXX, …) plus ANTHROPICX/OPENAIX as
-// tradeable candidates, with no checkbox rendered to hint that anything had been lost.
-const PAIR_INFO_EXCLUSIONS: Record<string, { infoKey: string; values: string[]; label: string }> = {
-  bybit: {
-    infoKey: 'info.symbolType',
-    values: ['stock', 'commodity'],
-    label: 'Exclude tokenised equities',
-  },
-  krakenfutures: {
-    infoKey: 'info.category',
-    values: ['xStocks', 'Pre-IPO', 'Forex'],
-    label: 'Exclude equities, pre-IPO & forex',
-  },
-};
 const STAKES = ['USDT', 'USDC', 'USD', 'BTC', 'ETH'];
 const ORDERS = [
   { label: 'Descending', value: 'desc' },
@@ -116,6 +96,9 @@ const applyBlacklist = ref(true);
 // PAIR_INFO_EXCLUSIONS.
 const excludeEquities = ref(true);
 const pairInfoExclusion = computed(() => PAIR_INFO_EXCLUSIONS[exchange.value]);
+// Pairs whose exchange maximum is 5x — Bybit only, see MAX_LEVERAGE_EXCLUSIONS.
+const excludeMaxLeverage = ref(true);
+const maxLeverageExclusion = computed(() => MAX_LEVERAGE_EXCLUSIONS[exchange.value]);
 const useAge = ref(true);
 const minDaysListed = ref(30);
 const useVolatilityWindow = ref(true);
@@ -314,7 +297,9 @@ function readSelection(chain: PairlistSpec['base_chain']) {
   const find = (m: string) =>
     chain.find((h) => h.method === m) as Record<string, number> | undefined;
 
-  excludeEquities.value = chain.some((h) => h.method === 'PairInformationFilter');
+  const pairInfo = readPairInfoToggles(chain, exchange.value);
+  excludeEquities.value = pairInfo.equities;
+  excludeMaxLeverage.value = pairInfo.maxLeverage;
 
   const vol = find('VolumePairList');
   if (vol) {
@@ -419,16 +404,12 @@ function buildSelectionChain() {
   // chain files use and a diff against one stays clean.
   if (volumeLookbackDays.value > 0) volume.lookback_days = volumeLookbackDays.value;
   const chain: Record<string, unknown>[] = [volume];
-  if (excludeEquities.value && pairInfoExclusion.value) {
-    for (const kind of pairInfoExclusion.value.values) {
-      chain.push({
-        method: 'PairInformationFilter',
-        info_key: pairInfoExclusion.value.infoKey,
-        info_compare_value: kind,
-        selection_mode: 'blacklist',
-      });
-    }
-  }
+  chain.push(
+    ...pairInfoChain(exchange.value, {
+      equities: excludeEquities.value,
+      maxLeverage: excludeMaxLeverage.value,
+    }),
+  );
   // Free — reads already-loaded market data, no API call — and it is the only thing
   // that catches a pair the exchange itself has scheduled for delisting. Bybit's
   // measured notice is 1-4 days, so missing it means opening into a doomed pair, which
@@ -625,6 +606,10 @@ function onSave() {
         <div v-if="pairInfoExclusion" class="grid grid-cols-[10rem_1fr] items-center gap-3">
           <span class="text-xs text-surface-400">Non-crypto</span>
           <UCheckbox v-model="excludeEquities" :label="pairInfoExclusion.label" />
+        </div>
+        <div v-if="maxLeverageExclusion" class="grid grid-cols-[10rem_1fr] items-center gap-3">
+          <span class="text-xs text-surface-400">Max leverage</span>
+          <UCheckbox v-model="excludeMaxLeverage" :label="maxLeverageExclusion.label" />
         </div>
         <div class="grid grid-cols-[10rem_1fr] items-center gap-3">
           <UCheckbox v-model="useAge" label="Age filter" />
