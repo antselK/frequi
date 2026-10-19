@@ -6,6 +6,7 @@ import type {
   BacktestHistoryEntry,
   BacktestMarketChange,
   BacktestMetadataWithStrategyName,
+  BacktestPairHistoryPayload,
   BacktestPayload,
   BacktestResult,
   BacktestResultInMemory,
@@ -101,7 +102,7 @@ export function createBotSubStore(botId: string, botName: string) {
     const freqaiModelList = ref<string[]>([]);
     const hyperoptLossList = ref<HyperoptLossObj[]>([]);
     const exchangeList = ref<Exchange[]>([]);
-    const strategy = ref<StrategyResult | undefined>({} as StrategyResult);
+    const strategy = ref<StrategyResult | undefined>(undefined);
     const pairlist = ref<string[]>([]);
     const pairlistWithTimeframe = ref<PairIntervalTuple[]>([]);
 
@@ -348,17 +349,30 @@ export function createBotSubStore(botId: string, botName: string) {
     const history = ref<PairHistoryLocal>({});
     const historyStatus = shallowRef(LoadingStatus.not_loaded);
 
+    /**
+     * Apply the "Only request necessary columns" setting.
+     * Dropping `columns` makes the backend return the full dataframe.
+     */
+    function _applyColumnFilter<T extends { columns?: string[] }>(payload: T): T {
+      const settingsStore = useSettingsStore();
+      if (settingsStore.useReducedPairCalls) {
+        return payload;
+      }
+      const withoutColumns = { ...payload };
+      delete withoutColumns.columns;
+      return withoutColumns;
+    }
+
     async function getPairCandles(payload: PairCandlePayload) {
       if (payload.pair && payload.timeframe) {
         candleDataStatus.value = LoadingStatus.loading;
         try {
           let result: PairHistory | null = null;
-          const settingsStore = useSettingsStore();
-          if (botFeatures.value.reducedPairCalls && settingsStore.useReducedPairCalls) {
-            // Modern approach, allowing filtering of columns
+          if (botFeatures.value.reducedPairCalls) {
+            // Modern endpoint - preferred whenever the bot supports it.
             const data = await api<PairHistory>('/pair_candles', {
               method: 'POST',
-              body: payload,
+              body: _applyColumnFilter(payload),
             });
             result = data;
           } else {
@@ -389,60 +403,87 @@ export function createBotSubStore(botId: string, botName: string) {
       }
     }
 
+    /**
+     * Wraps the loading of pair history - handling loading states, errors
+     * and storing the result in the local history cache.
+     */
+    async function _loadPairHistory(
+      payload: { pair: string; timeframe: string; timerange?: string },
+      loadFn: (timeout: number) => Promise<PairHistory>,
+    ) {
+      historyStatus.value = LoadingStatus.loading;
+      historyTakesLonger.value = false;
+      let loadingTimer: ReturnType<typeof setTimeout> | null = null;
+      try {
+        loadingTimer = setTimeout(() => (historyTakesLonger.value = true), 10000);
+        const result = await loadFn(2 * 60 * 1000);
+
+        history.value[`${payload.pair}__${payload.timeframe}`] = {
+          pair: payload.pair,
+          timeframe: payload.timeframe,
+          timerange: payload.timerange,
+          data: result,
+        };
+        historyStatus.value = LoadingStatus.success;
+        return;
+      } catch (err) {
+        console.error(err);
+        historyStatus.value = LoadingStatus.error;
+        if (isApiError(err)) {
+          const isTimeout = isTimeoutError(err);
+          const errMsg = isTimeout
+            ? 'Timeout exceeded'
+            : (err.data?.detail ?? 'Error fetching history');
+          showAlert(errMsg, 'error');
+        }
+        return Promise.reject(err);
+      } finally {
+        if (loadingTimer) {
+          clearTimeout(loadingTimer);
+        }
+        historyTakesLonger.value = false;
+      }
+    }
+
     async function getPairHistory(payload: PairHistoryPayload) {
       if (payload.pair && payload.timeframe) {
-        historyStatus.value = LoadingStatus.loading;
-        historyTakesLonger.value = false;
-        let loadingTimer: ReturnType<typeof setTimeout> | null = null;
-        try {
-          const settingsStore = useSettingsStore();
-          let result: PairHistory | null = null;
-          loadingTimer = setTimeout(() => (historyTakesLonger.value = true), 10000);
-          const timeout = 2 * 60 * 1000;
-          if (botFeatures.value.reducedPairCalls && settingsStore.useReducedPairCalls) {
-            // Modern approach, allowing filtering of columns
-            const data = await api<PairHistory>('/pair_history', {
-              method: 'POST',
-              body: payload,
-              timeout,
-            });
-            result = data;
-          } else {
-            const data = await api<PairHistory>('/pair_history', {
-              query: { ...payload },
-              timeout,
-            });
-            result = data;
-          }
-          history.value[`${payload.pair}__${payload.timeframe}`] = {
-            pair: payload.pair,
-            timeframe: payload.timeframe,
-            timerange: payload.timerange,
-            data: result,
-          };
-          historyStatus.value = LoadingStatus.success;
-          return;
-        } catch (err) {
-          console.error(err);
-          historyStatus.value = LoadingStatus.error;
-          if (isApiError(err)) {
-            const isTimeout = isTimeoutError(err);
-            const errMsg = isTimeout
-              ? 'Timeout exceeded'
-              : (err.data?.detail ?? 'Error fetching history');
-            showAlert(errMsg, 'error');
-          }
-          return Promise.reject(err);
-        } finally {
-          if (loadingTimer) {
-            clearTimeout(loadingTimer);
-          }
-          historyTakesLonger.value = false;
-        }
+        return _loadPairHistory(payload, (timeout) =>
+          botFeatures.value.reducedPairCalls
+            ? // Modern endpoint - preferred whenever the bot supports it.
+              api<PairHistory>('/pair_history', {
+                method: 'POST',
+                body: _applyColumnFilter(payload),
+                timeout,
+              })
+            : api<PairHistory>('/pair_history', { query: { ...payload }, timeout }),
+        );
       }
       const error = 'pair or timeframe or timerange not specified';
       console.error(error);
       return Promise.reject(error);
+    }
+
+    /**
+     * Analyze a pair with the strategy and parameters stored in a backtest result.
+     * This uses the strategy as it was at the time of the backtest.
+     */
+    async function getBacktestPairHistory(payload: BacktestPairHistoryPayload) {
+      if (!payload.pair || !payload.filename || !payload.strategy) {
+        const error = 'pair, filename or strategy not specified';
+        console.error(error);
+        return Promise.reject(error);
+      }
+      return _loadPairHistory(payload, (timeout) =>
+        api<PairHistory>(`/backtest/history/${payload.filename}/${payload.strategy}/pair_history`, {
+          method: 'POST',
+          body: {
+            pair: payload.pair,
+            columns: payload.columns,
+            timerange: payload.timerange,
+          },
+          timeout,
+        }),
+      );
     }
 
     async function getStrategyPlotConfig(): Promise<PlotConfig | undefined> {
@@ -1536,6 +1577,7 @@ export function createBotSubStore(botId: string, botName: string) {
       deleteLock,
       getPairCandles,
       getPairHistory,
+      getBacktestPairHistory,
       getStrategyPlotConfig,
       getStrategyList,
       getStrategy,

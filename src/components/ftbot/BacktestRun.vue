@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BacktestPayload } from '@/types';
+import type { BacktestPayload, StrategyParameterValue, StrategyResult } from '@/types';
 
 const botStore = useBotStore();
 const btStore = useBtStore();
@@ -42,22 +42,56 @@ function clickBacktest() {
       btPayload.freqai = { identifier: btStore.freqAI.identifier };
     }
   }
+  if (botStore.activeBot.botFeatures.strategyParametersModify) {
+    const strategyParamsPayload = buildStrategyParamsPayload(
+      selectedStrategyDetails.value,
+      strategyParams.value,
+    );
+    if (strategyParamsPayload) {
+      btPayload.strategy_params = strategyParamsPayload;
+    }
+  }
 
   botStore.activeBot.startBacktest(btPayload);
 }
+
+const strategyParams = ref<Record<string, StrategyParameterValue>>({});
+const selectedStrategyDetails = ref<StrategyResult>();
+const strategyParamsModified = computed(() =>
+  hasModifiedStrategyParams(selectedStrategyDetails.value, strategyParams.value),
+);
 </script>
 
 <template>
-  <div class="mb-2">
-    <span>Strategy</span>
-    <StrategySelect v-model="btStore.strategy"></StrategySelect>
-  </div>
   <div
     class="grid grid-cols-2 border border-neutral-500 rounded-sm gap-y-2 gap-2 items-center p-1 pt-3"
     :disabled="botStore.activeBot.backtestRunning"
   >
     <!-- Backtesting parameters -->
     <h3 class="font-bold mb-2 col-span-2 text-center">Backtesting parameters</h3>
+    <label>Strategy:</label>
+    <StrategySelect v-model="btStore.strategy" v-model:details="selectedStrategyDetails" />
+    <template v-if="botStore.activeBot.botFeatures.strategyParametersModify">
+      <label>Strategy Parameters</label>
+      <BaseCollapsible
+        v-if="selectedStrategyDetails && selectedStrategyDetails?.params.length > 0"
+        size="md"
+        :unmount-on-hide="false"
+      >
+        <template #title>
+          Open to modify strategy parameters
+          <span v-if="strategyParamsModified" class="text-warning"> (modified) </span>
+        </template>
+        <StrategyParameters
+          v-if="selectedStrategyDetails"
+          :strategy="selectedStrategyDetails"
+          class="m-3"
+          editable
+          v-model:parameters="strategyParams"
+        />
+      </BaseCollapsible>
+      <span v-else class="py-1.5">No strategy parameters available</span>
+    </template>
     <label for="timeframe-select">Timeframe:</label>
     <TimeframeSelect id="timeframe-select" v-model="btStore.selectedTimeframe" />
     <label for="timeframe-detail-select" class="flex justify-end items-center gap-2"
