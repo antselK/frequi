@@ -271,7 +271,7 @@ onMounted(load);
         :icon="showHistory ? 'i-mdi-chevron-up' : 'i-mdi-chevron-down'"
         @click="showHistory = !showHistory"
       />
-      <div v-if="showHistory" class="mt-1 max-h-64 overflow-auto">
+      <div v-if="showHistory" class="mt-1 max-h-[28rem] overflow-auto">
         <table class="w-full border-collapse text-xs">
           <thead>
             <tr class="border-b border-surface-600 text-left text-surface-300">

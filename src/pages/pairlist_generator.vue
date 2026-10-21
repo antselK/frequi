@@ -838,7 +838,7 @@ onMounted(loadAll);
     </UCard>
 
     <!-- Blacklist -->
-    <UModal v-model:open="showBlacklist" title="Exclusion set">
+    <UModal v-model:open="showBlacklist" title="Exclusion set" :ui="{ content: 'sm:max-w-5xl' }">
       <template #body>
         <div v-if="blacklist" class="space-y-3 text-sm">
           <p class="text-surface-300">{{ blacklist.summary }}</p>
