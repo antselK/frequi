@@ -966,6 +966,33 @@ export interface PairlistBlacklistState {
   retired: { symbol: string; removed_at: string; retests: number }[];
 }
 
+// Hand-maintained exclusion entries, stored in the freq-pairlist service since
+// 2026-10-21 (was the git-tracked pairlist_overrides.json).
+export type PairlistOverrideKind = 'static_blacklist' | 'static_whitelist' | 'always_include_pairs';
+
+export interface PairlistOverride {
+  kind: PairlistOverrideKind;
+  value: string;
+  reason: string;
+  added_at: string;
+  added_by: string | null;
+}
+
+export interface PairlistOverrideChange {
+  id: number;
+  at: string;
+  kind: PairlistOverrideKind;
+  value: string;
+  action: 'add' | 'remove';
+  reason: string;
+  actor: string | null;
+}
+
+export interface PairlistOverrides {
+  entries: PairlistOverride[];
+  history: PairlistOverrideChange[];
+}
+
 // --- Pairlist Comparison ---------------------------------------------------
 // Counterfactual coverage: every pairlist config scored against the SAME trade
 // population (was the pair in that config's published set when the trade opened).

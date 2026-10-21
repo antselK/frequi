@@ -8,6 +8,8 @@ import type {
   PairlistConfigList,
   PairlistHealth,
   PairlistMetric,
+  PairlistOverrideKind,
+  PairlistOverrides,
   PairlistPreview,
   PairlistSpec,
   ContainerPairlists,
@@ -881,5 +883,28 @@ export const vpsApi = {
   async pairlistBlacklist(): Promise<PairlistBlacklistState> {
     const { data } = await vpsApiClient.get<PairlistBlacklistState>('/pairlist/blacklist');
     return data;
+  },
+
+  async pairlistOverrides(limit = 200): Promise<PairlistOverrides> {
+    const { data } = await vpsApiClient.get<PairlistOverrides>('/pairlist/overrides', {
+      params: { limit },
+    });
+    return data;
+  },
+
+  async pairlistAddOverride(
+    kind: PairlistOverrideKind,
+    value: string,
+    reason: string,
+  ): Promise<void> {
+    await vpsApiClient.post('/pairlist/overrides', { kind, value, reason });
+  },
+
+  async pairlistRemoveOverride(
+    kind: PairlistOverrideKind,
+    value: string,
+    reason: string,
+  ): Promise<void> {
+    await vpsApiClient.delete('/pairlist/overrides', { params: { kind, value, reason } });
   },
 };

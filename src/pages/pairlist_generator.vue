@@ -13,6 +13,7 @@
  * pages — no CORS, no second auth scheme.
  */
 import PairlistConfigEditor from '@/components/pairlist/PairlistConfigEditor.vue';
+import PairlistOverridesEditor from '@/components/pairlist/PairlistOverridesEditor.vue';
 import { useTableSort } from '@/composables/useTableSort';
 import { vpsApi } from '@/composables/vpsApi';
 import type {
@@ -209,6 +210,15 @@ async function loadBlacklist() {
   try {
     blacklist.value = await vpsApi.pairlistBlacklist();
     showBlacklist.value = true;
+  } catch (err) {
+    error.value = describeError(err, 'Loading blacklist');
+  }
+}
+
+/** After an override edit: the service applies it at once, so the counts can refresh. */
+async function refreshBlacklist() {
+  try {
+    blacklist.value = await vpsApi.pairlistBlacklist();
   } catch (err) {
     error.value = describeError(err, 'Loading blacklist');
   }
@@ -876,17 +886,8 @@ onMounted(loadAll);
             </div>
           </div>
 
-          <div>
-            <h4 class="mb-1 font-semibold">Static (hand-maintained)</h4>
-            <div class="flex flex-wrap gap-1">
-              <UBadge
-                v-for="sym in blacklist.static"
-                :key="sym"
-                :label="sym"
-                variant="subtle"
-                color="neutral"
-              />
-            </div>
+          <div class="border-t border-surface-600 pt-3">
+            <PairlistOverridesEditor @changed="refreshBlacklist" />
           </div>
         </div>
       </template>
