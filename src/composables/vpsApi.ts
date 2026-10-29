@@ -12,6 +12,7 @@ import type {
   PairlistOverrides,
   PairlistPreview,
   PairlistSpec,
+  PairlistWhitelist,
   ContainerPairlists,
   ContainerSetPairlistResult,
   ContainerSetStrategyResult,
@@ -906,5 +907,38 @@ export const vpsApi = {
     reason: string,
   ): Promise<void> {
     await vpsApiClient.delete('/pairlist/overrides', { params: { kind, value, reason } });
+  },
+
+  async pairlistWhitelist(id: string, limit = 200): Promise<PairlistWhitelist> {
+    const { data } = await vpsApiClient.get<PairlistWhitelist>(
+      `/pairlist/configs/${id}/whitelist`,
+      { params: { limit } },
+    );
+    return data;
+  },
+
+  /** Resolves `rebuild: true` when the service started a build of the config. */
+  async pairlistAddWhitelist(
+    id: string,
+    symbol: string,
+    reason: string,
+  ): Promise<{ symbol: string; rebuild: boolean }> {
+    const { data } = await vpsApiClient.post<{ symbol: string; rebuild: boolean }>(
+      `/pairlist/configs/${id}/whitelist`,
+      { symbol, reason },
+    );
+    return data;
+  },
+
+  async pairlistRemoveWhitelist(
+    id: string,
+    symbol: string,
+    reason: string,
+  ): Promise<{ symbol: string; rebuild: boolean }> {
+    const { data } = await vpsApiClient.delete<{ symbol: string; rebuild: boolean }>(
+      `/pairlist/configs/${id}/whitelist`,
+      { params: { symbol, reason } },
+    );
+    return data;
   },
 };

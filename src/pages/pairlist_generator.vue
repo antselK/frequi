@@ -14,6 +14,7 @@
  */
 import PairlistConfigEditor from '@/components/pairlist/PairlistConfigEditor.vue';
 import PairlistOverridesEditor from '@/components/pairlist/PairlistOverridesEditor.vue';
+import PairlistWhitelistEditor from '@/components/pairlist/PairlistWhitelistEditor.vue';
 import { useTableSort } from '@/composables/useTableSort';
 import { vpsApi } from '@/composables/vpsApi';
 import type {
@@ -47,7 +48,7 @@ const preview = ref<PairlistPreview | null>(null);
 const previewing = ref(false);
 const building = ref(false);
 const showBlacklist = ref(false);
-const activeTab = ref<'pairs' | 'filters' | 'builds' | 'edit'>('pairs');
+const activeTab = ref<'pairs' | 'filters' | 'whitelist' | 'builds' | 'edit'>('pairs');
 const saving = ref(false);
 // A blank draft for 'New config'. Kept separate from the list so creating one
 // never mutates an existing config.
@@ -81,6 +82,7 @@ interface ConfigRow {
   cronMinutes: number[] | null;
   status: string;
   note: string | null;
+  whitelist: string[];
 }
 
 const configRows = computed<ConfigRow[]>(() =>
@@ -99,6 +101,7 @@ const configRows = computed<ConfigRow[]>(() =>
       cronMinutes: cfg.spec.cron_minutes ?? null,
       status: entry?.status ?? (cfg.enabled ? 'unknown' : 'disabled'),
       note: entry?.note ?? null,
+      whitelist: cfg.whitelist ?? [],
     };
   }),
 );
@@ -286,6 +289,8 @@ function duplicateConfig() {
     created_at: '',
     updated_at: '',
     spec,
+    // A whitelist belongs to a config id, so the copy starts without one.
+    whitelist: [],
   };
   activeTab.value = 'edit';
   preview.value = null;
@@ -516,7 +521,14 @@ onMounted(loadAll);
             <td class="py-1.5 pe-3 whitespace-nowrap text-xs text-surface-400">
               {{ row.venue }} · {{ row.market }}
             </td>
-            <td class="py-1.5 pe-3 text-right font-mono font-bold">{{ row.pairs }}</td>
+            <td class="py-1.5 pe-3 text-right font-mono font-bold whitespace-nowrap">
+              <UIcon
+                v-if="row.whitelist.length"
+                name="i-mdi-pin"
+                class="me-1 align-middle text-green-400"
+                :title="`Whitelist, served first: ${row.whitelist.join(', ')}`"
+              />{{ row.pairs }}
+            </td>
             <td class="py-1.5 pe-3 text-right whitespace-nowrap text-surface-400">
               {{ formatAge(row.ageSeconds) }}
             </td>
@@ -610,16 +622,18 @@ onMounted(loadAll);
 
       <div class="mb-3 flex gap-2">
         <UButton
-          v-for="tab in ['pairs', 'filters', 'builds', 'edit'] as const"
+          v-for="tab in ['pairs', 'filters', 'whitelist', 'builds', 'edit'] as const"
           :key="tab"
           :label="
             tab === 'pairs'
               ? 'Pairs'
               : tab === 'filters'
                 ? 'Chain & filters'
-                : tab === 'builds'
-                  ? 'Build history'
-                  : 'Configure'
+                : tab === 'whitelist'
+                  ? `Whitelist${selected.whitelist?.length ? ` (${selected.whitelist.length})` : ''}`
+                  : tab === 'builds'
+                    ? 'Build history'
+                    : 'Configure'
           "
           size="xs"
           :color="activeTab === tab ? 'primary' : 'neutral'"
@@ -640,6 +654,10 @@ onMounted(loadAll);
             Preview: <span class="font-bold">{{ preview.count }}</span> pairs
             <span class="text-surface-400">(not saved — bots still serve the stored list)</span>
           </div>
+          <div v-if="preview.whitelisted?.length" class="mb-2 text-xs text-green-400">
+            Whitelisted, served first ({{ preview.whitelisted.length }}):
+            {{ preview.whitelisted.join(', ') }}
+          </div>
           <div v-if="preview.cooling?.length" class="mb-2 text-xs text-sky-400">
             Cooling off ({{ preview.cooling.length }}): {{ preview.cooling.join(', ') }}
           </div>
@@ -652,7 +670,8 @@ onMounted(loadAll);
               :key="pair"
               :label="`${i + 1}. ${pair}`"
               variant="subtle"
-              color="neutral"
+              :color="preview.whitelisted?.includes(pair) ? 'success' : 'neutral'"
+              :icon="preview.whitelisted?.includes(pair) ? 'i-mdi-pin' : undefined"
             />
           </div>
           <div class="mt-4 overflow-x-auto">
@@ -676,9 +695,21 @@ onMounted(loadAll);
                   <td class="py-1.5 pe-3 text-right">{{ stage.after }}</td>
                   <td
                     class="py-1.5 pe-3 text-right font-mono"
-                    :class="stage.removed > 0 ? 'text-red-400' : 'text-surface-500'"
+                    :class="
+                      stage.removed > 0
+                        ? 'text-red-400'
+                        : stage.removed < 0
+                          ? 'text-green-400'
+                          : 'text-surface-500'
+                    "
                   >
-                    {{ stage.removed > 0 ? `-${stage.removed}` : '0' }}
+                    {{
+                      stage.removed > 0
+                        ? `-${stage.removed}`
+                        : stage.removed < 0
+                          ? `+${-stage.removed}`
+                          : '0'
+                    }}
                   </td>
                 </tr>
               </tbody>
@@ -692,6 +723,9 @@ onMounted(loadAll);
           <div class="mt-3 text-surface-200">
             Last build produced <strong>{{ selected.pair_count ?? 0 }}</strong> pairs at
             {{ formatTs(selected.generated_at) }}.
+          </div>
+          <div v-if="selected.whitelist?.length" class="mt-1 text-green-400">
+            Whitelist, served first: {{ selected.whitelist.join(', ') }}
           </div>
         </div>
       </div>
@@ -771,6 +805,21 @@ onMounted(loadAll);
             />
           </div>
         </div>
+      </div>
+
+      <!-- Whitelist: per config, so a draft has nothing to attach it to yet -->
+      <div v-else-if="activeTab === 'whitelist'">
+        <div v-if="draft" class="text-sm text-surface-400">
+          Save the config first — a whitelist belongs to a saved config id.
+        </div>
+        <PairlistWhitelistEditor
+          v-else
+          :config-id="selected.id"
+          :exchange="selected.spec.exchange"
+          :stake="selected.spec.stake"
+          :enabled="selected.enabled"
+          @changed="loadAll"
+        />
       </div>
 
       <!-- Configure -->

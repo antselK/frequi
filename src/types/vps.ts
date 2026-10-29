@@ -856,6 +856,20 @@ export interface PairlistConfig {
   pair_count?: number;
   generated_at?: string | null;
   degraded?: boolean;
+  /** Coin symbols this config always serves (list endpoint only). */
+  whitelist?: string[];
+  /** The stored build (single-config endpoint only). */
+  result?: PairlistResult | null;
+}
+
+export interface PairlistResult {
+  pairs: string[];
+  pair_count: number;
+  generated_at: string;
+  degraded: boolean;
+  note: string | null;
+  /** The served pairs that are there because of the config's whitelist. */
+  whitelisted: string[];
 }
 
 export interface PairlistConfigList {
@@ -947,6 +961,8 @@ export interface PairlistPreview {
    * these are still listed here but remain in `pairs`.
    */
   cooling?: string[];
+  /** Pairs served because of the config's whitelist; first in `pairs`. */
+  whitelisted?: string[];
 }
 
 export interface PairlistMetric {
@@ -991,6 +1007,31 @@ export interface PairlistOverrideChange {
 export interface PairlistOverrides {
   entries: PairlistOverride[];
   history: PairlistOverrideChange[];
+}
+
+// Per-config whitelist (2026-10-29): coin symbols a config always serves, first in
+// its list. Resolved on the config's own venue at each build.
+export interface PairlistWhitelistEntry {
+  config_id: string;
+  symbol: string;
+  reason: string;
+  added_at: string;
+  added_by: string | null;
+}
+
+export interface PairlistWhitelistChange {
+  id: number;
+  at: string;
+  config_id: string;
+  symbol: string;
+  action: 'add' | 'remove';
+  reason: string;
+  actor: string | null;
+}
+
+export interface PairlistWhitelist {
+  entries: PairlistWhitelistEntry[];
+  history: PairlistWhitelistChange[];
 }
 
 // --- Pairlist Comparison ---------------------------------------------------
