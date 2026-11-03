@@ -935,6 +935,30 @@ onMounted(loadAll);
             </div>
           </div>
 
+          <div>
+            <h4 class="mb-1 font-semibold">Token unlock ahead (DefiLlama)</h4>
+            <p class="mb-1 text-xs text-surface-400">
+              <template v-if="blacklist.unlock_rule">
+                Held out from {{ blacklist.unlock_rule.days }} days before a cliff unlock of at
+                least {{ (blacklist.unlock_rule.min_supply_share * 100).toFixed(0) }}% of
+                circulating supply until the unlock day ends (UTC).
+              </template>
+              Coins DefiLlama does not track are never held.
+            </p>
+            <div class="flex flex-wrap gap-1">
+              <UBadge
+                v-for="u in blacklist.unlock_events ?? []"
+                :key="u.symbol"
+                :label="`${u.symbol} · ${u.unlock_day} · ${(u.share * 100).toFixed(1)}%`"
+                variant="subtle"
+                color="warning"
+              />
+              <span v-if="!blacklist.unlock_events?.length" class="text-xs text-surface-400">
+                none
+              </span>
+            </div>
+          </div>
+
           <div class="border-t border-surface-600 pt-3">
             <PairlistOverridesEditor @changed="refreshBlacklist" />
           </div>

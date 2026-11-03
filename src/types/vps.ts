@@ -979,6 +979,10 @@ export interface PairlistBlacklistState {
   static: string[];
   auto_restricted: string[];
   delistings: string[];
+  /** Coins inside a pre-unlock window now (added 2026-11-03). */
+  unlocks?: string[];
+  unlock_events?: { symbol: string; name: string | null; unlock_day: string; share: number }[];
+  unlock_rule?: { days: number; min_supply_share: number };
   retired: { symbol: string; removed_at: string; retests: number }[];
 }
 

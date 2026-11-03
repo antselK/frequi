@@ -163,7 +163,7 @@ function classLabel(o: { key: string; label: string }): string {
 }
 
 /**
- * The exclusion set's five independent sources.
+ * The exclusion set's six independent sources.
  *
  * All default ON. That inverts the convention used by `f` above, and deliberately:
  * these were applied unconditionally until they became toggleable, so an absent key
@@ -180,6 +180,7 @@ const EXCLUSION_SOURCES = [
   { key: 'coingecko', label: 'CoinGecko memes' },
   { key: 'trending', label: 'CoinGecko trending' },
   { key: 'delistings', label: 'Delisting (Binance + Bybit)' },
+  { key: 'unlocks', label: 'Token unlock ahead (DefiLlama)' },
 ];
 const excl = reactive<Record<string, boolean>>(
   Object.fromEntries(EXCLUSION_SOURCES.map((s) => [s.key, true])),
@@ -687,7 +688,7 @@ function onSave() {
         </div>
 
         <p class="mt-2 text-xs text-surface-500">
-          Five independent sources — unchecking one leaves the others applied. Counts are pairs
+          Six independent sources — unchecking one leaves the others applied. Counts are pairs
           removed from the venue's whole tradeable universe, because these apply
           <em>before</em> ranking: they bite inside the volume pool, ahead of
           <strong>Volume pool</strong> in Selection, so they change what that cap counts as well as
@@ -695,14 +696,16 @@ function onSave() {
           <strong>Keep Delisting and Account-restricted on.</strong> A delisting force-settles a
           position with no exit under a disabled stoploss, and a restricted symbol silently burns
           entry signals on every attempt — those two are protection, not preference, while the
-          CoinGecko sets are the tunable part.
+          CoinGecko sets are the tunable part. <strong>Token unlock ahead</strong> holds a coin out
+          from 7 days before a cliff unlock of at least 2% of its circulating supply until the
+          unlock day ends (DefiLlama data; coins it does not track are never held).
           <template v-if="!fileBacked">
-            <strong>Apply exclusion set</strong> is the master switch: with it off, none of the five
+            <strong>Apply exclusion set</strong> is the master switch: with it off, none of the six
             reach this config.
           </template>
           <template v-else>
             This config takes the exclusion set through its chain file's mid-chain handlers, so it
-            has no master switch — but these five still apply to it.
+            has no master switch — but these six still apply to it.
           </template>
         </p>
       </div>
