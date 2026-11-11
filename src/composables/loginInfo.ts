@@ -49,6 +49,9 @@ function normalizeStoredBotOrder() {
 
 normalizeStoredBotOrder();
 
+// Pending token refreshes, by botId.
+const refreshesInFlight = new Map<string, Promise<string>>();
+
 /**
  * Get available bots with their descriptors
  */
@@ -236,24 +239,28 @@ export function useLoginInfo(botId: string) {
     };
   }
 
-  // Shared across concurrent 401s so that an expired access token triggers only one refresh call.
-  let refreshInFlight: Promise<string> | null = null;
-
   async function doRefreshToken(): Promise<string> {
     console.log('Refreshing token...');
-    const token = currentInfo.value.refreshToken;
+    const token = allLoginInfos.value[botId]?.refreshToken;
+    if (!token) {
+      // Refresh token expired or bot logged out - no point in asking the server.
+      throw new Error('No refresh token available - please log in again');
+    }
     try {
-      const data = await ofetch<AuthResponse>(
-        `${currentInfo.value.apiUrl}${APIBASE}/token/refresh`,
-        {
-          method: 'POST',
-          body: {},
-          credentials: 'include',
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const data = await ofetch<AuthResponse>(`${baseUrl.value}/token/refresh`, {
+        method: 'POST',
+        body: {},
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      });
       if (!data.access_token) {
         throw new Error('No access token received');
+      }
+      // The bot may have been logged out / removed while the refresh was running.
+      const info = allLoginInfos.value[botId];
+      if (!info) {
+        throw new Error('Bot was logged out during token refresh');
       }
       mergeLoginInfo({ accessToken: data.access_token });
       return data.access_token;
@@ -272,12 +279,14 @@ export function useLoginInfo(botId: string) {
   }
 
   function refreshToken(): Promise<string> {
-    if (!refreshInFlight) {
-      refreshInFlight = doRefreshToken().finally(() => {
-        refreshInFlight = null;
+    let refresh = refreshesInFlight.get(botId);
+    if (!refresh) {
+      refresh = doRefreshToken().finally(() => {
+        refreshesInFlight.delete(botId);
       });
+      refreshesInFlight.set(botId, refresh);
     }
-    return refreshInFlight;
+    return refresh;
   }
 
   return {
